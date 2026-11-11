@@ -11,15 +11,16 @@ run needs and how an unattended agent reaches it, (c) which issue builds which p
 build wave is in flight through `orch`.
 
 - [x] Keep the proposal in the tree: `docs/design/autonomous-story-studio.html` (checked: no private strings).
-- [ ] `docs/system-brief.md` v1: rules of power, five rooms with their own orchestrators, the producer
+- [x] `docs/system-brief.md` v1: rules of power, five rooms with their own orchestrators, the producer
       gate in place of owner greenlights, role kinds, stores, markers, lock, loops, pivots, the lab.
-- [ ] `docs/harness.md`: hbar as a primitive, how a role is launched, the fork rule.
+- [x] `docs/harness.md`: hbar as a primitive, how a role is launched, the fork rule.
 - [ ] `docs/resources.md` and `kit/resources.json`: the register of everything a run needs
       (inference logins, tool keys, Fermi, local tools, engine and render nodes, platform approvals).
-- [ ] `docs/architecture.md` redrawn to v1.
-- [ ] `CLAUDE.md`, `README.md`, project rules updated.
-- [ ] Wave issues filed with `orch task`; wave 1 builders launched on disjoint files.
-- [ ] A wake set so reviews and merges continue without the owner.
+- [x] `docs/architecture.md` redrawn to v1.
+- [x] `CLAUDE.md`, `README.md`, project rules updated.
+- [x] Wave 1 issues #1 to #6 filed with `orch task`; builders for #1, #2 and #3 launched on disjoint files
+      (#4 to #6 depend on them). The `factory doctor` ticket follows the register.
+- [x] A wake set so reviews and merges continue without the owner.
 
 ## Review
 
