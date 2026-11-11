@@ -1,0 +1,78 @@
+{
+  "pr": {
+    "base_shas": [
+      "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+      "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    ],
+    "comments": [
+      {
+        "body": "[STORY-WRITER] READY\nhead 2222222222222222222222222222222222222222\n| check | result |\n| lint | PASS |",
+        "created_at": "2026-11-11T10:00:00Z",
+        "id": 101
+      },
+      {
+        "body": "[LINT] PASS\n| provenance | PASS |\n| structure | PASS |\n\nreviewed head 3333333333333333333333333333333333333333 manifest 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+        "created_at": "2026-11-11T10:05:00Z",
+        "id": 102
+      },
+      {
+        "body": "[STORY-EDITOR] APPROVED\ncriterion 1: beats in order\n\nreviewed head 3333333333333333333333333333333333333333 manifest 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+        "created_at": "2026-11-11T10:10:00Z",
+        "id": 103
+      },
+      {
+        "body": "[PITCH-JUDGE] PREFERS A\ncited: beat 2; blinding id k7\nreviewed head 3333333333333333333333333333333333333333 manifest 2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+        "created_at": "2026-11-11T10:12:00Z",
+        "id": 104
+      }
+    ],
+    "commits": [
+      {
+        "parents": [
+          "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+        ],
+        "sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "parents": [
+          "1111111111111111111111111111111111111111"
+        ],
+        "sha": "2222222222222222222222222222222222222222"
+      },
+      {
+        "parents": [
+          "2222222222222222222222222222222222222222",
+          "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+        ],
+        "sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "head": "3333333333333333333333333333333333333333",
+    "manifest": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+  },
+  "roles": {
+    "continuity-supervisor": "checker",
+    "pitch-judge": "judge",
+    "showrunner": "orchestrator",
+    "story-editor": "checker",
+    "story-writer": "maker"
+  },
+  "stage": {
+    "after": "premise",
+    "blind": true,
+    "checker": "story-editor",
+    "judge": "pitch-judge",
+    "lint": [
+      "provenance",
+      "structure"
+    ],
+    "maker": "story-writer",
+    "paths": [
+      "episodes/*/beats.md"
+    ],
+    "pitches": 1,
+    "room": "story",
+    "stage": "beats",
+    "unit": "episode"
+  }
+}
