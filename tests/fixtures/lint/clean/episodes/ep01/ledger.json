@@ -1,0 +1,13 @@
+[
+  {"subject": "keeper", "attribute": "boat colour", "value": "blue", "tag": "art", "source": "media:harbour-sketch", "scene": "s1"},
+  {
+    "subject": "harbour",
+    "attribute": "winter",
+    "value": "freezes",
+    "tag": "text",
+    "source": "sources/harbour-log.md",
+    "scene": "s2"
+  },
+  {"subject": "letter", "attribute": "sender", "value": "unknown", "tag": "inferred", "source": "", "scene": "s2"},
+  {"subject": "lamp", "attribute": "colour", "value": "green", "tag": "invented", "scene": "s3"}
+]
