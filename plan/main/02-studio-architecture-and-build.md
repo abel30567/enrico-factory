@@ -22,6 +22,24 @@ build wave is in flight through `orch`.
       (#4 to #6 depend on them). The `factory doctor` ticket follows the register.
 - [x] A wake set so reviews and merges continue without the owner.
 
+## Wave 1 progress
+
+State lives on GitHub (`orch status`); this list is the record of what merged.
+
+- [ ] #1 dispatcher, front matter, roles, formats, story pipeline (PR #9: fixer done, round 2 review)
+- [ ] #2 markers and verdict freshness (PR #7: fixer done, round 2 review)
+- [x] #3 lint framework, provenance, references, media (PR #8, merged 2026-11-11)
+- [ ] #4 structure lint (waits on #1)
+- [ ] #5 kit and markers lints (waits on #1, #2)
+- [ ] #6 canon and spoiler lints (builder launched 2026-11-11)
+- [x] #10 `factory doctor` (PR #12, merged 2026-11-11)
+- [ ] #11 follow-up: lint reads the files git would commit (after #3)
+- [ ] #13 follow-up: doctor, a command that cannot start is a failed check
+
+Rulings taken 2026-11-11 (in `docs/system-brief.md`, sections 8 and 10): only a role's latest counting
+verdict is read, so a checker's own later `APPROVED` closes its Blockers; verdicts carry the full sha;
+lint reads the files git would commit.
+
 ## Review
 
 2026-11-11. Done: the proposal is in the tree; brief v1, `harness.md`, `resources.md`, the register and
