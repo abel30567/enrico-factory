@@ -7,17 +7,23 @@ from pathlib import Path
 from .. import roles
 from ..lint import Finding
 
-RUNNING_KIT = Path(__file__).resolve().parents[2]
 
+def kit_dir(root: Path) -> Path | None:
+    """The kit in the tree: `.factory/`, else `kit/` when it holds a `pipeline.json`, else None.
 
-def kit_dir(root: Path) -> Path:
-    """The kit installed in the root (`.factory/`), else the kit that contains the running `lib/`."""
-    installed = root / ".factory"
-    return installed if installed.is_dir() else RUNNING_KIT
+    Never the kit that contains the running `lib/`: the result depends on the root only.
+    """
+    if (root / ".factory").is_dir():
+        return root / ".factory"
+    if (root / "kit" / "pipeline.json").is_file():
+        return root / "kit"
+    return None
 
 
 def check(root: Path) -> list[Finding]:
     kit = kit_dir(root)
+    if kit is None:
+        return []
     found = []
     for problem in roles.validate(kit):
         file, message = problem.split(": ", 1)

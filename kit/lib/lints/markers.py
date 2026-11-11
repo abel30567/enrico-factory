@@ -18,8 +18,12 @@ PROGRAM_ACTORS = {
 
 
 def _kinds(root: Path) -> dict[str, str]:
+    kit = kit_dir(root)
+    if kit is None:
+        raise LintError(f"{COMMENTS} is recorded but the tree has no kit to judge it by "
+                        f"(neither .factory/ nor kit/pipeline.json)")
     try:
-        loaded = roles.load_roles(kit_dir(root) / "roles")
+        loaded = roles.load_roles(kit / "roles")
     except ValueError as e:
         raise LintError(f"cannot load the kit's roles: {e}") from None
     return {role_id: doc["meta"].get("kind", "") for role_id, doc in loaded.items()}

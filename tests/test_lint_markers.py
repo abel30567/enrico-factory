@@ -2,6 +2,7 @@
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -51,6 +52,17 @@ class Markers(LintCase):
         self.assertIn(COMMENTS, result.reason)
         result = self.markers(self.with_comments('[{"id": 1, "body": "x"}]'))
         self.assertEqual(result.status, lint.ERROR)
+
+    def test_rule2_comments_recorded_with_no_kit_in_the_tree_is_error(self):
+        tree = tempfile.TemporaryDirectory()
+        self.addCleanup(tree.cleanup)
+        root = Path(tree.name)
+        (root / COMMENTS).parent.mkdir()
+        (root / COMMENTS).write_text((FIX / "clean" / COMMENTS).read_text(), encoding="utf-8")
+        result = self.markers(root)
+        self.assertEqual((result.status, result.findings), (lint.ERROR, []))
+        self.assertEqual(result.reason, f"{COMMENTS} is recorded but the tree has no kit to judge it by "
+                                        f"(neither .factory/ nor kit/pipeline.json)")
 
     def test_rule3_actor_does_not_match_role(self):
         root = self.with_comments((FIX / "r3_actor.json").read_text())
