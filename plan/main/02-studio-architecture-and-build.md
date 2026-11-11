@@ -65,10 +65,10 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #25 (w2-04) harness adapter (merged in PR #35)
 - [x] #36 (w2-07) ticket state (merged in PR #39)
 - [x] #34 (w2-16) checker and judge roles (merged in PR #38)
-- [ ] #26 w2-05 init (PR #33): verified; carries `merge:hold` for merge order only. Remove the label once #41 is merged
-- [ ] #37 w2-18 eval runner and the one prompt renderer (PR #41): verifier running
-- [ ] #40 w2-17 orchestrator, maker and analyst roles: builder queued behind the load limit
-- [ ] group C builders queued behind the load and memory limits (relaunch any that time out): #42 w2-08 status and freeze, #43 w2-09 lint --post, #45 w2-12 blind, #46 w2-13 gate and ledger. #44 w2-10 launch prepare waits on #37. File sets are disjoint. Q3 to Q6, Q12, Q13, Q18, Q20 ruled as recommended, except Q12: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [x] #37 (w2-18) eval runner and the one prompt renderer (merged in PR #41)
+- [ ] #26 w2-05 init (PR #33): verified, hold removed, next in the merge gate
+- [ ] in review, verifiers launched: #42 w2-08 status and freeze (PR #47), #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
+- [ ] #44 w2-10 launch prepare: builder launched. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
 - [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
 - [ ] rule on the remaining questions (Q7 to Q11, Q16, Q19) before group D; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
