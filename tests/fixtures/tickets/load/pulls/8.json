@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "No ticket.\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "feat/unrelated",
+ "labels": [],
+ "merged_at": null,
+ "number": 8,
+ "state": "open",
+ "ticket": null,
+ "title": "Unrelated work"
+}
