@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #3\n",
+ "created_at": "2026-11-11T09:00:00Z",
+ "head_ref": "feat/RS-2-notes",
+ "labels": [],
+ "merged_at": null,
+ "number": 4,
+ "state": "open",
+ "ticket": 3,
+ "title": "[RS-2] Work the notes stage"
+}

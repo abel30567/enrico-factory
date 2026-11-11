@@ -1,0 +1,13 @@
+{
+ "body": "[RS-2] Work the notes stage\n",
+ "created_at": "2026-11-11T08:00:00Z",
+ "labels": [
+  "room:story",
+  "stage:notes",
+  "tracked",
+  "unit:topic-a"
+ ],
+ "number": 3,
+ "state": "open",
+ "title": "[RS-2] Work the notes stage"
+}
