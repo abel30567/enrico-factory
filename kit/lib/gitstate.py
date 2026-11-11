@@ -9,8 +9,10 @@ matched literally (no pathspec magic, no globs). Filesystem paths given to ``add
 
 import io
 import os
+import shutil
 import subprocess
 import tarfile
+import tempfile
 
 from kit.lib import markers
 
@@ -147,12 +149,24 @@ def export(root, ref, dest):
     if os.path.isdir(dest) and os.listdir(dest) or os.path.lexists(dest) and not os.path.isdir(dest):
         raise GitError("archive", None, "%s is not an empty directory" % dest)
     data = _run(root, ["-c", "tar.umask=022", "archive", "--format=tar", head(root, ref)], binary=True).stdout
-    os.makedirs(dest, exist_ok=True)
-    with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
-        tar.extractall(dest, filter="data")
-    for top, dirs, files in os.walk(dest, topdown=False):
-        for name in files + dirs:
-            os.utime(os.path.join(top, name), (0, 0), follow_symlinks=False)
+    parent = os.path.dirname(dest)
+    os.makedirs(parent, exist_ok=True)
+    # Unpacked into a sibling first, so a refused archive leaves nothing in dest.
+    tmp = tempfile.mkdtemp(prefix=".export-", dir=parent)
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as tar:
+            try:
+                tar.extractall(tmp, filter="data")
+            except tarfile.FilterError as e:
+                raise GitError("archive", None, "%s: refused member %r" % (ref, e.tarinfo.name)) from None
+        for top, dirs, files in os.walk(tmp, topdown=False):
+            for name in files + dirs:
+                os.utime(os.path.join(top, name), (0, 0), follow_symlinks=False)
+        os.makedirs(dest, exist_ok=True)
+        for name in sorted(os.listdir(tmp)):
+            os.rename(os.path.join(tmp, name), os.path.join(dest, name))
+    finally:
+        shutil.rmtree(tmp)
 
 
 def status(worktree):

@@ -362,6 +362,44 @@ class ExportTest(RepoTest):
             gitstate.export(self.root, "main", dest)
 
 
+    def test_absolute_symlink_raises_and_leaves_no_dest(self):
+        os.symlink("/etc/passwd", self.root / "lnk")
+        sha = self.commit_all("absolute link")
+        dest = self.tmp / "abs"
+        with self.assertRaises(GitError) as cm:
+            gitstate.export(self.root, sha, dest)
+        self.assertEqual(cm.exception.command, "archive")
+        self.assertIn(sha, str(cm.exception))
+        self.assertIn("'lnk'", str(cm.exception))
+        self.assertNotIn("/etc/passwd", str(cm.exception))
+        self.assertIsNone(cm.exception.__cause__)
+        self.assertTrue(cm.exception.__suppress_context__)
+        self.assertFalse(os.path.lexists(dest))
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["repo"])
+
+    def test_absolute_symlink_leaves_empty_dest_empty(self):
+        os.symlink("/etc/passwd", self.root / "lnk")
+        self.commit_all("absolute link")
+        dest = self.tmp / "empty"
+        dest.mkdir()
+        with self.assertRaises(GitError):
+            gitstate.export(self.root, "main", dest)
+        self.assertEqual(os.listdir(dest), [])
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["empty", "repo"])
+
+    def test_relative_symlink_is_kept_as_a_link(self):
+        os.symlink("../README.md", self.root / "bin" / "readme")
+        self.commit_all("relative link")
+        dest = self.tmp / "rel"
+        gitstate.export(self.root, "main", dest)
+        link = dest / "bin" / "readme"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(os.readlink(link), "../README.md")
+        self.assertEqual(link.read_text(), "hello\n")
+        self.assertEqual(os.lstat(link).st_mtime, 0)
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["rel", "repo"])
+
+
 class StatusTest(RepoTest):
     def test_status(self):
         self.assertEqual(gitstate.status(self.root), [])
