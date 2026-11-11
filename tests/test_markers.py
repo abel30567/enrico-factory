@@ -74,6 +74,20 @@ class ManifestHashTest(unittest.TestCase):
         want = markers.manifest_hash(self.base, self.head)
         self.assertEqual(markers.manifest_hash(list(reversed(self.base)), list(reversed(self.head))), want)
 
+    def test_many_rows_hash_in_sorted_order(self):
+        import hashlib
+        added = ["media/shot-%03d.png\t%d" % (i, i) for i in range(200, 0, -1)]
+        want = hashlib.sha256("\n".join(sorted(added)).encode("utf-8")).hexdigest()
+        self.assertEqual(markers.manifest_hash([], added), want)
+        self.assertEqual(markers.manifest_hash([], list(reversed(added))), want)
+
+    def test_fixed_rows_literal_digest(self):
+        added = ["media/shot-03.png\t1003\tsha256:33",
+                 "media/shot-01.png\t1001\tsha256:11",
+                 "media/shot-02.png\t1002\tsha256:22"]
+        self.assertEqual(markers.manifest_hash([], added),
+                         "eb1c85e3684ab54f6a026cae3f6a710e082498afce2f6561afc12f97beb772a7")
+
     def test_one_byte_changes_the_hash(self):
         want = markers.manifest_hash(self.base, self.head)
         changed = list(self.head)
@@ -102,6 +116,11 @@ class ReviewedTest(unittest.TestCase):
                      "[LINT] PASS\nreviewed head XYZ manifest none"):
             with self.subTest(body=body):
                 self.assertIsNone(markers.reviewed(body))
+
+    def test_only_a_full_lower_case_sha(self):
+        for sha in (SHA["1"][:7], SHA["1"][:39], SHA["1"] + "1", "A" * 40):
+            with self.subTest(sha=sha):
+                self.assertIsNone(markers.reviewed("[LINT] PASS\nreviewed head %s manifest none" % sha))
 
 
 class OnlyBaseMergesTest(unittest.TestCase):
@@ -209,6 +228,10 @@ class CountsTest(unittest.TestCase):
         self.approved["body"] = "[STORY-EDITOR] APPROVED\ncriterion 1: beats in order"
         self.assertEqual(self.counts(self.approved), (False, "reviewed: no reviewed head line"))
 
+    def test_abbreviated_sha_is_no_reviewed_head_line(self):
+        self.names_head(self.approved, SHA["3"][:7])
+        self.assertEqual(self.counts(self.approved), (False, "reviewed: no reviewed head line"))
+
     def test_not_a_verdict(self):
         self.assertEqual(self.counts(self.comment(101)),
                          (False, "marker: not a lint, checker or judge verdict"))
@@ -247,6 +270,35 @@ class SummaryTest(unittest.TestCase):
         self.assertIsNone(s["checkers"]["story-editor"])
         self.assertIsNone(s["lint"])
         self.assertEqual(s["rounds"], 3)
+
+    def checker_verdict(self, fx, cid, actor, verb, notes=""):
+        fx["pr"]["comments"].append({
+            "id": cid, "created_at": "2026-11-11T12:%02d:00Z" % (cid - 200),
+            "body": "[%s] %s\n%sreviewed head %s manifest none" % (actor, verb, notes, SHA["6"])})
+
+    def test_only_the_latest_notes_lists_open_blockers(self):
+        fx = load("pr_three_rounds.json")
+        self.checker_verdict(fx, 213, "STORY-EDITOR", "NOTES", "B4: runtime is still 50 s.\n")
+        self.assertEqual(self.summary(fx)["blockers"],
+                         [{"by": "story-editor", "note": "B4", "comment": 213}])
+
+    def test_the_same_checkers_approved_closes_its_blockers(self):
+        fx = load("pr_three_rounds.json")
+        self.checker_verdict(fx, 213, "STORY-EDITOR", "APPROVED")
+        s = self.summary(fx)
+        self.assertEqual(s["checkers"]["story-editor"]["verb"], "APPROVED")
+        self.assertEqual(s["blockers"], [])
+
+    def test_another_checkers_approved_does_not_close_them(self):
+        fx = load("pr_three_rounds.json")
+        fx["stage"]["checker"] = ["story-editor", "continuity-supervisor"]
+        self.checker_verdict(fx, 213, "CONTINUITY-SUPERVISOR", "APPROVED")
+        s = self.summary(fx)
+        self.assertEqual(s["checkers"]["continuity-supervisor"]["verb"], "APPROVED")
+        self.assertEqual(s["blockers"], [
+            {"by": "story-editor", "note": "B3", "comment": 210},
+            {"by": "story-editor", "note": "B4", "comment": 210},
+        ])
 
     def test_two_rounds_need_no_ruling(self):
         fx = load("pr_three_rounds.json")

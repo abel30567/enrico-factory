@@ -58,7 +58,7 @@ MAKER_VERBS = ("READY", "ADDRESSED", "BLOCKED")
 _UPPER_ID = r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*"
 _FIRST_LINE = re.compile(r"\[(%s|CHANNEL:%s)\]\s+(\S.*)" % (_UPPER_ID, _UPPER_ID))
 _ROLE_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
-_REVIEWED = re.compile(r"reviewed head ([0-9a-f]{7,64}) manifest ([0-9a-f]{64}|none)")
+_REVIEWED = re.compile(r"reviewed head ([0-9a-f]{40}) manifest ([0-9a-f]{64}|none)")
 _NOTE = re.compile(r"(?:[-*]\s+|\|\s*)?\**(B\d+)\b")
 
 
@@ -117,7 +117,10 @@ def manifest_hash(base_rows, head_rows):
 
 
 def reviewed(body):
-    """``(sha, manifest)`` from a ``reviewed head <sha> manifest <hash>`` last non-empty line, or None."""
+    """``(sha, manifest)`` from a ``reviewed head <sha> manifest <hash>`` last non-empty line, or None.
+
+    ``<sha>`` is the full 40-character lower-case commit id; an abbreviated one gives None.
+    """
     lines = [l.strip() for l in body.splitlines() if l.strip()]
     if not lines:
         return None
@@ -268,12 +271,12 @@ def summary(pr, stage, roles):
             out["lint"] = _entry(c, m)
         elif role in out["checkers"] and roles.get(role) == "checker":
             out["checkers"][role] = _entry(c, m)
+            # Only this checker's latest counting verdict is read: a NOTES opens the Blockers it
+            # lists, an APPROVED closes them. Another checker's verdict leaves them as they are.
+            blockers[role] = {int(n[1:]): c["id"] for n in _notes(c["body"])} if m.verb == "NOTES" else {}
         elif role in out["judges"] and roles.get(role) == "judge":
             out["judges"][role] = _entry(c, m)
-        if m.verb == "NOTES":
-            for note in _notes(c["body"]):
-                blockers[(role, int(note[1:]))] = c["id"]
-    out["blockers"] = [{"by": by, "note": "B%d" % n, "comment": blockers[(by, n)]}
-                       for by, n in sorted(blockers)]
+    out["blockers"] = [{"by": by, "note": "B%d" % n, "comment": blockers[by][n]}
+                       for by in sorted(blockers) for n in sorted(blockers[by])]
     out["needs_ruling"] = out["rounds"] >= 3
     return out
