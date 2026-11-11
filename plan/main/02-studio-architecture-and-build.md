@@ -67,8 +67,11 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #34 (w2-16) checker and judge roles (merged in PR #38)
 - [x] #37 (w2-18) eval runner and the one prompt renderer (merged in PR #41)
 - [x] #26 (w2-05) factory init (merged in PR #33)
-- [ ] in review, verifiers queued behind the host load limit (`~/.agent-orch/enrico-factory/launch-queue.sh`, log beside it): #42 w2-08 status and freeze (PR #47), #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
-- [ ] #44 w2-10 launch prepare: builder queued behind the same limit. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [x] #42 (w2-08) status, freeze and unfreeze (merged in PR #47)
+- [ ] verified, waiting for the merge gate (one merge per wake): #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49; the `tests/test_roles.py` edit is ruled in scope), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
+- [ ] #44 w2-10 launch prepare (PR #52): READY, verifier launched. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [ ] group D bodies (w2-11, w2-14, w2-19) being reviewed against the built code; file each when its dependencies are merged
+- [ ] follow-ups filed: #53 (gate does not retry a failed push), #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0)
 - [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
 - [ ] rule on the remaining questions (Q7 to Q11, Q16, Q19) before group D; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
