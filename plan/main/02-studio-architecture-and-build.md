@@ -29,11 +29,11 @@ State lives on GitHub (`orch status`); this list is the record of what merged.
 - [x] #1 dispatcher, front matter, roles, formats, story pipeline (PR #9, merged 2026-11-11 after one fix round)
 - [x] #2 markers and verdict freshness (PR #7, merged 2026-11-11 after one fix round)
 - [x] #3 lint framework, provenance, references, media (PR #8, merged 2026-11-11)
-- [ ] #4 structure lint (builder launched 2026-11-11)
-- [ ] #5 kit and markers lints (builder launched 2026-11-11)
+- [x] #4 structure lint (PR #18, merged 2026-11-11)
+- [x] #5 kit and markers lints (PR #17, merged 2026-11-11 after a BLOCKED ruling)
 - [x] #6 canon and spoiler lints (PR #14, merged 2026-11-11 after a BLOCKED ruling)
 - [x] #10 `factory doctor` (PR #12, merged 2026-11-11)
-- [ ] #11 follow-up: lint reads the files git would commit (builder launched 2026-11-11)
+- [x] #11 follow-up: lint reads the files git would commit (PR #16, merged 2026-11-11)
 - [x] #13 follow-up: doctor, a command that cannot start is a failed check (PR #15, merged 2026-11-11)
 
 Rulings taken 2026-11-11 (in `docs/system-brief.md`, sections 8 and 10): only a role's latest counting
@@ -41,6 +41,21 @@ verdict is read, so a checker's own later `APPROVED` closes its Blockers; verdic
 lint reads the files git would commit.
 Ruling on #14: the framework's tests must not depend on which checks are shipped, so adding a check
 never breaks them.
+
+Ruling on #17: the `kit` and `markers` lints read the kit in the tree (`.factory/`, or `kit/` in this
+repository) and never the kit that runs them.
+
+Wave 1 is closed: 2026-11-11, nine tickets, nine pull requests, every one verified on its head before
+the merge gate merged it. The brief's test for the wave holds: every lint and `factory roles --check`
+fails on each seeded defect and passes on a clean fixture (`bash scripts/gates.sh`).
+
+Known and expected on `main`: `factory lint --root .` reports `kit FAIL` (the pipeline names roles that
+wave 2 ships) and `references ERROR` (the documents cite example media ids and there is no manifest).
+
+## Wave 2 progress
+
+- [ ] #19 markers whose actor is not the role id (builder launched 2026-11-11)
+- [ ] remaining wave 2 tickets: drafted from brief section 17, to be reviewed and filed
 
 ## Review
 
