@@ -1,0 +1,5 @@
+id	sha256	bytes	source
+shot-01	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	1024	gen:job-1
+shot-02	bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	2048	gen:job-2
+shot-03	cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc	4096	gen:job-3
+shot-04	dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd	8192	gen:job-4

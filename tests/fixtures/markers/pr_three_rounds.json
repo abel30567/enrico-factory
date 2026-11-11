@@ -1,0 +1,129 @@
+{
+  "pr": {
+    "base_shas": [
+      "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+      "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    ],
+    "comments": [
+      {
+        "body": "Picking this up.\n[STORY-EDITOR] NOTES",
+        "created_at": "2026-11-11T09:12:00Z",
+        "id": 200
+      },
+      {
+        "body": "[STORY-WRITER] READY\nhead 4444444444444444444444444444444444444444",
+        "created_at": "2026-11-11T09:00:00Z",
+        "id": 201
+      },
+      {
+        "body": "[LINT] PASS\n| structure | PASS |\nreviewed head 4444444444444444444444444444444444444444 manifest none",
+        "created_at": "2026-11-11T09:05:00Z",
+        "id": 202
+      },
+      {
+        "body": "[STORY-EDITOR] NOTES\nB1: the twist arrives before the development.\nB2: beat 3 has no duration.\nI1: beat 1 title is long.\nreviewed head 4444444444444444444444444444444444444444 manifest none",
+        "created_at": "2026-11-11T09:10:00Z",
+        "id": 203
+      },
+      {
+        "body": "[STORY-WRITER] ADDRESSED\nB1: moved the twist to beat 3.\nB2: rebuttal: the duration is on the heading line.",
+        "created_at": "2026-11-11T10:00:00Z",
+        "id": 204
+      },
+      {
+        "body": "[LINT] PASS\n| structure | PASS |\nreviewed head 5555555555555555555555555555555555555555 manifest none",
+        "created_at": "2026-11-11T10:05:00Z",
+        "id": 205
+      },
+      {
+        "body": "[STORY-EDITOR] NOTES\n- B2: beat 3 still has no duration.\nreviewed head 5555555555555555555555555555555555555555 manifest none",
+        "created_at": "2026-11-11T10:10:00Z",
+        "id": 206
+      },
+      {
+        "body": "[CONTINUITY-SUPERVISOR] NOTES\nB9: not this stage's checker.\nreviewed head 5555555555555555555555555555555555555555 manifest none",
+        "created_at": "2026-11-11T10:15:00Z",
+        "id": 207
+      },
+      {
+        "body": "[STORY-WRITER] ADDRESSED\nB2: added a duration to beat 3.",
+        "created_at": "2026-11-11T11:00:00Z",
+        "id": 208
+      },
+      {
+        "body": "[LINT] PASS\n| structure | PASS |\nreviewed head 6666666666666666666666666666666666666666 manifest none",
+        "created_at": "2026-11-11T11:05:00Z",
+        "id": 209
+      },
+      {
+        "body": "[STORY-EDITOR] NOTES\nFixed since last round: B1 and B2.\n| id | severity | note |\n|---|---|---|\n| B3 | Blocker | the conclusion repeats the introduction |\n| I2 | Issue | tighten beat 4 |\n**B4**: runtime is 50 s, over the format's 45.\n\nreviewed head 6666666666666666666666666666666666666666 manifest none",
+        "created_at": "2026-11-11T11:10:00Z",
+        "id": 210
+      },
+      {
+        "body": "[PITCH-JUDGE] PREFERS B\ncited: beat 4\nreviewed head 6666666666666666666666666666666666666666 manifest none",
+        "created_at": "2026-11-11T11:12:00Z",
+        "id": 211
+      },
+      {
+        "body": "[CONTINUITY-SUPERVISOR] NOTES\nB8: still not this stage's checker.\nreviewed head 6666666666666666666666666666666666666666 manifest none",
+        "created_at": "2026-11-11T11:20:00Z",
+        "id": 212
+      }
+    ],
+    "commits": [
+      {
+        "parents": [
+          "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+        ],
+        "sha": "4444444444444444444444444444444444444444"
+      },
+      {
+        "parents": [
+          "4444444444444444444444444444444444444444"
+        ],
+        "sha": "5555555555555555555555555555555555555555"
+      },
+      {
+        "parents": [
+          "5555555555555555555555555555555555555555"
+        ],
+        "sha": "6666666666666666666666666666666666666666"
+      },
+      {
+        "parents": [
+          "6666666666666666666666666666666666666666",
+          "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+        ],
+        "sha": "7777777777777777777777777777777777777777"
+      }
+    ],
+    "head": "7777777777777777777777777777777777777777",
+    "manifest": "none"
+  },
+  "roles": {
+    "continuity-supervisor": "checker",
+    "pitch-judge": "judge",
+    "showrunner": "orchestrator",
+    "story-editor": "checker",
+    "story-writer": "maker"
+  },
+  "stage": {
+    "after": "premise",
+    "blind": true,
+    "checker": "story-editor",
+    "judge": "pitch-judge",
+    "lint": [
+      "provenance",
+      "structure"
+    ],
+    "maker": "story-writer",
+    "paths": [
+      "episodes/*/beats.md"
+    ],
+    "pitches": 1,
+    "room": "story",
+    "stage": "beats",
+    "unit": "episode"
+  }
+}
