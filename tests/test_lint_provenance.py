@@ -19,6 +19,20 @@ class Provenance(LintCase):
         root = self.variant({"episodes/ep01/outline.md": "# Outline\n\n1. The keeper wakes.\n"})
         self.assertOnly(root, "provenance", [("episodes/ep01/outline.md", 3, "tag-missing")])
 
+    def test_rule1_table_without_outer_pipes(self):
+        body = ("# Pipe-less\n\nFact | Tag\n--- | ---\nThe lamp is green | [invented]\n"
+                "The harbour freezes in winter | none\n\nAfter the table.\n")
+        root = self.variant({"research/pipeless.md": body})
+        self.assertOnly(root, "provenance", [("research/pipeless.md", 6, "tag-missing")])
+
+    def test_rule1_thematic_breaks_are_not_list_items(self):
+        breaks = ["- - -", "* * *", "---", "***", "___", "_ _ _", "-  -   -", " *  *  *  * ", "-- -"]
+        body = "# Breaks\n\n- A tagged item [invented].\n\n" + "\n\n".join(breaks) + "\n"
+        root = self.variant({"research/breaks.md": body})
+        self.assertEqual(lint.run(root, only=["provenance"])["provenance"].status, lint.PASS)
+        root = self.variant({"research/breaks.md": body + "\n- - - not a break\n"})
+        self.assertOnly(root, "provenance", [("research/breaks.md", 23, "tag-missing")])
+
     def test_rule1_only_applies_to_research_bible_episodes(self):
         root = self.variant({"notes/free.md": "- untagged item\n\n| a |\n|---|\n| untagged row |\n"})
         self.assertEqual(lint.run(root, only=["provenance"])["provenance"].status, lint.PASS)

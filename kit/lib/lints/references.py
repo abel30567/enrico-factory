@@ -6,8 +6,8 @@ import re
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
 
-from ..lint import (Finding, LintError, json_strings, link_targets, markdown_lines, read_json,
-                    read_text, read_tsv, walk)
+from ..lint import (Finding, LintError, files, json_strings, link_targets, markdown_lines,
+                    read_json, read_text, read_tsv)
 
 MANIFEST = "media/manifest.tsv"
 SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
@@ -42,7 +42,7 @@ def _manifest_ids(root: Path) -> set[str] | None:
 def check(root: Path) -> list[Finding]:
     found = []
     cited = []  # (path, line, media id)
-    for rel in walk(root):
+    for rel in (p.as_posix() for p in files(root)):
         if rel.endswith(".md"):
             for n, line in markdown_lines(read_text(root, rel)):
                 for target in link_targets(line):

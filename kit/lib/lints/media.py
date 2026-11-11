@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path, PurePosixPath
 
-from ..lint import Finding, LintError, read_tsv, walk
+from ..lint import Finding, LintError, files, read_tsv
 
 MEDIA_EXTENSIONS = frozenset(
     "png jpg jpeg webp gif tif tiff exr psd mp4 mov mkv webm avi wav mp3 flac ogg aac "
@@ -18,6 +18,8 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _bytes_finding(root: Path, rel: str) -> Finding | None:
+    if (root / rel).is_symlink() and not (root / rel).exists():
+        return Finding(rel, 1, "media-link", "dangling symbolic link")
     ext = PurePosixPath(rel).suffix[1:].lower()
     if ext in MEDIA_EXTENSIONS:
         return Finding(rel, 1, "media-bytes", f"media file (.{ext}) in the tree; keep it in the media store")
@@ -60,7 +62,7 @@ def _manifest(root: Path) -> list[Finding]:
 
 
 def check(root: Path) -> list[Finding]:
-    found = [f for f in (_bytes_finding(root, rel) for rel in walk(root)) if f]
+    found = [f for f in (_bytes_finding(root, p.as_posix()) for p in files(root)) if f]
     if (root / MANIFEST).is_file():
         found += _manifest(root)
     return found
