@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""factory <command> [args]: runs kit/lib/cmd_<command>.py's main(argv).
+
+Commands are discovered by file name, so adding a command edits no shared file.
+"""
+
+import importlib.util
+import sys
+from pathlib import Path
+
+KIT = Path(__file__).resolve().parent
+LIB = KIT / "lib"
+
+
+def commands():
+    return sorted(path.stem[len("cmd_"):] for path in LIB.glob("cmd_*.py"))
+
+
+def usage(stream):
+    print("usage: factory <command> [args]\n\ncommands:", file=stream)
+    for name in commands():
+        print(f"  {name}", file=stream)
+
+
+def main(argv):
+    if not argv or argv[0] in ("help", "-h", "--help"):
+        usage(sys.stdout)
+        return 0
+    name = argv[0]
+    if name not in commands():
+        print(f"factory: unknown command {name!r}", file=sys.stderr)
+        usage(sys.stderr)
+        return 2
+    sys.path.insert(0, str(KIT.parent))
+    spec = importlib.util.spec_from_file_location(f"cmd_{name}", LIB / f"cmd_{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.main(argv[1:]) or 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

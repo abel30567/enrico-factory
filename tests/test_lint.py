@@ -46,9 +46,11 @@ class TempCheck:
 class LintCase(unittest.TestCase):
     """Helpers shared by the per-check tests."""
 
+    CHECKS = CHECKS  # the checks a test class's fixtures were written for
+
     def assertOnly(self, root, check, expected):
-        """`check` FAILs with exactly `expected` (path, line, rule); the other checks PASS."""
-        results = lint.run(root)
+        """`check` FAILs with exactly `expected` (path, line, rule); the other checks of CHECKS PASS."""
+        results = lint.run(root, only=[check, *self.CHECKS])
         self.assertEqual(results[check].status, lint.FAIL, results[check].reason)
         self.assertEqual([(f.path, f.line, f.rule) for f in results[check].findings], expected)
         for other, r in results.items():
@@ -75,15 +77,26 @@ RAISES = "def check(root):\n    raise RuntimeError('boom')\n"
 
 class CleanTree(unittest.TestCase):
     def test_cli_clean_exits_0_and_prints_pass_for_three_checks(self):
-        p = cli("--root", str(FIX / "clean"))
+        p = cli("--root", str(FIX / "clean"), "--only", ",".join(CHECKS))
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertEqual(p.stdout.decode(), "media PASS\nprovenance PASS\nreferences PASS\n")
 
     def test_discover_finds_checks_by_file_name(self):
-        self.assertEqual(sorted(lint.discover()), CHECKS)
+        files = sorted(p.stem for p in lint.LINTS_DIR.iterdir()
+                       if p.suffix == ".py" and not p.stem.startswith("_"))
+        self.assertEqual(sorted(lint.discover()), files)
+        self.assertLessEqual(set(CHECKS), set(files))
+
+    def test_new_check_file_is_discovered_and_run_by_default(self):
+        with TempCheck("def check(root):\n    return []\n") as tc:
+            self.assertIn(tc.id, lint.discover())
+            self.assertEqual(lint.run(FIX / "clean")[tc.id].status, lint.PASS)
+            self.assertIn(f"{tc.id} PASS\n", cli("--root", str(FIX / "clean")).stdout.decode())
+        self.assertNotIn(tc.id, lint.discover())
+        self.assertNotIn(tc.id, lint.run(FIX / "clean"))
 
     def test_run_clean(self):
-        results = lint.run(FIX / "clean")
+        results = lint.run(FIX / "clean", only=CHECKS)
         self.assertEqual({k: r.status for k, r in results.items()}, dict.fromkeys(CHECKS, "PASS"))
 
 
@@ -129,7 +142,7 @@ class Output(LintCase):
                 self.assertIn(json.loads(a.stdout)["status"], ("PASS", "FAIL"))
 
     def test_json_shape(self):
-        data = json.loads(cli("--root", str(FIX / "r4_link_target"), "--json").stdout)
+        data = json.loads(cli("--root", str(FIX / "r4_link_target"), "--json", "--only", ",".join(CHECKS)).stdout)
         self.assertEqual(data["status"], "FAIL")
         self.assertEqual(sorted(data["checks"]), CHECKS)
         self.assertEqual(data["checks"]["references"]["findings"], [{
@@ -137,7 +150,8 @@ class Output(LintCase):
             "message": "link target missing.md does not exist"}])
 
     def test_text_findings_numbered_and_sorted_by_check_path_line(self):
-        p = cli("--root", str(self.variant({"z.png": "not really an image\n"}, base="r1_tag_missing")))
+        root = self.variant({"z.png": "not really an image\n"}, base="r1_tag_missing")
+        p = cli("--root", str(root), "--only", ",".join(CHECKS))
         self.assertEqual(p.returncode, 1)
         self.assertEqual(p.stdout.decode().splitlines(), [
             "media FAIL 1 finding",
@@ -154,11 +168,11 @@ class Output(LintCase):
         self.assertEqual(p.stdout.decode(), "media PASS\nreferences PASS\n")
 
     def test_marker_pass_and_fail(self):
-        self.assertEqual(lint.marker(lint.run(FIX / "clean")), "\n".join([
+        self.assertEqual(lint.marker(lint.run(FIX / "clean", only=CHECKS)), "\n".join([
             "[LINT] PASS", "", "| Check | Result | Reason |", "|---|---|---|",
             "| media | PASS |  |", "| provenance | PASS |  |", "| references | PASS |  |",
             "", "Blockers: none", ""]))
-        body = lint.marker(lint.run(FIX / "r5_json_path")).splitlines()
+        body = lint.marker(lint.run(FIX / "r5_json_path", only=CHECKS)).splitlines()
         self.assertEqual(body[0], "[LINT] FAIL")
         self.assertIn("| references | FAIL | 1 finding |", body)
         self.assertEqual(body[-2:], ["Blockers:",
