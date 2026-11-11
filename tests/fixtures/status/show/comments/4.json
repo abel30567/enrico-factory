@@ -1,0 +1,14 @@
+[
+ {
+  "body": "[WRITER] READY\n",
+  "created_at": "2026-11-10T10:05:00Z",
+  "id": 3,
+  "role": "writer"
+ },
+ {
+  "body": "[LINT] PASS\nreviewed head {head:4} manifest none\n",
+  "created_at": "2026-11-10T10:10:00Z",
+  "id": 4,
+  "role": "program:lint"
+ }
+]
