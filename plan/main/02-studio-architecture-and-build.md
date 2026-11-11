@@ -54,12 +54,16 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 
 ## Wave 2 progress
 
-- [ ] #19 markers whose actor is not the role id (builder launched 2026-11-11)
+- [x] #19 markers whose actor is not the role id (merged in PR #20)
 - [x] dev kit: `launch.sh` posts every worker's exact prompt as `[ORCHESTRATOR] LAUNCH` on its issue or PR before it starts (`register-prompt.py`), and the verifier reads the builder's as acceptance criteria
 - [x] wave 2 drafted: 20 tickets, dependency graph and 20 open questions in the state dir (`inputs/wave2/SUMMARY.md`)
-- [ ] group A in flight: #21 (w2-01 production context), #22 (w2-02 GitHub adapter), #23 (w2-03 git state)
-- [ ] group A to review and file: w2-04 harness adapter, w2-05 init, w2-06 sandbox profile, w2-16 checker and judge roles
-- [ ] rule on Q1 to Q20 before group C; fix `kit/pipeline.json` (Q1) and `docs/harness.md` section 5 (Q14)
+- [x] #24 (w2-00) `kit/pipeline.json` matches brief sections 6 and 16 (Q1; merged in PR #29)
+- [x] #21 (w2-01) production context (merged in PR #28)
+- [ ] group A in review: #22 w2-02 GitHub adapter (PR #31), #27 w2-06 sandbox profile (PR #32), #25 w2-04 harness adapter (PR #35)
+- [ ] #23 w2-03 git state (PR #30): round 1 found `export` crashing on an absolute symlink; ruled to fail closed with `GitError`, fixer launched
+- [ ] #26 w2-05 init (PR #33): BLOCKED on an installed kit that cannot import `kit`; ruled to fix the dispatcher in the same PR, fixer running
+- [ ] #34 w2-16 checker and judge roles: builder queued
+- [ ] rule on Q2 to Q20 before group C; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
 
 ## Review
