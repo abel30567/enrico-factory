@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ..lint import Finding, json_strings, markdown_lines, read_json, read_text, read_tsv, walk
+from ..lint import Finding, files, json_strings, markdown_lines, read_json, read_text, read_tsv
 
 DIRS = ("research/", "bible/", "episodes/")
 TAGS = ("text", "art", "inferred", "invented")
@@ -13,6 +13,7 @@ ANY_TAG = re.compile(r"\[(text|art|inferred|invented)\]")
 SOURCED_TAG = re.compile(r"\[(text|art)\](\(([^)]*)\))?")
 FORM = {"text": "sources/", "art": "media:"}
 LIST_ITEM = re.compile(r"^\s*([-*+]|\d+[.)])\s+\S")
+THEMATIC_BREAK = re.compile(r"^\s*([-*_])(\s*\1){2,}\s*$")
 TABLE_SEP = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 EPISODE_LEDGER = re.compile(r"^episodes/[^/]+/ledger\.json$")
 CANON_LEDGER = "bible/canon/ledger.tsv"
@@ -22,15 +23,15 @@ def _markdown(root: Path, rel: str) -> list[Finding]:
     found = []
     header = in_body = False
     for n, line in markdown_lines(read_text(root, rel)):
-        is_table = line.lstrip().startswith("|")
+        is_table = "|" in line  # a table row needs no leading or trailing pipe
         if is_table and header and TABLE_SEP.match(line):
             header, in_body = False, True
             continue
         in_body = in_body and is_table
         header = is_table and not in_body
-        if in_body or LIST_ITEM.match(line):
+        if in_body or (LIST_ITEM.match(line) and not THEMATIC_BREAK.match(line)):
             if not ANY_TAG.search(line):
-                kind = "table row" if is_table else "list item"
+                kind = "table row" if in_body else "list item"
                 found.append(Finding(rel, n, "tag-missing",
                                      f"{kind} has none of [text], [art], [inferred], [invented]"))
         for m in SOURCED_TAG.finditer(line):
@@ -81,7 +82,7 @@ def _canon_ledger(root: Path, rel: str) -> list[Finding]:
 
 def check(root: Path) -> list[Finding]:
     found = []
-    for rel in walk(root):
+    for rel in (p.as_posix() for p in files(root)):
         if rel.endswith(".md") and rel.startswith(DIRS):
             found += _markdown(root, rel)
         elif EPISODE_LEDGER.match(rel):
