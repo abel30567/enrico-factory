@@ -303,7 +303,8 @@ Only the first line of a comment counts. `<ROLE>` is the role id in upper case.
 | `[ANALYST] SYMPTOMS` | analyst | symptom notes with beat IDs and evidence; never a fix |
 | `[AUTORESEARCH] KEEP` / `NOISE` / `DISCARD` / `REBASELINE` | lab | metric, runs, noise floor, the results-log line |
 
-Every verdict ends with `reviewed head <sha> manifest <hash>`. The manifest hash is the sha256 of the
+Every verdict ends with `reviewed head <sha> manifest <hash>`, where `<sha>` is the full 40-character
+commit id (the launcher writes it; an abbreviated one is read as no `reviewed head` line). The manifest hash is the sha256 of the
 `media/manifest.tsv` rows the pull request adds or changes against its merge base, sorted, or `none`
 when it adds none: it covers the media bytes the way the head covers the text.
 
@@ -313,6 +314,10 @@ A verdict counts only if all of these hold:
 - it names the current manifest hash;
 - it is newer than the maker's last `READY` or `ADDRESSED`;
 - it comes from the role the pipeline names for that stage.
+
+For each role only its latest counting verdict is read. A checker's Blockers are open while its latest
+counting verdict is the `NOTES` that lists them; that checker's later counting `APPROVED` closes them, and
+another checker's does not.
 
 `ERROR` means the check could not run and is never read as PASS or FAIL. After three rounds of notes
 on one ticket the room's orchestrator rules.
@@ -340,7 +345,8 @@ A released episode's files are never changed by a later pull request (rule 6); t
 ## 10. Lint
 
 `factory lint` checks the working tree and returns PASS, FAIL or ERROR per check. Same input, same
-result. Checks are files in `kit/lib/lints/`, discovered by name, so adding a check edits no shared file.
+result. The files it reads are the ones git would commit: tracked files and untracked files that no
+ignore rule excludes. Outside a git work tree it reads every file except `.git/`. Checks are files in `kit/lib/lints/`, discovered by name, so adding a check edits no shared file.
 
 Built first (text and data):
 
