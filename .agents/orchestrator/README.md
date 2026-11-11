@@ -8,6 +8,7 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 | `orch` | Single entry point. Dispatches to the scripts below. |
 | `config.sh`, `conf.py` | Load defaults, then `orch.env` (project, committed), then `local.env` (personal, gitignored). |
 | `launch.sh` | Creates the worktree, renders `prompts/<role>.md`, starts one detached worker. |
+| `register-prompt.py` | Posts each worker's exact prompt as an `[ORCHESTRATOR] LAUNCH` comment on its issue or PR before it starts. |
 | `detach.py` | Starts a worker in a new session so it survives the launching shell. |
 | `merge-gate.py` | Merges at most one PR per run, and only when every rule holds. |
 | `risk.py` | Decides whether a PR needs a blast-radius review (`risk-patterns.txt`). |

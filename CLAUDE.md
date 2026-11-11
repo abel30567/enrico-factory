@@ -38,6 +38,7 @@ exact head commit. Tooling: `.agents/orchestrator/` (`orch help`).
 | `[BLAST-RADIUS] SAFE` / `UNSAFE` | blast radius | `Reviewed head <sha>`, the one fact that makes it safe and the command that proved it |
 | `[BUILDER] BLOCKED` | builder/fixer | Missing / What was tried / Resume from (branch @ sha) |
 | `[ORCHESTRATOR] …` | orchestrator | binding rulings, merge notes |
+| `[ORCHESTRATOR] LAUNCH <role> <id>` | `launch.sh` | the exact prompt the worker was given, its sha256, model and base, posted on the issue (builder) or PR (verifier, fixer, blast radius) before the worker starts. A record, not a ruling; verifiers read the builder's as acceptance criteria |
 
 A verdict counts only if it is newer than the last READY/ADDRESSED and its `Reviewed head` is the
 current head (or only the base branch was merged in since). After **3 verifier rounds** the

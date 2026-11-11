@@ -75,6 +75,13 @@ $PUSH_NOTE}" \
 
 OUT="$STATE/runs/$ROLE-$ID.json"; LOG="$STATE/logs/$ROLE-$ID.log"
 printf '%s\n' "$PROMPT" > "$STATE/runs/$ROLE-$ID.prompt.md"
+# every worker's exact prompt is registered on GitHub (its issue or PR) BEFORE it starts; no
+# registration, no worker (register-prompt.py).
+if [ "$ROLE" = builder ]; then RKIND=issue; RNUM=$ISSUE; RBASE="origin/$BASE@$(git rev-parse --short "origin/$BASE")"
+else RKIND=pr; RNUM=$PR; RBASE="PR #$PR head $(pr_field "$PR" headRefOid | cut -c1-7)"; fi
+[ -n "$RNUM" ] || { echo "REFUSED: no issue to register the $ROLE prompt on (create it with orch task)"; exit 2; }
+GH_REPO="$GH_REPO" python3 -I "$ORCH_DIR/register-prompt.py" "$ROLE" "$ID" "$RKIND" "$RNUM" \
+  "$STATE/runs/$ROLE-$ID.prompt.md" "$MODEL" "$WT" "$RBASE" || { echo "REFUSED: could not register the prompt on GitHub"; exit 2; }
 ENVV=(ORCH_ROLE="$ROLE" ORCH_KEY="$KEY" ORCH_PR="$PR" ORCH_BASE="$BASE" ORCH_MODEL="$MODEL" ORCH_PORT="$PORT"
       ORCH_PROTECTED="$PROTECTED" ORCH_RESERVED_PORTS="$RESERVED_PORTS" ORCH_GUARD_EXTRA="$ORCH_DIR/guard-extra.txt")
 read -ra CMD <<<"$WORKER_CMD"

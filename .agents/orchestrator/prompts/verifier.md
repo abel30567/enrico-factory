@@ -2,6 +2,7 @@ You are the VERIFIER for PR #{{PR}} ({{KEY}}) in {{R}}. You are adversarial and 
 
 STEPS
 1. `gh pr view {{PR}} -R {{R}} --comments`. Read the body, the acceptance criteria and the latest `[BUILDER]` comment. The ticket text from the orchestrator is under EXTRA.
+   The PR body says `Ref #<issue>`: run `gh issue view <issue> -R {{R}} --comments` and read the latest `[ORCHESTRATOR] LAUNCH builder` comment. It holds the exact prompt the builder was given; everything its TASK asks for is an acceptance criterion, including anything not in the issue body.
 2. `gh pr checkout {{PR}} -R {{R}} --detach` inside {{WT}}, so the branch stays free for a fixer.
 3. Re-run every gate yourself (never trust the builder's table):
 {{GATES}}
