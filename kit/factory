@@ -22,6 +22,14 @@ def usage(stream):
         print(f"  {name}", file=stream)
 
 
+def register_kit():
+    """Make `kit` this directory, whatever it is called, so `from kit.lib import ...` loads the files beside
+    this dispatcher and never another `kit` package from the current directory or `sys.path`."""
+    spec = importlib.util.spec_from_loader("kit", None, is_package=True)
+    spec.submodule_search_locations.append(str(KIT))
+    sys.modules["kit"] = importlib.util.module_from_spec(spec)
+
+
 def main(argv):
     if not argv or argv[0] in ("help", "-h", "--help"):
         usage(sys.stdout)
@@ -31,7 +39,7 @@ def main(argv):
         print(f"factory: unknown command {name!r}", file=sys.stderr)
         usage(sys.stderr)
         return 2
-    sys.path.insert(0, str(KIT.parent))
+    register_kit()
     spec = importlib.util.spec_from_file_location(f"cmd_{name}", LIB / f"cmd_{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

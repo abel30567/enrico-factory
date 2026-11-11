@@ -223,13 +223,28 @@ class CheckTest(InitTest):
         result, _ = self.assertSameCheck(kit, ["story"])
         self.assertEqual(result.stdout, "OK\n")
 
-    @unittest.expectedFailure
     def test_installed_dispatcher_runs_roles_check(self):
-        # Blocked outside this ticket's scope: kit/factory puts the kit's parent on sys.path and the
-        # commands import `kit.lib`, which does not exist when the kit is installed as `.factory/`.
         target, _ = self.production(self.source_kit(), "--rooms", "story")
         result = python(".factory/factory", "roles", "--check", "--kit", ".factory", cwd=target)
         self.assertEqual((result.returncode, result.stdout), (0, "OK\n"), result.stderr)
+
+    def test_installed_dispatcher_ignores_another_kit_package(self):
+        target, _ = self.production(self.source_kit(), "--rooms", "story")
+        other = self.tempdir()
+        for package in ("kit", "kit/lib"):
+            (other / package).mkdir()
+            (other / package / "__init__.py").write_text("raise ImportError('the wrong kit was imported')\n")
+        env = dict(os.environ, PYTHONPATH=".")
+        result = subprocess.run([sys.executable, target / ".factory/factory", "roles", "--check",
+                                 "--kit", target / ".factory"], capture_output=True, text=True, cwd=other, env=env)
+        self.assertEqual((result.returncode, result.stdout), (0, "OK\n"), result.stderr)
+        self.assertNotIn("the wrong kit", result.stderr)
+
+    def test_source_dispatcher_roles_check_is_unchanged(self):
+        dispatched = python("kit/factory", "roles", "--check")
+        script = python("kit/lib/cmd_roles.py", "--check")
+        self.assertEqual((dispatched.returncode, dispatched.stdout, dispatched.stderr),
+                         (script.returncode, script.stdout, script.stderr))
 
 
 class RoomsTest(InitTest):
