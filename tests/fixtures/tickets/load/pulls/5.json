@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #2\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "feat/PM-1-ep01",
+ "labels": [],
+ "merged_at": null,
+ "number": 5,
+ "state": "open",
+ "ticket": 2,
+ "title": "Work for #2"
+}

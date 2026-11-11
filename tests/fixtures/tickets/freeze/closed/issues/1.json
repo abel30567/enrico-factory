@@ -1,0 +1,10 @@
+{
+ "body": "Freeze for the release review\n",
+ "created_at": "2026-11-01T09:00:00Z",
+ "labels": [
+  "factory:freeze"
+ ],
+ "number": 1,
+ "state": "closed",
+ "title": "Freeze for the release review"
+}
