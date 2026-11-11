@@ -1,0 +1,18 @@
+{
+ "baseRefName": "main",
+ "body": "Intro line\nTicket: #1\nTicket: #9",
+ "createdAt": "2026-11-02T10:00:00Z",
+ "headRefName": "feat/1-opening",
+ "labels": [
+  {
+   "color": "ededed",
+   "description": "",
+   "id": "LA_3",
+   "name": "risky"
+  }
+ ],
+ "mergedAt": null,
+ "number": 3,
+ "state": "OPEN",
+ "title": "Opening scene, first draft"
+}

@@ -58,10 +58,14 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] dev kit: `launch.sh` posts every worker's exact prompt as `[ORCHESTRATOR] LAUNCH` on its issue or PR before it starts (`register-prompt.py`), and the verifier reads the builder's as acceptance criteria
 - [x] wave 2 drafted: 20 tickets, dependency graph and 20 open questions in the state dir (`inputs/wave2/SUMMARY.md`)
 - [x] #24 (w2-00) `kit/pipeline.json` matches brief sections 6 and 16 (Q1; merged in PR #29)
-- [ ] group A in review: #21 w2-01 production context (PR #28), #22 w2-02 GitHub adapter (PR #31), #23 w2-03 git state (PR #30), #27 w2-06 sandbox profile (PR #32)
-- [ ] #26 w2-05 init (PR #33): BLOCKED on an installed kit that cannot import `kit`; ruled to fix the dispatcher in the same PR
-- [ ] #25 w2-04 harness adapter: builder running; #34 w2-16 checker and judge roles: queued
-- [ ] rule on Q2 to Q20 before group C; update `docs/harness.md` section 5 (Q14)
+- [x] #21 (w2-01) production context (merged in PR #28)
+- [x] #22 (w2-02) GitHub adapter (merged in PR #31)
+- [x] #23 (w2-03) git state (merged in PR #30)
+- [ ] verified, waiting for the merge gate (one merge per run): #27 w2-06 sandbox profile (PR #32), #26 w2-05 init with the dispatcher fix (PR #33), #25 w2-04 harness adapter (PR #35)
+- [ ] #34 w2-16 checker and judge roles (PR #38): verifier launched
+- [ ] #36 w2-07 ticket state: builder launched (Q2, Q3, Q4 ruled as recommended)
+- [ ] #37 w2-18 eval runner: filed, needs #25 (Q15, Q17 ruled as recommended; also owns the one prompt renderer `kit/lib/prompt.py`, which w2-10 must use)
+- [ ] rule on the remaining questions (Q5 to Q14, Q16, Q18 to Q20) before group C; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
 
 ## Review
