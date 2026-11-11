@@ -41,6 +41,8 @@ PROGRAM_VERBS = {
 CHANNEL_VERBS = ("POSTED", "VERIFIED")
 # Actors that also have a row of their own besides the role verbs.
 EXTRA_VERBS = {"ANALYST": ("SYMPTOMS",), "BRAINTRUST": ("VOTE",)}
+# The only kind that may post an actor's own row; ``CHANNEL`` stands for every ``CHANNEL:<PLATFORM>``.
+ACTOR_KINDS = {"ANALYST": "analyst", "BRAINTRUST": "judge", "CHANNEL": "operator"}
 
 MAY_POST = {
     "maker": ("READY", "ADDRESSED", "BLOCKED"),
@@ -102,9 +104,20 @@ def parse(first_line):
     return None
 
 
-def may_post(kind, verb):
-    """Whether a role of ``kind`` may post ``verb``. Program markers belong to no kind."""
-    return verb in MAY_POST.get(kind, ())
+def may_post(kind, verb, actor=None):
+    """Whether a role of ``kind`` posting as ``actor`` may post ``verb``. Program markers belong to no kind.
+
+    Without an actor only the kind's verbs count. With one, the actor's own row of section 8 is added,
+    for the one kind that row belongs to: ``VOTE`` for a judge posting as ``BRAINTRUST``, ``POSTED`` and
+    ``VERIFIED`` for an operator posting as ``CHANNEL:<PLATFORM>``.
+    """
+    if verb in MAY_POST.get(kind, ()):
+        return True
+    if actor is None:
+        return False
+    if actor.startswith("CHANNEL:"):
+        return kind == ACTOR_KINDS["CHANNEL"] and verb in CHANNEL_VERBS
+    return kind == ACTOR_KINDS.get(actor) and verb in EXTRA_VERBS.get(actor, ())
 
 
 def manifest_hash(base_rows, head_rows):

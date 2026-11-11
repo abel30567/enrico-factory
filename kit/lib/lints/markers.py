@@ -14,10 +14,12 @@ PROGRAM = "program:"
 PROGRAM_ACTORS = {
     "lint": {"LINT": markers.PROGRAM_VERBS["LINT"], "PLATFORM-GATE": markers.PROGRAM_VERBS["PLATFORM-GATE"]},
     "gate": {"PRODUCER": markers.PROGRAM_VERBS["PRODUCER"]},
+    "lab": {"AUTORESEARCH": markers.PROGRAM_VERBS["AUTORESEARCH"]},
 }
 
 
-def _kinds(root: Path) -> dict[str, str]:
+def _kinds(root: Path) -> dict[str, tuple[str, str]]:
+    """role id -> (kind, actor) for every role of the tree's kit."""
     kit = kit_dir(root)
     if kit is None:
         raise LintError(f"{COMMENTS} is recorded but the tree has no kit to judge it by "
@@ -26,7 +28,8 @@ def _kinds(root: Path) -> dict[str, str]:
         loaded = roles.load_roles(kit / "roles")
     except ValueError as e:
         raise LintError(f"cannot load the kit's roles: {e}") from None
-    return {role_id: doc["meta"].get("kind", "") for role_id, doc in loaded.items()}
+    return {role_id: (doc["meta"].get("kind", ""), roles.actor({**doc["meta"], "role": role_id}))
+            for role_id, doc in loaded.items()}
 
 
 def _comments(root: Path) -> tuple[list[dict], list[int]]:
@@ -42,12 +45,12 @@ def _comments(root: Path) -> tuple[list[dict], list[int]]:
     return data, lines
 
 
-def _rule3(role: str, marker: markers.Marker, kinds: dict[str, str]) -> tuple[str, str] | None:
+def _rule3(role: str, marker: markers.Marker, kinds: dict[str, tuple[str, str]]) -> tuple[str, str] | None:
     """(rule, reason) when `role` may not post `marker`: wrong actor, or a verb it may not post."""
     if role.startswith(PROGRAM):
         command = role[len(PROGRAM):]
         if command == "lock":
-            actors = {r.upper(): ("LOCK",) for r, k in kinds.items() if k == "orchestrator"}
+            actors = {r.upper(): ("LOCK",) for r, (k, _) in kinds.items() if k == "orchestrator"}
         elif command in PROGRAM_ACTORS:
             actors = PROGRAM_ACTORS[command]
         else:
@@ -59,14 +62,15 @@ def _rule3(role: str, marker: markers.Marker, kinds: dict[str, str]) -> tuple[st
         return None
     if role not in kinds:
         return "marker-actor", f"role {role!r} is not a role in the kit"
-    if marker.actor != role.upper():
-        return "marker-actor", f"actor {marker.actor} does not match role {role} ({role.upper()})"
-    if not markers.may_post(kinds[role], marker.verb):
-        return "marker-verb", f"a {kinds[role] or 'role without a kind'} may not post {marker.verb}"
+    kind, actor = kinds[role]
+    if marker.actor != actor:
+        return "marker-actor", f"actor {marker.actor} does not match role {role} ({actor})"
+    if not markers.may_post(kind, marker.verb, actor):
+        return "marker-verb", f"a {kind or 'role without a kind'} may not post {marker.verb}"
     return None
 
 
-def _check_comment(comment: dict, line: int, kinds: dict[str, str]) -> list[Finding]:
+def _check_comment(comment: dict, line: int, kinds: dict[str, tuple[str, str]]) -> list[Finding]:
     cid, role, body = comment["id"], comment["role"], comment["body"]
     first = body.split("\n", 1)[0].strip()
     marker = markers.parse(body)

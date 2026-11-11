@@ -100,6 +100,40 @@ class ValidateTest(unittest.TestCase):
             with self.subTest(subject):
                 self.check(seed, "roles/writer.md", subject)
 
+    def test_actor_on_a_clean_kit_passes(self):
+        kit = KitCopy(self)
+        kit.add_key("roles/watcher.md", "actor: ANALYST")
+        kit.add_key("roles/panel.md", "actor: BRAINTRUST")
+        kit.add_key("roles/uploader.md", "actor: CHANNEL:TUBE")
+        kit.add_key("roles/writer.md", "actor: QUILL-2")
+        self.assertEqual(kit.validate(), [])
+
+    def test_actor_malformed(self):
+        for value in ("analyst", "Analyst", "2ND", "CHANNEL:tube", "CHANNEL:", "CHANNEL:-X", "A B",
+                      "", "[ANALYST]"):
+            with self.subTest(value):
+                self.check(lambda k: k.add_key("roles/watcher.md", f"actor: {value}"),
+                           "roles/watcher.md", f"actor {value!r} is not [A-Z][A-Z0-9-]*")
+
+    def test_actor_of_a_program(self):
+        for value in ("LINT", "PRODUCER", "PLATFORM-GATE", "AUTORESEARCH"):
+            with self.subTest(value):
+                self.check(lambda k: k.add_key("roles/watcher.md", f"actor: {value}"),
+                           "roles/watcher.md", f"actor {value!r} is a program's")
+
+    def test_actor_channel_on_a_role_that_is_not_an_operator(self):
+        for file, kind in (("watcher", "analyst"), ("writer", "maker"), ("editor", "checker"),
+                           ("panel", "judge"), ("chief", "orchestrator")):
+            with self.subTest(kind):
+                self.check(lambda k: k.add_key(f"roles/{file}.md", "actor: CHANNEL:TUBE"),
+                           f"roles/{file}.md", "actor 'CHANNEL:TUBE' is a channel, allowed only for "
+                                               "kind operator")
+
+    def test_actor_defaults_to_the_role_id_in_upper_case(self):
+        self.assertEqual(roles.actor({"role": "story-editor", "kind": "checker"}), "STORY-EDITOR")
+        self.assertEqual(roles.actor({"role": "watcher", "actor": "ANALYST"}), "ANALYST")
+        self.assertEqual(roles.actor({"role": "tube", "actor": "CHANNEL:TUBE"}), "CHANNEL:TUBE")
+
     def test_rule_2_room_and_kind(self):
         self.check(lambda k: k.set_key("roles/chief.md", "room", "kitchen"),
                    "roles/chief.md", "room 'kitchen'")
