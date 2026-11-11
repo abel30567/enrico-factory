@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "about": "A small invented register for the doctor tests. Commands run through setting PY, which the tests set to the running Python.",
+  "settings_files": ["production.env", "production.local.env"],
+  "secrets_dir_setting": "SECRETS_DIR",
+  "check_kinds": {
+    "command": "argv runs and exits 0; with `match_all`, every pattern is found in its output",
+    "module": "the Python module `name` can be imported",
+    "secret": "`<secrets dir>/<name>` is a non-empty owner-only file, or a directory holding at least `min` such files",
+    "setting": "setting `name` is not empty; with `one_of`, its value is in the list",
+    "path": "setting `setting` names a file or directory that exists"
+  },
+  "resources": [
+    {
+      "id": "tool.runner",
+      "title": "A command that prints its version",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["all"],
+      "wave": 1,
+      "setup": "agent",
+      "checks": [{"kind": "command", "argv": ["{PY}", "-c", "print('runner 1.2')"], "match_all": ["runner", "[0-9]+\\.[0-9]+"]}]
+    },
+    {
+      "id": "lib.json",
+      "title": "A module that imports",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["story"],
+      "wave": 2,
+      "setup": "agent",
+      "checks": [{"kind": "module", "name": "json"}]
+    },
+    {
+      "id": "key.alpha",
+      "title": "One key file",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["story", "post"],
+      "wave": 3,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "key.alpha"}]
+    },
+    {
+      "id": "key.pool",
+      "title": "A directory of tokens",
+      "class": "inference",
+      "auth": "login",
+      "holder": "launcher",
+      "rooms": ["production"],
+      "wave": 3,
+      "setup": "owner",
+      "renew": "renewed by hand",
+      "checks": [{"kind": "secret", "name": "key.pool", "min": 2}]
+    },
+    {
+      "id": "mode.pick",
+      "title": "A setting from a fixed list",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "gateway",
+      "rooms": ["post"],
+      "wave": 4,
+      "setup": "owner",
+      "checks": [{"kind": "setting", "name": "MODE", "one_of": ["fast", "slow"]}]
+    },
+    {
+      "id": "data.dir",
+      "title": "A directory named by a setting",
+      "class": "engine",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["lab"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "path", "setting": "DATA_DIR"}]
+    },
+    {
+      "id": "extra.optional",
+      "title": "An optional extra",
+      "class": "store",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["distribution"],
+      "wave": 6,
+      "setup": "owner",
+      "optional": true,
+      "checks": [{"kind": "setting", "name": "EXTRA"}]
+    }
+  ]
+}
