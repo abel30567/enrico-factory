@@ -1,0 +1,62 @@
+[
+  {
+    "id": 101,
+    "role": "chief",
+    "body": "[CHIEF] LAUNCH writer 7\n\nPrompt sha256: 0f00"
+  },
+  {
+    "id": 102,
+    "role": "writer",
+    "body": "[WRITER] READY\n\nHead: draft one\n- criterion 1: done"
+  },
+  {
+    "id": 103,
+    "role": "program:lint",
+    "body": "[LINT] PASS\n\n| Check | Result | Reason |\n\nreviewed head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 manifest none"
+  },
+  {
+    "id": 104,
+    "role": "editor",
+    "body": "[EDITOR] NOTES\n\nB1 the ending is missing\n\nreviewed head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 manifest none"
+  },
+  {
+    "id": 105,
+    "role": "writer",
+    "body": "[WRITER] ADDRESSED\n\nB1: ending added"
+  },
+  {
+    "id": 106,
+    "role": "editor",
+    "body": "[EDITOR] APPROVED\n\nEvery criterion holds.\n\nreviewed head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 manifest none"
+  },
+  {
+    "id": 107,
+    "role": "panel",
+    "body": "[PANEL] PREFERS B\n\nPanels 2 and 3.\n\nreviewed head a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1 manifest none"
+  },
+  {
+    "id": 108,
+    "role": "uploader",
+    "body": "[UPLOADER] READY\n\nJob file written."
+  },
+  {
+    "id": 109,
+    "role": "watcher",
+    "body": "[WATCHER] BLOCKED\n\nMissing: telemetry\nWhat was tried: none\nResume from: start"
+  },
+  {
+    "id": 110,
+    "role": "program:gate",
+    "body": "[PRODUCER] GATE PASS\n\nJob covered by hash."
+  },
+  {
+    "id": 111,
+    "role": "program:lock",
+    "body": "[CHIEF] LOCK\n\nLocked."
+  },
+  {
+    "id": 112,
+    "role": "chief",
+    "body": "[CHIEF] RULING\n\nDecided: keep the ending."
+  }
+]
