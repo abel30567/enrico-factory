@@ -1,3 +1,4 @@
 
 # orchestrator: personal settings
 .agents/orchestrator/local.env
+__pycache__/
