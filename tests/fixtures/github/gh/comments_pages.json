@@ -1,0 +1,36 @@
+[
+ [
+  {
+   "body": "[LINT] PASS\nall checks pass\n<!-- factory:role program:lint -->",
+   "created_at": "2026-11-02T10:05:00Z",
+   "id": 30,
+   "node_id": "IC_30",
+   "updated_at": "2026-11-02T10:05:00Z",
+   "user": {
+    "login": "someone"
+   }
+  },
+  {
+   "body": "[WRITER] READY\nhead 1111111111111111111111111111111111111111\n<!-- factory:role writer -->",
+   "created_at": "2026-11-02T10:05:00Z",
+   "id": 20,
+   "node_id": "IC_20",
+   "updated_at": "2026-11-02T10:05:00Z",
+   "user": {
+    "login": "someone"
+   }
+  }
+ ],
+ [
+  {
+   "body": "a person's note, no role line",
+   "created_at": "2026-11-02T10:01:00Z",
+   "id": 10,
+   "node_id": "IC_10",
+   "updated_at": "2026-11-02T10:01:00Z",
+   "user": {
+    "login": "someone"
+   }
+  }
+ ]
+]
