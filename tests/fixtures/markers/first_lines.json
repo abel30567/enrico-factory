@@ -1,0 +1,268 @@
+{
+  "invalid": [
+    {
+      "line": "Picking this up.\n[LINT] PASS",
+      "why": "marker on the second line"
+    },
+    {
+      "line": "\n[STORY-EDITOR] APPROVED",
+      "why": "empty first line"
+    },
+    {
+      "line": "[STORY-EDITOR] LGTM",
+      "why": "unknown verb"
+    },
+    {
+      "line": "[LINT] READY",
+      "why": "unknown verb for a program"
+    },
+    {
+      "line": "[PRODUCER] APPROVED",
+      "why": "role verb from a program"
+    },
+    {
+      "line": "[STORY-EDITOR] KEEP",
+      "why": "lab verb from a role"
+    },
+    {
+      "line": "[PITCH-JUDGE] PREFERS",
+      "why": "half a two-word verb"
+    },
+    {
+      "line": "[STORY-EDITOR] approved",
+      "why": "lower-case verb"
+    },
+    {
+      "line": "[story-editor] APPROVED",
+      "why": "lower-case actor"
+    },
+    {
+      "line": "[lint] PASS",
+      "why": "lower-case program actor"
+    },
+    {
+      "line": "[CHANNEL:youtube] POSTED",
+      "why": "lower-case platform"
+    },
+    {
+      "line": "STORY-EDITOR APPROVED",
+      "why": "missing brackets"
+    },
+    {
+      "line": "[STORY-EDITOR APPROVED",
+      "why": "missing closing bracket"
+    },
+    {
+      "line": "Note: [STORY-EDITOR] APPROVED",
+      "why": "text before the marker"
+    },
+    {
+      "line": "[LINT] PASS today",
+      "why": "trailing text after a verb with no arguments"
+    },
+    {
+      "line": "[SHOWRUNNER] LAUNCH story-artist",
+      "why": "LAUNCH without an id"
+    },
+    {
+      "line": "[SHOWRUNNER] SELECTED 14",
+      "why": "SELECTED without #"
+    },
+    {
+      "line": "[BRAINTRUST] VOTE yes",
+      "why": "VOTE without a tally"
+    },
+    {
+      "line": "[] READY",
+      "why": "empty brackets"
+    },
+    {
+      "line": "",
+      "why": "empty string"
+    }
+  ],
+  "valid": [
+    {
+      "actor": "SHOWRUNNER",
+      "args": [
+        "story-artist",
+        "T-12"
+      ],
+      "line": "[SHOWRUNNER] LAUNCH story-artist T-12",
+      "verb": "LAUNCH"
+    },
+    {
+      "actor": "SHOWRUNNER",
+      "args": [],
+      "line": "[SHOWRUNNER] RULING",
+      "verb": "RULING"
+    },
+    {
+      "actor": "SHOWRUNNER",
+      "args": [
+        "14"
+      ],
+      "line": "[SHOWRUNNER] SELECTED #14",
+      "verb": "SELECTED"
+    },
+    {
+      "actor": "LINE-PRODUCER",
+      "args": [],
+      "line": "[LINE-PRODUCER] LOCK",
+      "verb": "LOCK"
+    },
+    {
+      "actor": "STORY-ARTIST",
+      "args": [],
+      "line": "[STORY-ARTIST] READY",
+      "verb": "READY"
+    },
+    {
+      "actor": "STORY-ARTIST",
+      "args": [],
+      "line": "[STORY-ARTIST] ADDRESSED",
+      "verb": "ADDRESSED"
+    },
+    {
+      "actor": "RENDER-WRANGLER",
+      "args": [],
+      "line": "[RENDER-WRANGLER] BLOCKED",
+      "verb": "BLOCKED"
+    },
+    {
+      "actor": "LINT",
+      "args": [],
+      "line": "[LINT] PASS",
+      "verb": "PASS"
+    },
+    {
+      "actor": "LINT",
+      "args": [],
+      "line": "[LINT] FAIL",
+      "verb": "FAIL"
+    },
+    {
+      "actor": "LINT",
+      "args": [],
+      "line": "[LINT] ERROR",
+      "verb": "ERROR"
+    },
+    {
+      "actor": "STORY-EDITOR",
+      "args": [],
+      "line": "[STORY-EDITOR] APPROVED",
+      "verb": "APPROVED"
+    },
+    {
+      "actor": "STORY-EDITOR",
+      "args": [],
+      "line": "[STORY-EDITOR] NOTES",
+      "verb": "NOTES"
+    },
+    {
+      "actor": "PITCH-JUDGE",
+      "args": [],
+      "line": "[PITCH-JUDGE] PREFERS A",
+      "verb": "PREFERS A"
+    },
+    {
+      "actor": "PITCH-JUDGE",
+      "args": [],
+      "line": "[PITCH-JUDGE] PREFERS B",
+      "verb": "PREFERS B"
+    },
+    {
+      "actor": "PITCH-JUDGE",
+      "args": [],
+      "line": "[PITCH-JUDGE] NO PREFERENCE",
+      "verb": "NO PREFERENCE"
+    },
+    {
+      "actor": "BRAINTRUST",
+      "args": [
+        "5",
+        "2"
+      ],
+      "line": "[BRAINTRUST] VOTE 5-2",
+      "verb": "VOTE"
+    },
+    {
+      "actor": "BRAINTRUST",
+      "args": [],
+      "line": "[BRAINTRUST] PREFERS A",
+      "verb": "PREFERS A"
+    },
+    {
+      "actor": "PRODUCER",
+      "args": [],
+      "line": "[PRODUCER] GATE PASS",
+      "verb": "GATE PASS"
+    },
+    {
+      "actor": "PRODUCER",
+      "args": [],
+      "line": "[PRODUCER] GATE STOP",
+      "verb": "GATE STOP"
+    },
+    {
+      "actor": "PLATFORM-GATE",
+      "args": [],
+      "line": "[PLATFORM-GATE] PASS",
+      "verb": "PASS"
+    },
+    {
+      "actor": "PLATFORM-GATE",
+      "args": [],
+      "line": "[PLATFORM-GATE] FAIL",
+      "verb": "FAIL"
+    },
+    {
+      "actor": "CHANNEL:YOUTUBE",
+      "args": [],
+      "line": "[CHANNEL:YOUTUBE] POSTED",
+      "verb": "POSTED"
+    },
+    {
+      "actor": "CHANNEL:TIKTOK",
+      "args": [],
+      "line": "[CHANNEL:TIKTOK] VERIFIED",
+      "verb": "VERIFIED"
+    },
+    {
+      "actor": "ANALYST",
+      "args": [],
+      "line": "[ANALYST] SYMPTOMS",
+      "verb": "SYMPTOMS"
+    },
+    {
+      "actor": "AUTORESEARCH",
+      "args": [],
+      "line": "[AUTORESEARCH] KEEP",
+      "verb": "KEEP"
+    },
+    {
+      "actor": "AUTORESEARCH",
+      "args": [],
+      "line": "[AUTORESEARCH] NOISE",
+      "verb": "NOISE"
+    },
+    {
+      "actor": "AUTORESEARCH",
+      "args": [],
+      "line": "[AUTORESEARCH] DISCARD",
+      "verb": "DISCARD"
+    },
+    {
+      "actor": "AUTORESEARCH",
+      "args": [],
+      "line": "[AUTORESEARCH] REBASELINE",
+      "verb": "REBASELINE"
+    },
+    {
+      "actor": "LINT",
+      "args": [],
+      "line": "[LINT] PASS\r\n| provenance | PASS |",
+      "verb": "PASS"
+    }
+  ]
+}
