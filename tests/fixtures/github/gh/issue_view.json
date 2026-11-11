@@ -1,0 +1,21 @@
+{
+ "body": "The keeper.",
+ "createdAt": "2026-11-01T09:00:00Z",
+ "labels": [
+  {
+   "color": "ededed",
+   "description": "",
+   "id": "LA_2",
+   "name": "tracked"
+  },
+  {
+   "color": "ededed",
+   "description": "",
+   "id": "LA_1",
+   "name": "stage:script"
+  }
+ ],
+ "number": 1,
+ "state": "OPEN",
+ "title": "Draft the opening scene"
+}
