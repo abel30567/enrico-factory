@@ -261,6 +261,11 @@ class CheckKinds(TempDir):
         check = {"kind": "command", "argv": ["{PY}", "--version"]}
         self.assertFails(check, {"PY": str(self.tmp / "no-such-program")}, ["command not found: {PY} --version"])
 
+    def test_command_that_cannot_start_names_argv_not_value(self):
+        check = {"kind": "command", "argv": ["{PY}", "-c", "{CODE}"]}
+        self.assertFails(check, {"PY": sys.executable, "CODE": "secret\0value"},
+                         ["command could not start: {PY} -c {CODE}"])
+
     def test_command_non_zero_exit(self):
         check = {"kind": "command", "argv": ["{PY}", "-c", "raise SystemExit(3)"]}
         self.assertFails(check, {"PY": sys.executable}, ["command failed: {PY} -c raise SystemExit(3)"])

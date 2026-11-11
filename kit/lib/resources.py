@@ -218,7 +218,7 @@ def _check_command(check, values):
         return [f"command not found: {shown}"]
     except subprocess.TimeoutExpired:
         return [f"command timed out: {shown}"]
-    except OSError:
+    except (OSError, ValueError, subprocess.SubprocessError):
         return [f"command could not start: {shown}"]
     if done.returncode != 0:
         return [f"command failed: {shown}"]
