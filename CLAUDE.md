@@ -1,8 +1,11 @@
 # CLAUDE.md
 
-Read `docs/system-brief.md` first. It is the specification of what this repository builds.
-`docs/architecture.md` shows the same system as diagrams: data flows, responsibilities, tools, and how
-it uses GitHub issues and pull requests.
+Read `docs/system-brief.md` first. It is the specification of what this repository builds. Then:
+
+- `docs/architecture.md`: the same system as diagrams.
+- `docs/harness.md`: how a role runs on the agent harness (hbar, used as a primitive), and the fork rule.
+- `docs/resources.md` and `kit/resources.json`: every resource a run needs and how an agent reaches it.
+- `plan/main/`: the current plan and what is in flight. `plan/lessons.md`: mistakes not to repeat.
 
 This repository (enrico-factory) builds the content factory. It is itself built with the software pattern below.
 The content factory's own roles, stages and markers are in the brief, and are the product, not the way this repo is run.
@@ -70,5 +73,9 @@ orchestrator decides; low-severity nits become `follow-up` issues instead of blo
 - Tests never call GitHub or a model. They use recorded JSON fixtures under `tests/fixtures/`.
 - `kit/` is project-agnostic: no Primal, Argelia or other production content in it. Sample material goes under `samples/`.
 - Workers never run a model, a generator or a renderer against a real account, and never spend money.
-- Harness files (`.agents/`, `scripts/gates.sh`, `CLAUDE.md`, `docs/system-brief.md`, `docs/architecture.md`) are showrunner-owned. Workers propose changes to them in a comment, not in a diff.
+- Orchestrator-owned files: `.agents/`, `scripts/gates.sh`, `CLAUDE.md`, `README.md`, `docs/*.md`, `docs/design/`, `kit/resources.json`, `plan/`. Workers propose changes to them in a comment, not in a diff.
+- The orchestrator directs and does not build: anything under `kit/` or `tests/` is a ticket for a builder.
+- GitHub is the state. Work to do is an issue with the label `tracked` (`orch task`); what is in flight is `orch status`. A reversible decision is taken and posted as an `[ORCHESTRATOR]` ruling, not asked.
+- The harness is a primitive. Nothing in `kit/` may depend on harness internals; all harness-specific code is `kit/lib/harness.py` (`docs/harness.md`).
+- Inference is by subscription login only. No file, test or command may read or require an inference API key.
 - This repository is public. Production material (lore, art, canon rulings, media) belongs in the production's own repository, never here. No machine paths, account names or credentials in any file.

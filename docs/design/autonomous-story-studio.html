@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Autonomous Story Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: a production bible. One reading column, diagrams break wider, tables scroll on phones. */
+  --bg:#f3f4f7; --surface:#ffffff; --ink:#151821; --muted:#5a6173; --line:#d8dbe3;
+  --accent:#3445cc; --accent-soft:#e9ecfd;
+  --pivot:#a8620c; --pivot-soft:#fbf0e0;
+  --signal:#0d7768; --signal-soft:#e0f3ef;
+  --maker:#6b4fb0; --maker-soft:#f0ecfa;
+  --judge:#9b3157; --judge-soft:#fbeaf0;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1015; --surface:#161921; --ink:#e6e8ee; --muted:#9aa1b2; --line:#2a2f3b;
+    --accent:#93a0ff; --accent-soft:#1d2242; --pivot:#e8a85a; --pivot-soft:#33250f;
+    --signal:#53c6b3; --signal-soft:#0e2a26; --maker:#b8a2f0; --maker-soft:#241c3b;
+    --judge:#ee8bb0; --judge-soft:#3a1626; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1015; --surface:#161921; --ink:#e6e8ee; --muted:#9aa1b2; --line:#2a2f3b;
+  --accent:#93a0ff; --accent-soft:#1d2242; --pivot:#e8a85a; --pivot-soft:#33250f;
+  --signal:#53c6b3; --signal-soft:#0e2a26; --maker:#b8a2f0; --maker-soft:#241c3b;
+  --judge:#ee8bb0; --judge-soft:#3a1626; color-scheme: dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--body)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px 80px}
+header.top{padding:48px 0 24px;display:grid;gap:14px}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:700 clamp(34px,5vw,54px)/1.05 var(--display);margin:0;letter-spacing:-.02em;text-wrap:balance}
+h2{font:700 28px/1.15 var(--display);margin:0 0 6px;letter-spacing:-.01em;text-wrap:balance}
+h3{font:600 17px/1.3 var(--body);margin:0 0 6px}
+p{margin:0}
+.lede{max-width:68ch;font-size:18px;color:var(--muted)}
+.lede strong{color:var(--ink);font-weight:600}
+nav.toc{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:8px}
+nav.toc ul{list-style:none;margin:0;padding:0;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+nav.toc a{display:block;white-space:nowrap;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--ink);text-decoration:none;font-size:14px;background:var(--surface)}
+nav.toc a:hover{border-color:var(--accent);color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section{padding:40px 0 8px;display:grid;gap:18px;scroll-margin-top:60px}
+.sub{color:var(--muted);max-width:70ch}
+.prose{max-width:70ch;display:grid;gap:12px}
+figure{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px}
+figure .scroll{overflow-x:auto}
+figcaption{font-size:14px;color:var(--muted);margin-top:10px;max-width:80ch}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:10px;border-radius:3px;border:1.5px solid}
+.sw.pv{border-color:var(--pivot);background:var(--pivot-soft)}
+.sw.sg{border-color:var(--signal);background:var(--signal-soft)}
+.sw.ac{border-color:var(--accent);background:var(--accent-soft)}
+.sw.mk{border-color:var(--maker);background:var(--maker-soft)}
+.sw.jd{border-color:var(--judge);background:var(--judge-soft)}
+.sw.st{border-color:var(--muted);border-style:dashed}
+svg.dg{display:block;width:100%;min-width:760px;height:auto;color:var(--ink);font-family:var(--body)}
+svg .band{fill:var(--bg);stroke:none}
+svg .lane{font:500 12px var(--mono);fill:var(--muted);letter-spacing:.04em}
+svg .n rect{fill:var(--surface);stroke:var(--muted);stroke-width:1}
+svg .n.pv rect{fill:var(--pivot-soft);stroke:var(--pivot)}
+svg .n.sg rect{fill:var(--signal-soft);stroke:var(--signal)}
+svg .n.ac rect{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.6}
+svg .n.mk rect{fill:var(--maker-soft);stroke:var(--maker)}
+svg .n.jd rect{fill:var(--judge-soft);stroke:var(--judge)}
+svg .n.st rect{stroke-dasharray:5 4}
+svg .bt{font-size:13px;font-weight:600;fill:var(--ink)}
+svg .bs{font-size:11.5px;fill:var(--muted)}
+svg .ar{stroke:var(--muted);stroke-width:1.3}
+svg .ar.loop{stroke:var(--signal);stroke-width:1.6;stroke-dasharray:6 4}
+svg .ar.ret{stroke-dasharray:4 3}
+svg .lbl{font-size:11.5px;fill:var(--ink);paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+svg .life{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+svg .room{fill:none;stroke:var(--line);stroke-width:1.4}
+svg .pband{fill:var(--accent-soft)} svg .fband{fill:var(--maker-soft)}
+svg .ar.pv{stroke:var(--pivot);stroke-width:1.5}
+svg .ar.sg{stroke:var(--signal);stroke-width:1.5}
+svg .ar.dot{stroke-dasharray:2 3}
+.part{margin-top:56px;padding:28px 0 8px;border-top:3px solid var(--ink);display:grid;gap:8px}
+.part h2{font-size:clamp(30px,4vw,40px)}
+.roomhead{margin-top:48px;padding-top:24px;border-top:1px solid var(--line);display:grid;gap:6px;scroll-margin-top:60px}
+.roomhead h2{font-size:32px}
+td a{color:var(--accent)}
+.status{display:inline-flex;align-items:center;gap:8px;font:500 13px var(--mono);color:var(--pivot);background:var(--pivot-soft);border:1px solid var(--pivot);border-radius:999px;padding:4px 12px;width:fit-content}
+.card ul,.card ol{margin:0;padding-left:20px;display:grid;gap:6px;font-size:15px;color:var(--muted)}
+.card ul b,.card ol b{color:var(--ink);font-weight:600}
+.actors{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.actor{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;gap:6px;align-content:start}
+.actor p{font-size:14px;color:var(--muted)}
+.actor .never{font-size:13px;color:var(--judge)}
+.sources{columns:2 320px;gap:24px;padding-left:18px;font-size:13px}
+.sources li{break-inside:avoid;margin-bottom:6px}
+.sources a{color:var(--accent)}
+svg .ring{fill:none;stroke-width:1.4}
+svg .ring.sg{stroke:var(--signal)} svg .ring.ac{stroke:var(--accent)} svg .ring.mk{stroke:var(--maker);stroke-dasharray:5 4}
+svg .ringt{font:600 13px var(--mono);fill:var(--ink)}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;counter-reset:r;list-style:none;margin:0;padding:0}
+.rules li{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;counter-increment:r;display:grid;gap:4px}
+.rules li::before{content:"Rule " counter(r);font:500 11px var(--mono);color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:14px}
+th,td{text-align:left;vertical-align:top;padding:10px 14px;border-bottom:1px solid var(--line)}
+th{font:500 12px var(--mono);letter-spacing:.04em;color:var(--muted);text-transform:uppercase;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.grp{font:600 12px var(--mono);color:var(--muted);background:var(--bg);text-transform:uppercase;letter-spacing:.05em}
+.tag{display:inline-block;font:500 12px var(--mono);padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+.tag.pv{color:var(--pivot);border-color:var(--pivot);background:var(--pivot-soft)}
+.tag.sg{color:var(--signal);border-color:var(--signal);background:var(--signal-soft)}
+.tag.ac{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.tag.mk{color:var(--maker);border-color:var(--maker);background:var(--maker-soft)}
+.tag.jd{color:var(--judge);border-color:var(--judge);background:var(--judge-soft)}
+.tag.nt{color:var(--muted);border-color:var(--line);background:var(--bg)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:10px;align-content:start}
+.card p{color:var(--muted);font-size:15px}
+pre{margin:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;overflow-x:auto;font:13px/1.55 var(--mono);color:var(--ink)}
+code{font-family:var(--mono);font-size:.92em}
+.show{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:0;padding:16px 18px;display:grid;gap:8px}
+.show dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0;font-size:15px}
+.show dt{color:var(--muted);font:500 12px/1.9 var(--mono);text-transform:uppercase;letter-spacing:.04em}
+.show dd{margin:0}
+.note{font-size:13px;color:var(--muted)}
+.phase{display:grid;grid-template-columns:120px 1fr;gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+.phase .when{font:500 13px/1.5 var(--mono);color:var(--muted)}
+.phase .when b{display:block;font:700 20px/1.1 var(--display);color:var(--ink);margin-bottom:4px}
+.phase .body{display:grid;gap:10px;min-width:0}
+.phase ol{margin:0;padding-left:20px;display:grid;gap:6px}
+.phase .who{display:flex;flex-wrap:wrap;gap:6px}
+@media (max-width:640px){.phase{grid-template-columns:1fr}.show dl{grid-template-columns:1fr}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.kpi{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi .k{font:500 11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.kpi .v{font:700 22px/1.2 var(--display);font-variant-numeric:tabular-nums}
+.kpi .d{font-size:13px;color:var(--muted)}
+footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Architecture proposal · agentic story pipeline</div>
+  <h1>Autonomous Story Studio</h1>
+  <p class="lede">A Pixar-style studio run entirely by agents, built for an <strong>ongoing show</strong>. Part 1 is the story and art room. Part 2 adds <strong>production in Unreal Engine</strong>, platform editing and distribution to YouTube, TikTok and Instagram. Every stage pairs deterministic checks with judged review, and the audience's response feeds the next episode and the studio's own improvement loops. No human approves anything inside the loop.</p>
+  <span class="status">Design only · nothing built or measured yet</span>
+</header>
+
+<nav class="toc" aria-label="Sections">
+  <ul>
+    <li><a href="#rules">Rules of power</a></li>
+    <li><a href="#system-map">System map</a></li>
+    <li><a href="#diagram-index">Diagram index</a></li>
+    <li><a href="#architecture">Story room</a></li>
+    <li><a href="#loops">Three loops</a></li>
+    <li><a href="#roster">Agent roster</a></li>
+    <li><a href="#pivots">Pivot protocol</a></li>
+    <li><a href="#engagement">Engagement as input</a></li>
+    <li><a href="#example">Worked example</a></li>
+    <li><a href="#evolution">How it evolves</a></li>
+    <li><a href="#rails">Safety rails</a></li>
+    <li><a href="#room-production">Production room</a></li>
+    <li><a href="#room-post">Post room</a></li>
+    <li><a href="#room-distribution">Distribution room</a></li>
+    <li><a href="#room-lab">Autoresearch lab</a></li>
+    <li><a href="#production-example">Example: ep 5</a></li>
+    <li><a href="#compare">Vs the kit</a></li>
+    <li><a href="#tools">Tools</a></li>
+    <li><a href="#build-order">Build order</a></li>
+  </ul>
+</nav>
+
+<section id="rules">
+  <h2>Rules of power</h2>
+  <p class="sub">With no human director, these rules take the place of the director's authority. Every agent's instructions include them, and the producer enforces them.</p>
+  <ol class="rules">
+    <li><h3>No agent approves its own work</h3><p class="note">Makers make, judges score, the showrunner decides, the producer enforces.</p></li>
+    <li><h3>The charter changes only by amendment</h3><p class="note">The showrunner proposes a change and the Braintrust votes on it. Each amendment is logged with its evidence.</p></li>
+    <li><h3>Engagement can propose but never lock</h3><p class="note">Metrics produce notes and pivot proposals. They never approve a scene.</p></li>
+    <li><h3>A revision must beat the old version blind</h3><p class="note">Judges compare old and new head to head without knowing which is which. Absolute scores are never enough.</p></li>
+    <li><h3>A note raised twice can't be rejected</h3><p class="note">If the same problem appears at two screenings in a row, the showrunner has to act on it.</p></li>
+    <li><h3>Released canon is never edited</h3><p class="note">A mistake in a released episode is fixed in a later episode, never by changing the old one.</p></li>
+    <li><h3>The producer's caps always win</h3><p class="note">Cost, time and iteration limits override every other agent.</p></li>
+  </ol>
+</section>
+
+<section id="system-map">
+  <h2>System map</h2>
+  <p class="sub">Four rooms, each with its own orchestrator, so no single agent runs the whole show. Work moves left to right as locked packages. Story and distribution also talk to each other directly, and everything the audience does flows back through the analysts.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1110 630" role="img" aria-label="Four rooms in a row: story, production in Unreal, post and platform edit, and distribution, each with its own orchestrator. Story and distribution exchange intent packets and platform notes. Telemetry flows to analysts and back to the story room. GitHub and a media store hold all state." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="room" x="10" y="40" width="215" height="262" rx="14"/><text class="ringt" x="24" y="64">Story room</text><g class="n ac"><rect x="22" y="78" width="191" height="50" rx="8"/><text class="bt" x="117.5" y="95.0" text-anchor="middle" dominant-baseline="central">Showrunner</text><text class="bs" x="117.5" y="114.0" text-anchor="middle" dominant-baseline="central">director agent</text></g><g class="n mk"><rect x="22" y="146" width="191" height="36" rx="8"/><text class="bt" x="117.5" y="164.0" text-anchor="middle" dominant-baseline="central">Writers&#x27; room, artists</text></g><g class="n jd"><rect x="22" y="192" width="191" height="36" rx="8"/><text class="bt" x="117.5" y="210.0" text-anchor="middle" dominant-baseline="central">Braintrust, judges</text></g><g class="n st"><rect x="22" y="238" width="191" height="36" rx="8"/><text class="bt" x="117.5" y="256.0" text-anchor="middle" dominant-baseline="central">Series bible</text></g><rect class="room" x="295" y="40" width="215" height="262" rx="14"/><text class="ringt" x="309" y="64">Production · Unreal</text><g class="n ac"><rect x="307" y="78" width="191" height="50" rx="8"/><text class="bt" x="402.5" y="95.0" text-anchor="middle" dominant-baseline="central">Line producer</text><text class="bs" x="402.5" y="114.0" text-anchor="middle" dominant-baseline="central">production orchestrator</text></g><g class="n mk"><rect x="307" y="146" width="191" height="36" rx="8"/><text class="bt" x="402.5" y="164.0" text-anchor="middle" dominant-baseline="central">Asset to render makers</text></g><g class="n jd"><rect x="307" y="192" width="191" height="36" rx="8"/><text class="bt" x="402.5" y="210.0" text-anchor="middle" dominant-baseline="central">Lint + checkers</text></g><g class="n st"><rect x="307" y="238" width="191" height="36" rx="8"/><text class="bt" x="402.5" y="256.0" text-anchor="middle" dominant-baseline="central">Unreal project, caches</text></g><rect class="room" x="580" y="40" width="215" height="262" rx="14"/><text class="ringt" x="594" y="64">Post · platform edit</text><g class="n ac"><rect x="592" y="78" width="191" height="50" rx="8"/><text class="bt" x="687.5" y="95.0" text-anchor="middle" dominant-baseline="central">Post supervisor</text><text class="bs" x="687.5" y="114.0" text-anchor="middle" dominant-baseline="central">variants, packaging</text></g><g class="n mk"><rect x="592" y="146" width="191" height="36" rx="8"/><text class="bt" x="687.5" y="164.0" text-anchor="middle" dominant-baseline="central">Reframe, captions</text></g><g class="n mk"><rect x="592" y="192" width="191" height="36" rx="8"/><text class="bt" x="687.5" y="210.0" text-anchor="middle" dominant-baseline="central">CTA writer</text></g><g class="n jd"><rect x="592" y="238" width="191" height="36" rx="8"/><text class="bt" x="687.5" y="256.0" text-anchor="middle" dominant-baseline="central">Platform gate</text></g><rect class="room" x="865" y="40" width="215" height="262" rx="14"/><text class="ringt" x="879" y="64">Distribution</text><g class="n ac"><rect x="877" y="78" width="191" height="50" rx="8"/><text class="bt" x="972.5" y="95.0" text-anchor="middle" dominant-baseline="central">Channel desk</text><text class="bs" x="972.5" y="114.0" text-anchor="middle" dominant-baseline="central">publish, measure</text></g><g class="n sg"><rect x="877" y="146" width="191" height="36" rx="8"/><text class="bt" x="972.5" y="164.0" text-anchor="middle" dominant-baseline="central">YouTube, TikTok, IG</text></g><g class="n sg"><rect x="877" y="192" width="191" height="36" rx="8"/><text class="bt" x="972.5" y="210.0" text-anchor="middle" dominant-baseline="central">Community analyst</text></g><g class="n sg st"><rect x="877" y="238" width="191" height="36" rx="8"/><text class="bt" x="972.5" y="256.0" text-anchor="middle" dominant-baseline="central">Telemetry pull</text></g><line class="ar" x1="215" y1="103" x2="304" y2="103" marker-end="url(#ah)"/><text class="lbl" x="260" y="94" text-anchor="middle">package</text><line class="ar" x1="500" y1="103" x2="589" y2="103" marker-end="url(#ah)"/><text class="lbl" x="545" y="94" text-anchor="middle">master</text><line class="ar" x1="785" y1="103" x2="874" y2="103" marker-end="url(#ah)"/><text class="lbl" x="830" y="94" text-anchor="middle">variants</text><path class="ar pv" d="M80 302 V334 H1000 V306" fill="none" marker-end="url(#ah)"/><text class="lbl" x="540" y="326" text-anchor="middle">story intent packet: hook, spoiler list, CTA prompts</text><path class="ar pv" d="M1040 302 V364 H40 V306" fill="none" marker-end="url(#ah)"/><text class="lbl" x="540" y="356" text-anchor="middle">platform notes: format limits, CTA results, audience theories</text><g class="n sg"><rect x="620" y="420" width="300" height="56" rx="8"/><text class="bt" x="770.0" y="440.0" text-anchor="middle" dominant-baseline="central">Analysts + researchers</text><text class="bs" x="770.0" y="459.0" text-anchor="middle" dominant-baseline="central">symptoms, pivots, hypotheses</text></g><path class="ar sg" d="M1080 200 H1096 V448 H924" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1004" y="440" text-anchor="middle">telemetry, comments</text><path class="ar sg" d="M618 448 H20 V306" fill="none" marker-end="url(#ah)"/><text class="lbl" x="330" y="440" text-anchor="middle">symptom notes, pivot proposals</text><g class="n st"><rect x="10" y="500" width="1086" height="48" rx="8"/></g><text class="bt" x="553" y="518" text-anchor="middle" dominant-baseline="central">Autoresearch lab · lab director</text><text class="bs" x="553" y="536" text-anchor="middle" dominant-baseline="central">One metric per loop, keep or discard, append-only log. Tunes levers in every room, never its own harness.</text><g class="n"><rect x="10" y="566" width="535" height="48" rx="8"/><text class="bt" x="277.5" y="582.0" text-anchor="middle" dominant-baseline="central">GitHub</text><text class="bs" x="277.5" y="601.0" text-anchor="middle" dominant-baseline="central">issues, pull requests, markers: the only state</text></g><g class="n st"><rect x="561" y="566" width="535" height="48" rx="8"/><text class="bt" x="828.5" y="582.0" text-anchor="middle" dominant-baseline="central">Media store</text><text class="bs" x="828.5" y="601.0" text-anchor="middle" dominant-baseline="central">frames, caches, assets; git keeps the hashed manifest row</text></g></svg></div>
+    <div class="legend">
+      <span><i class="sw ac"></i>Orchestrator: the only role that locks in its room</span>
+      <span><i class="sw mk"></i>Makers</span>
+      <span><i class="sw jd"></i>Checkers and judges</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span>
+      <span><i class="sw pv"></i>Story ↔ distribution packets</span>
+    </div>
+    <figcaption>A handoff happens only when the sending room has locked its work. The production room receives the locked reel, its edit list with beat IDs, the bible version and the style lock. Post receives the master, stems and edit list. Distribution receives only variants that passed the platform gate.</figcaption>
+  </figure>
+</section>
+
+<section id="diagram-index">
+  <h2>Diagram index</h2>
+  <p class="sub">Every orchestrated room has the same three diagrams as the story room: its architecture, its loops on three clocks, and a message sequence for episode 5. Some rooms have extra diagrams for their own mechanics.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Room</th><th>Orchestrator</th><th>Architecture</th><th>Loops</th><th>Sequence</th><th>Also</th></tr></thead>
+    <tbody>
+      <tr><td>Whole system</td><td>One per room</td><td><a href="#system-map">System map</a></td><td>None</td><td>None</td><td>None</td></tr>
+      <tr><td>Story room</td><td><span class="tag ac">Showrunner</span></td><td><a href="#architecture">Story architecture</a></td><td><a href="#loops">Story loops</a></td><td><a href="#example">Episode 3 to 5 pivot</a></td><td><a href="#roster">Roster</a>, <a href="#pivots">pivot protocol</a></td></tr>
+      <tr><td>Production room</td><td><span class="tag ac">Line producer</span></td><td><a href="#prod-arch">Production architecture</a></td><td><a href="#prod-loops">Production loops</a></td><td><a href="#prod-seq">Episode 5 production</a></td><td><a href="#ladder">Stage ladder</a>, <a href="#process-map">one shot</a>, <a href="#checks">checks</a></td></tr>
+      <tr><td>Post room</td><td><span class="tag ac">Post supervisor</span></td><td><a href="#post-arch">Post architecture</a></td><td><a href="#post-loops">Post loops</a></td><td><a href="#post-seq">Episode 5 packaging</a></td><td><a href="#post">Platform rules</a></td></tr>
+      <tr><td>Distribution room</td><td><span class="tag ac">Channel desk</span></td><td><a href="#dist-arch">Distribution architecture</a></td><td><a href="#dist-loops">Distribution loops</a></td><td><a href="#dist-seq">Episode 5 release</a></td><td><a href="#comms">Story ↔ distribution packets</a></td></tr>
+      <tr><td>Autoresearch lab</td><td><span class="tag ac">Lab director</span></td><td><a href="#lab-arch">Lab architecture</a></td><td><a href="#lab-loops">Lab loops</a></td><td><a href="#lab-seq">Render-cost experiment</a></td><td><a href="#autoresearch">One experiment loop</a></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="part" id="part-1">
+  <div class="eyebrow">Part 1</div>
+  <h2>Story and art</h2>
+  <p class="sub">The story room from the first version of this proposal. Its output is a locked story reel per episode, which Part 2 turns into finished video.</p>
+</div>
+
+<section id="architecture">
+  <h2>Story room architecture</h2>
+  <p class="sub">There are five layers. Two feedback paths keep it running: notes go back to the showrunner, and released video plus engagement go back to the signal layer for the next round.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 672" role="img" aria-label="Five layers: signals, governance, makers, checks and release. Notes loop back to the showrunner; video and engagement loop back to the signal layer." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="30" width="1060" height="100" rx="10"/><text class="lane" x="24" y="84">Signals</text><rect class="band" x="10" y="150" width="1060" height="100" rx="10"/><text class="lane" x="24" y="204">Governance</text><rect class="band" x="10" y="270" width="1060" height="100" rx="10"/><text class="lane" x="24" y="324">Makers</text><rect class="band" x="10" y="390" width="1060" height="100" rx="10"/><text class="lane" x="24" y="444">Checks</text><rect class="band" x="10" y="510" width="1060" height="100" rx="10"/><text class="lane" x="24" y="564">Release</text><g class="n pv"><rect x="160" y="48" width="180" height="64" rx="8"/><text class="bt" x="250.0" y="72.0" text-anchor="middle" dominant-baseline="central">Domain researchers</text><text class="bs" x="250.0" y="91.0" text-anchor="middle" dominant-baseline="central">new findings</text></g><g class="n pv"><rect x="360" y="48" width="180" height="64" rx="8"/><text class="bt" x="450.0" y="72.0" text-anchor="middle" dominant-baseline="central">Trend scout</text><text class="bs" x="450.0" y="91.0" text-anchor="middle" dominant-baseline="central">culture, formats</text></g><g class="n sg"><rect x="560" y="48" width="180" height="64" rx="8"/><text class="bt" x="650.0" y="72.0" text-anchor="middle" dominant-baseline="central">Audience analyst</text><text class="bs" x="650.0" y="91.0" text-anchor="middle" dominant-baseline="central">video + telemetry</text></g><g class="n pv st"><rect x="820" y="48" width="180" height="64" rx="8"/><text class="bt" x="910.0" y="72.0" text-anchor="middle" dominant-baseline="central">Pivot queue</text><text class="bs" x="910.0" y="91.0" text-anchor="middle" dominant-baseline="central">scored proposals</text></g><line class="ar" x1="742" y1="80" x2="816" y2="80" marker-end="url(#ah)"/><text class="lbl" x="779" y="72" text-anchor="middle">proposals</text><g class="n"><rect x="160" y="168" width="170" height="64" rx="8"/><text class="bt" x="245.0" y="192.0" text-anchor="middle" dominant-baseline="central">Producer</text><text class="bs" x="245.0" y="211.0" text-anchor="middle" dominant-baseline="central">budgets, kill switch</text></g><g class="n st"><rect x="350" y="168" width="170" height="64" rx="8"/><text class="bt" x="435.0" y="192.0" text-anchor="middle" dominant-baseline="central">Playbook</text><text class="bs" x="435.0" y="211.0" text-anchor="middle" dominant-baseline="central">lessons + evidence</text></g><g class="n st"><rect x="540" y="168" width="170" height="64" rx="8"/><text class="bt" x="625.0" y="192.0" text-anchor="middle" dominant-baseline="central">Series bible</text><text class="bs" x="625.0" y="211.0" text-anchor="middle" dominant-baseline="central">charter, canon</text></g><g class="n ac"><rect x="790" y="168" width="210" height="64" rx="8"/><text class="bt" x="895.0" y="192.0" text-anchor="middle" dominant-baseline="central">Showrunner</text><text class="bs" x="895.0" y="211.0" text-anchor="middle" dominant-baseline="central">director: triage, lock</text></g><line class="ar" x1="910" y1="114" x2="910" y2="164" marker-end="url(#ah)"/><text class="lbl" x="918" y="144" text-anchor="start">pulls</text><line class="ar" x1="788" y1="200" x2="714" y2="200" marker-end="url(#ah)"/><text class="lbl" x="751" y="192" text-anchor="middle">amends</text><path class="ar" d="M895 234 V260 H222 V284" fill="none" marker-end="url(#ah)"/><text class="lbl" x="560" y="255" text-anchor="middle">assigns sequences</text><g class="n mk"><rect x="160" y="288" width="125" height="64" rx="8"/><text class="bt" x="222.5" y="312.0" text-anchor="middle" dominant-baseline="central">Writers&#x27; room</text><text class="bs" x="222.5" y="331.0" text-anchor="middle" dominant-baseline="central">beats, scripts</text></g><g class="n mk"><rect x="303" y="288" width="125" height="64" rx="8"/><text class="bt" x="365.5" y="312.0" text-anchor="middle" dominant-baseline="central">Head of story</text><text class="bs" x="365.5" y="331.0" text-anchor="middle" dominant-baseline="central">splits, assigns</text></g><g class="n mk"><rect x="446" y="288" width="125" height="64" rx="8"/><text class="bt" x="508.5" y="312.0" text-anchor="middle" dominant-baseline="central">Artists ×N</text><text class="bs" x="508.5" y="331.0" text-anchor="middle" dominant-baseline="central">shot lists</text></g><g class="n mk"><rect x="589" y="288" width="125" height="64" rx="8"/><text class="bt" x="651.5" y="312.0" text-anchor="middle" dominant-baseline="central">Art direction</text><text class="bs" x="651.5" y="331.0" text-anchor="middle" dominant-baseline="central">style lock</text></g><g class="n mk"><rect x="732" y="288" width="125" height="64" rx="8"/><text class="bt" x="794.5" y="312.0" text-anchor="middle" dominant-baseline="central">Editorial</text><text class="bs" x="794.5" y="331.0" text-anchor="middle" dominant-baseline="central">reel, timing</text></g><g class="n mk"><rect x="875" y="288" width="125" height="64" rx="8"/><text class="bt" x="937.5" y="312.0" text-anchor="middle" dominant-baseline="central">Render</text><text class="bs" x="937.5" y="331.0" text-anchor="middle" dominant-baseline="central">video, voice</text></g><line class="ar" x1="287" y1="320" x2="300" y2="320" marker-end="url(#ah)"/><line class="ar" x1="430" y1="320" x2="443" y2="320" marker-end="url(#ah)"/><line class="ar" x1="573" y1="320" x2="586" y2="320" marker-end="url(#ah)"/><line class="ar" x1="716" y1="320" x2="729" y2="320" marker-end="url(#ah)"/><line class="ar" x1="859" y1="320" x2="872" y2="320" marker-end="url(#ah)"/><path class="ar" d="M937 354 V380 H285 V404" fill="none" marker-end="url(#ah)"/><text class="lbl" x="610" y="375" text-anchor="middle">boards, reel, video</text><g class="n"><rect x="160" y="408" width="250" height="64" rx="8"/><text class="bt" x="285.0" y="432.0" text-anchor="middle" dominant-baseline="central">Verification gates</text><text class="bs" x="285.0" y="451.0" text-anchor="middle" dominant-baseline="central">schema, continuity, identity</text></g><g class="n jd"><rect x="430" y="408" width="160" height="64" rx="8"/><text class="bt" x="510.0" y="432.0" text-anchor="middle" dominant-baseline="central">Pitch judges</text><text class="bs" x="510.0" y="451.0" text-anchor="middle" dominant-baseline="central">per scene, blind A/B</text></g><g class="n jd"><rect x="610" y="408" width="160" height="64" rx="8"/><text class="bt" x="690.0" y="432.0" text-anchor="middle" dominant-baseline="central">Braintrust</text><text class="bs" x="690.0" y="451.0" text-anchor="middle" dominant-baseline="central">per episode</text></g><g class="n jd"><rect x="790" y="408" width="210" height="64" rx="8"/><text class="bt" x="895.0" y="432.0" text-anchor="middle" dominant-baseline="central">Audience sim</text><text class="bs" x="895.0" y="451.0" text-anchor="middle" dominant-baseline="central">retell, emotion curve</text></g><line class="ar" x1="412" y1="440" x2="427" y2="440" marker-end="url(#ah)"/><line class="ar" x1="592" y1="440" x2="607" y2="440" marker-end="url(#ah)"/><line class="ar" x1="772" y1="440" x2="787" y2="440" marker-end="url(#ah)"/><path class="ar" d="M1000 440 H1024 V200 H1004" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1030" y="324" text-anchor="start">notes</text><path class="ar" d="M690 474 V500 H255 V524" fill="none" marker-end="url(#ah)"/><text class="lbl" x="470" y="495" text-anchor="middle">ships on lock</text><g class="n"><rect x="160" y="528" width="190" height="64" rx="8"/><text class="bt" x="255.0" y="552.0" text-anchor="middle" dominant-baseline="central">Release</text><text class="bs" x="255.0" y="571.0" text-anchor="middle" dominant-baseline="central">episode + edit list</text></g><g class="n"><rect x="370" y="528" width="190" height="64" rx="8"/><text class="bt" x="465.0" y="552.0" text-anchor="middle" dominant-baseline="central">Audience</text><text class="bs" x="465.0" y="571.0" text-anchor="middle" dominant-baseline="central">real viewers</text></g><g class="n sg st"><rect x="580" y="528" width="230" height="64" rx="8"/><text class="bt" x="695.0" y="552.0" text-anchor="middle" dominant-baseline="central">Telemetry store</text><text class="bs" x="695.0" y="571.0" text-anchor="middle" dominant-baseline="central">retention, comments, shares</text></g><g class="n sg"><rect x="830" y="528" width="170" height="64" rx="8"/><text class="bt" x="915.0" y="552.0" text-anchor="middle" dominant-baseline="central">Sim calibration</text><text class="bs" x="915.0" y="571.0" text-anchor="middle" dominant-baseline="central">sim vs real gap</text></g><line class="ar" x1="352" y1="560" x2="367" y2="560" marker-end="url(#ah)"/><line class="ar" x1="562" y1="560" x2="577" y2="560" marker-end="url(#ah)"/><line class="ar" x1="812" y1="560" x2="827" y2="560" marker-end="url(#ah)"/><line class="ar" x1="915" y1="526" x2="915" y2="476" marker-end="url(#ah)"/><text class="lbl" x="923" y="505" text-anchor="start">recalibrates</text><path class="ar loop" d="M695 594 V636 H146 V80 H156" fill="none" marker-end="url(#ah)"/><text class="lbl" x="420" y="654" text-anchor="middle">video + engagement feed the next round</text></svg></div>
+    <div class="legend">
+      <span><i class="sw pv"></i>Pivot sources</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span>
+      <span><i class="sw ac"></i>Decision authority</span>
+      <span><i class="sw mk"></i>Makers</span>
+      <span><i class="sw jd"></i>Judges</span>
+      <span><i class="sw st"></i>Dashed outline: shared state</span>
+    </div>
+    <figcaption>All three signal agents send proposals to the pivot queue. The producer watches every layer and can stop any of them. The series bible and playbook are versioned stores that every agent reads but only the showrunner (through amendments) and the retro agent write to.</figcaption>
+  </figure>
+</section>
+
+<section id="loops">
+  <h2>Three loops on three clocks</h2>
+  <p class="sub">A show evolves because its loops run at different speeds. Fast loops polish scenes. The slow loop changes what the show is about, and only with evidence.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1000 420" role="img" aria-label="Three nested loops: scene loop inside episode loop inside season loop, each with its own exit rule." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="ring sg" x="10" y="10" width="980" height="400" rx="16"/><text class="ringt" x="30" y="36">Season loop · weeks</text><g class="n chip sg"><rect x="45" y="50" width="135" height="36" rx="8"/><text class="bt" x="112.5" y="68.0" text-anchor="middle" dominant-baseline="central">Release</text></g><g class="n chip sg"><rect x="200" y="50" width="135" height="36" rx="8"/><text class="bt" x="267.5" y="68.0" text-anchor="middle" dominant-baseline="central">Telemetry</text></g><g class="n chip sg"><rect x="355" y="50" width="135" height="36" rx="8"/><text class="bt" x="422.5" y="68.0" text-anchor="middle" dominant-baseline="central">Research</text></g><g class="n chip sg"><rect x="510" y="50" width="135" height="36" rx="8"/><text class="bt" x="577.5" y="68.0" text-anchor="middle" dominant-baseline="central">Pivot lab</text></g><g class="n chip sg"><rect x="665" y="50" width="135" height="36" rx="8"/><text class="bt" x="732.5" y="68.0" text-anchor="middle" dominant-baseline="central">Amend bible</text></g><g class="n chip sg"><rect x="820" y="50" width="135" height="36" rx="8"/><text class="bt" x="887.5" y="68.0" text-anchor="middle" dominant-baseline="central">↻ Season retro</text></g><line class="ar" x1="182" y1="68" x2="197" y2="68" marker-end="url(#ah)"/><line class="ar" x1="337" y1="68" x2="352" y2="68" marker-end="url(#ah)"/><line class="ar" x1="492" y1="68" x2="507" y2="68" marker-end="url(#ah)"/><line class="ar" x1="647" y1="68" x2="662" y2="68" marker-end="url(#ah)"/><line class="ar" x1="802" y1="68" x2="817" y2="68" marker-end="url(#ah)"/><rect class="ring ac" x="40" y="110" width="920" height="262" rx="14"/><text class="ringt" x="60" y="136">Episode loop · days</text><g class="n chip ac"><rect x="70" y="150" width="125" height="36" rx="8"/><text class="bt" x="132.5" y="168.0" text-anchor="middle" dominant-baseline="central">Beat outline</text></g><g class="n chip ac"><rect x="217" y="150" width="125" height="36" rx="8"/><text class="bt" x="279.5" y="168.0" text-anchor="middle" dominant-baseline="central">Split sequences</text></g><g class="n chip ac"><rect x="364" y="150" width="125" height="36" rx="8"/><text class="bt" x="426.5" y="168.0" text-anchor="middle" dominant-baseline="central">Scene loops</text></g><g class="n chip ac"><rect x="511" y="150" width="125" height="36" rx="8"/><text class="bt" x="573.5" y="168.0" text-anchor="middle" dominant-baseline="central">Story reel</text></g><g class="n chip ac"><rect x="658" y="150" width="125" height="36" rx="8"/><text class="bt" x="720.5" y="168.0" text-anchor="middle" dominant-baseline="central">Braintrust</text></g><g class="n chip ac"><rect x="805" y="150" width="125" height="36" rx="8"/><text class="bt" x="867.5" y="168.0" text-anchor="middle" dominant-baseline="central">↻ Lock + render</text></g><line class="ar" x1="197" y1="168" x2="214" y2="168" marker-end="url(#ah)"/><line class="ar" x1="344" y1="168" x2="361" y2="168" marker-end="url(#ah)"/><line class="ar" x1="491" y1="168" x2="508" y2="168" marker-end="url(#ah)"/><line class="ar" x1="638" y1="168" x2="655" y2="168" marker-end="url(#ah)"/><line class="ar" x1="785" y1="168" x2="802" y2="168" marker-end="url(#ah)"/><rect class="ring mk" x="80" y="210" width="600" height="120" rx="12"/><text class="ringt" x="100" y="236">Scene loop · hours</text><g class="n chip mk"><rect x="100" y="252" width="96" height="36" rx="8"/><text class="bt" x="148.0" y="270.0" text-anchor="middle" dominant-baseline="central">Shot list</text></g><g class="n chip mk"><rect x="216" y="252" width="96" height="36" rx="8"/><text class="bt" x="264.0" y="270.0" text-anchor="middle" dominant-baseline="central">Panels</text></g><g class="n chip mk"><rect x="332" y="252" width="96" height="36" rx="8"/><text class="bt" x="380.0" y="270.0" text-anchor="middle" dominant-baseline="central">Gates</text></g><g class="n chip mk"><rect x="448" y="252" width="96" height="36" rx="8"/><text class="bt" x="496.0" y="270.0" text-anchor="middle" dominant-baseline="central">Judges</text></g><g class="n chip mk"><rect x="564" y="252" width="96" height="36" rx="8"/><text class="bt" x="612.0" y="270.0" text-anchor="middle" dominant-baseline="central">↻ Notes</text></g><line class="ar" x1="198" y1="270" x2="213" y2="270" marker-end="url(#ah)"/><line class="ar" x1="314" y1="270" x2="329" y2="270" marker-end="url(#ah)"/><line class="ar" x1="430" y1="270" x2="445" y2="270" marker-end="url(#ah)"/><line class="ar" x1="546" y1="270" x2="561" y2="270" marker-end="url(#ah)"/><text class="bs" x="100" y="312">Exits when the new board beats the old one blind</text><g class="n st"><rect x="700" y="222" width="240" height="100" rx="8"/></g><text class="bt" x="716" y="244">Exit rules</text><text class="bs" x="716" y="266">Scene: wins blind A/B, gates pass</text><text class="bs" x="716" y="286">Episode: showrunner lock</text><text class="bs" x="716" y="306">Season: retro passes replay tests</text><text class="bs" x="60" y="358">Each episode ends in a lock, and every release starts the next season round</text><text class="bs" x="30" y="398">Telemetry and research become pivot proposals; accepted pivots amend the bible the next episode reads</text></svg></div>
+    <figcaption>The scene loop runs inside the episode loop, which runs inside the season loop. Only the season loop can change the series bible. Episodes read the bible as it stood when their episode loop started.</figcaption>
+  </figure>
+</section>
+
+<section id="roster">
+  <h2>Agent roster</h2>
+  <p class="sub">Each agent has one job, a clear set of things it may not do, and specific inputs it reads and outputs it writes. "May not" matters as much as the job.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Agent</th><th>Owns</th><th>May not</th><th>Reads → writes</th></tr></thead>
+    <tbody>
+      <tr><td class="grp" colspan="4">Governance</td></tr>
+      <tr><td><span class="tag ac">Showrunner</span></td><td>Vision, pivot triage, note triage, proposing locks, drafting amendments</td><td>Score work; edit the charter without a vote; reject a note raised twice</td><td>Bible, notes, pivot queue → decisions with charter citations</td></tr>
+      <tr><td><span class="tag nt">Producer</span></td><td>State machine, budgets, schedule, kill switch, audit log</td><td>Make creative calls</td><td>Every event → budget state, stop orders</td></tr>
+      <tr><td><span class="tag nt">Retro agent</span></td><td>Season retrospectives; proposed changes to agent instructions and rubrics</td><td>Ship a change that hasn't passed the replay suite</td><td>Audit log, results → playbook, versioned agent instructions</td></tr>
+      <tr><td class="grp" colspan="4">Signals</td></tr>
+      <tr><td><span class="tag pv">Domain researchers</span></td><td>New findings in the show's subject area, turned into story hooks</td><td>Write story; skip the source and evidence fields</td><td>Literature, news → pivot proposals</td></tr>
+      <tr><td><span class="tag pv">Trend scout</span></td><td>Shifts in culture and format (length, cold opens, pacing norms)</td><td>Propose canon changes on its own</td><td>Platform trends → pivot proposals</td></tr>
+      <tr><td><span class="tag sg">Audience analyst</span></td><td>Maps telemetry onto story beats; clusters comments; tests hypotheses</td><td>Prescribe fixes (it reports symptoms only)</td><td>Telemetry, edit list → symptom notes, hypothesis results</td></tr>
+      <tr><td><span class="tag sg">Render reviewer</span></td><td>Watches the final video for continuity, identity drift and lip-sync problems</td><td>Change released video</td><td>Rendered episode → defect notes, playbook entries</td></tr>
+      <tr><td class="grp" colspan="4">Makers</td></tr>
+      <tr><td><span class="tag mk">Writers' room</span></td><td>Episode beats, treatments, scripts; punch-up passes</td><td>Contradict the canon ledger</td><td>Bible, assignment → beat sheet, script</td></tr>
+      <tr><td><span class="tag mk">Head of story</span></td><td>Splitting scripts into sequences, assignments, continuity ledger, merging notes</td><td>Lock scenes</td><td>Script → sequence assignments</td></tr>
+      <tr><td><span class="tag mk">Story artists ×N</span></td><td>Shot lists (panel, staging, camera, emotional beat) and panels</td><td>Change the style lock</td><td>Assignment, style refs → shot list, panels</td></tr>
+      <tr><td><span class="tag mk">Art direction</span></td><td>Model sheets, color script, style lock (LoRA or reference set)</td><td>Restyle mid-episode without an amendment</td><td>Bible → style assets</td></tr>
+      <tr><td><span class="tag mk">Editorial</span></td><td>Timing, scratch voice, temp score, the reel and its edit list</td><td>Drop beats silently</td><td>Panels → reel, edit list with beat IDs</td></tr>
+      <tr><td><span class="tag mk">Render</span></td><td>Final video, voice and score from the locked reel</td><td>Change the cut</td><td>Locked reel → episode video</td></tr>
+      <tr><td class="grp" colspan="4">Checks</td></tr>
+      <tr><td><span class="tag nt">Verification gates</span></td><td>Pass/fail checks: schema, script coverage, continuity, character identity, runtime</td><td>Give opinions</td><td>Artifacts → pass/fail with reasons</td></tr>
+      <tr><td><span class="tag jd">Pitch judges</span></td><td>Blind per-scene A/B on staging, emotion, pacing and humor</td><td>See makers' reasoning</td><td>Old vs new scene → preference with cited panels</td></tr>
+      <tr><td><span class="tag jd">Braintrust</span></td><td>Whole-episode screenings, symptom notes, votes on amendments</td><td>Prescribe fixes; lock</td><td>Reel → notes, votes</td></tr>
+      <tr><td><span class="tag jd">Audience sim</span></td><td>Persona panel: retell test, emotion curve, predicted drop-offs</td><td>Override real telemetry</td><td>Reel → predictions, calibrated against real data</td></tr>
+      <tr><td><span class="tag jd">Distinctiveness judge</span></td><td>Penalizes work that's too close to comparable shows or to the show's own past episodes</td><td>Veto on its own</td><td>Reel, comps → distinctiveness score</td></tr>
+      <tr><td><span class="tag jd">Held-out judges</span></td><td>A judge panel the makers have never been tuned against</td><td>Leak prompts to makers</td><td>Reel → independent score used to catch gaming</td></tr>
+      <tr><td><span class="tag nt">Devil's advocate</span></td><td>Challenges the showrunner's note rejections and pivot calls</td><td>Decide</td><td>Decisions → challenges</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="pivots">
+  <h2>Pivot protocol</h2>
+  <p class="sub">Researchers will keep sending pivots. The protocol decides how much each one may change, who can approve it, and how it's tested before any audience sees it.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Class</th><th>Example</th><th>Approval</th><th>Test before ship</th><th>Limit</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag nt">P0 texture</span></td><td>A real-world detail, a gag, a background prop</td><td>Showrunner alone</td><td>Gates only</td><td>Unlimited</td></tr>
+      <tr><td><span class="tag pv">P1 beat</span></td><td>Reworks a scene or an episode beat</td><td>Showrunner, plus winning the pitch judges' blind A/B</td><td>Scene loop</td><td>Per episode budget</td></tr>
+      <tr><td><span class="tag pv">P2 arc</span></td><td>Adds or bends a character or season arc</td><td>Braintrust supermajority (5 of 7), then a bible amendment</td><td>Pivot lab branch, two episodes deep</td><td>3 per season</td></tr>
+      <tr><td><span class="tag jd">P3 canon break</span></td><td>Contradicts established canon or the charter</td><td>Supermajority, a retcon plan, and the devil's advocate signs off</td><td>Pivot lab, plus replay against the whole canon ledger</td><td>1 per season, with a cooldown</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Pivot proposal</h3>
+      <p>Every proposal states what it touches and a hypothesis written before testing, so it can be judged by whether it worked afterward.</p>
+<pre>{
+  "id": "PV-043",
+  "from": "domain-researcher",
+  "class": "P2-arc",
+  "pitch": "An octopus rival who out-solves the station",
+  "grounding": "new study on cephalopod problem solving",
+  "touches": ["Mara", "season mystery"],
+  "hypothesis": "Lifts ep6 completion by 5% or more",
+  "cost": "re-beat 2 episodes"
+}</pre>
+    </div>
+    <div class="card">
+      <h3>Pivot lab</h3>
+      <p>A cheap branch of the story. Accepted P2 and P3 pivots are built only to animatic quality across the episodes they affect. Each variant runs against the current plan in blind A/B tests with the Braintrust, the audience sim and the held-out judges.</p>
+      <p>A pivot that wins is adopted and amends the bible. A pivot that loses goes back to the queue with a cooldown and a playbook note saying why. Released episodes are never changed, so the lab only ever affects episodes that haven't shipped.</p>
+    </div>
+  </div>
+</section>
+
+<section id="engagement">
+  <h2>Engagement and output video as inputs</h2>
+  <p class="sub">The edit list ties every second of the released video to a beat ID, so audience behavior maps onto the story rather than onto timestamps.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Signal</th><th>Mapped to</th><th>Becomes</th><th>Guardrail</th></tr></thead>
+    <tbody>
+      <tr><td>Retention curve (per second)</td><td>Beat IDs through the edit list</td><td>Symptom notes on weak beats</td><td>Compared against the series median, not raw numbers</td></tr>
+      <tr><td>Rewatch and scrub-back spikes</td><td>Beats and characters</td><td>Evidence of what audiences love</td><td>Minimum sample size before it counts</td></tr>
+      <tr><td>Drop-off points</td><td>Beats</td><td>Symptom notes</td><td>A note describes the problem, never the fix</td></tr>
+      <tr><td>Comment clusters</td><td>Characters, mysteries, open questions</td><td>Pivot proposals</td><td>Weighted by how many distinct viewers, so a loud minority doesn't dominate</td></tr>
+      <tr><td>Shares and clips</td><td>Hook moments</td><td>Playbook evidence</td><td>Capped weight, so the show doesn't drift into clickbait</td></tr>
+      <tr><td>Rendered video itself</td><td>Shots, characters</td><td>Defect notes from the render reviewer</td><td>Fixed going forward, never in released episodes</td></tr>
+      <tr><td>Sim versus real gap</td><td>Audience sim personas</td><td>Recalibrated sim weights</td><td>Recalibrated every release, with drift logged</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose note">Over time real engagement takes the place of human taste. Scenes labeled with how audiences actually responded go into the judge calibration set. That set is the only path by which audience data changes how the judges score.</p>
+</section>
+
+<section id="example">
+  <h2>Worked example: one pivot, end to end</h2>
+  <div class="show">
+    <div class="eyebrow">Example show (fictional, numbers illustrative)</div>
+    <dl>
+      <dt>Title</dt><dd>Low Tide Station</dd>
+      <dt>Premise</dt><dd>Mara, 11, runs a tidal research outpost with Pim, a hermit-crab maintenance robot.</dd>
+      <dt>Charter theme</dt><dd>Curiosity beats fear.</dd>
+      <dt>Non-negotiable #2</dt><dd>Mara solves the season's mystery herself.</dd>
+      <dt>State</dt><dd>Episode 3 released; episodes 4–6 in development.</dd>
+    </dl>
+  </div>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1040 640" role="img" aria-label="Sequence of sixteen messages between eight agents, from episode 3 telemetry to the episode 5 result feeding the playbook." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><line class="life" x1="82" y1="60" x2="82" y2="628"/><g class="n sg"><rect x="26" y="16" width="112" height="40" rx="8"/><text class="bt" x="82.0" y="36.0" text-anchor="middle" dominant-baseline="central">Telemetry</text></g><line class="life" x1="207" y1="60" x2="207" y2="628"/><g class="n sg"><rect x="151" y="16" width="112" height="40" rx="8"/><text class="bt" x="207.0" y="36.0" text-anchor="middle" dominant-baseline="central">Analyst</text></g><line class="life" x1="332" y1="60" x2="332" y2="628"/><g class="n pv"><rect x="276" y="16" width="112" height="40" rx="8"/><text class="bt" x="332.0" y="36.0" text-anchor="middle" dominant-baseline="central">Researcher</text></g><line class="life" x1="457" y1="60" x2="457" y2="628"/><g class="n ac"><rect x="401" y="16" width="112" height="40" rx="8"/><text class="bt" x="457.0" y="36.0" text-anchor="middle" dominant-baseline="central">Showrunner</text></g><line class="life" x1="582" y1="60" x2="582" y2="628"/><g class="n st"><rect x="526" y="16" width="112" height="40" rx="8"/><text class="bt" x="582.0" y="36.0" text-anchor="middle" dominant-baseline="central">Bible</text></g><line class="life" x1="707" y1="60" x2="707" y2="628"/><g class="n pv"><rect x="651" y="16" width="112" height="40" rx="8"/><text class="bt" x="707.0" y="36.0" text-anchor="middle" dominant-baseline="central">Pivot lab</text></g><line class="life" x1="832" y1="60" x2="832" y2="628"/><g class="n mk"><rect x="776" y="16" width="112" height="40" rx="8"/><text class="bt" x="832.0" y="36.0" text-anchor="middle" dominant-baseline="central">Makers</text></g><line class="life" x1="957" y1="60" x2="957" y2="628"/><g class="n jd"><rect x="901" y="16" width="112" height="40" rx="8"/><text class="bt" x="957.0" y="36.0" text-anchor="middle" dominant-baseline="central">Judges</text></g><line class="ar" x1="86" y1="90" x2="201" y2="90" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="83" text-anchor="middle">1  ep3 telemetry</text><line class="ar" x1="211" y1="124" x2="451" y2="124" marker-end="url(#ah)"/><text class="lbl" x="332.0" y="117" text-anchor="middle">2  symptom notes</text><line class="ar" x1="336" y1="158" x2="451" y2="158" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="151" text-anchor="middle">3  PV-043 study</text><line class="ar" x1="461" y1="192" x2="576" y2="192" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="185" text-anchor="middle">4  charter check</text><line class="ar ret" x1="578" y1="226" x2="463" y2="226" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="219" text-anchor="middle">5  conflict #2</text><line class="ar" x1="461" y1="260" x2="701" y2="260" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="253" text-anchor="middle">6  042, 043′ to lab</text><line class="ar" x1="461" y1="294" x2="826" y2="294" marker-end="url(#ah)"/><text class="lbl" x="644.5" y="287" text-anchor="middle">7  041 into ep4</text><line class="ar" x1="711" y1="328" x2="951" y2="328" marker-end="url(#ah)"/><text class="lbl" x="832.0" y="321" text-anchor="middle">8  A/B animatics</text><line class="ar ret" x1="953" y1="362" x2="463" y2="362" marker-end="url(#ah)"/><text class="lbl" x="707.0" y="355" text-anchor="middle">9  042 wins 5–2</text><line class="ar" x1="461" y1="396" x2="576" y2="396" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="389" text-anchor="middle">10  amend A-007</text><line class="ar" x1="461" y1="430" x2="826" y2="430" marker-end="url(#ah)"/><text class="lbl" x="644.5" y="423" text-anchor="middle">11  re-beat ep5–6</text><line class="ar" x1="836" y1="464" x2="951" y2="464" marker-end="url(#ah)"/><text class="lbl" x="894.5" y="457" text-anchor="middle">12  scenes, reel</text><line class="ar ret" x1="953" y1="498" x2="463" y2="498" marker-end="url(#ah)"/><text class="lbl" x="707.0" y="491" text-anchor="middle">13  pass, propose lock</text><line class="ar" x1="453" y1="532" x2="88" y2="532" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="525" text-anchor="middle">14  lock, ship ep5</text><line class="ar" x1="86" y1="566" x2="201" y2="566" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="559" text-anchor="middle">15  H-019: +4 pts</text><line class="ar" x1="211" y1="600" x2="576" y2="600" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="593" text-anchor="middle">16  playbook, recalibrate</text></svg></div>
+    <figcaption>Sixteen messages from episode 3 telemetry to the episode 5 result. Dashed arrows are replies. The showrunner is the hub but never scores anything; the judges score but never lock.</figcaption>
+  </figure>
+
+  <div class="phase">
+    <div class="when"><b>Day 0–2</b>Steps 1–3</div>
+    <div class="body">
+      <h3>Signals arrive</h3>
+      <div class="who"><span class="tag sg">Telemetry</span><span class="tag sg">Audience analyst</span><span class="tag pv">Domain researcher</span></div>
+      <ol>
+        <li>Episode 3 telemetry lands. Retention drops 18 points below the series median during beat S3.B4, the tide-chart explanation. Rewatch spikes cluster on Pim's moments, and 22% of distinct commenters mention Pim.</li>
+        <li>The analyst files symptom notes. It also proposes PV-041 (P1): make the exposition Pim-led. And PV-042 (P2): give Pim a season arc around fear of the tide.</li>
+        <li>The domain researcher files PV-043 (P2), the octopus rival, based on new research.</li>
+      </ol>
+<pre>{ "id": "N-311", "source": "telemetry", "beat": "S3.B4",
+  "t": "02:10–02:40", "severity": "beat",
+  "symptom": "Retention 18 pts below series median during tide-chart explanation",
+  "evidence": ["retention_curve", "scrub_away_rate"] }</pre>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 2</b>Steps 4–7</div>
+    <div class="body">
+      <h3>Triage against the charter</h3>
+      <div class="who"><span class="tag ac">Showrunner</span><span class="tag nt">Series bible</span><span class="tag nt">Devil's advocate</span></div>
+      <ol>
+        <li>The showrunner checks each proposal against the bible. PV-043 conflicts with non-negotiable #2: the octopus would solve the mystery, not Mara.</li>
+        <li>Instead of rejecting it, the showrunner reframes it as PV-043′: the octopus teaches, and Mara solves. The devil's advocate challenges the reframe. The showrunner keeps it with a written rationale.</li>
+        <li>PV-041 is a P1, so it goes straight into episode 4's scene loop. PV-042 and PV-043′ go to the pivot lab.</li>
+      </ol>
+<pre>{ "pivot": "PV-043", "decision": "reframe",
+  "charter_cite": ["theme", "non-negotiable #2"],
+  "reframe": "Octopus teaches; Mara solves",
+  "route": "pivot-lab", "challenge": "DA-17 answered" }</pre>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 3–5</b>Steps 8–10</div>
+    <div class="body">
+      <h3>Pivot lab</h3>
+      <div class="who"><span class="tag pv">Pivot lab</span><span class="tag mk">Makers</span><span class="tag jd">Braintrust</span><span class="tag jd">Audience sim</span><span class="tag jd">Held-out judges</span></div>
+      <ol>
+        <li>The makers build animatic variants of episodes 5 and 6: the baseline plan, the plan with PV-042, and the plan with PV-043′.</li>
+        <li>PV-042 wins the Braintrust's blind A/B 5–2, a supermajority. The retell test matches the charter's arc at 0.86 and distinctiveness goes up. PV-043′ wins only 4–3, so it's parked with a three-episode cooldown and a playbook note.</li>
+        <li>The showrunner files amendment A-007.</li>
+      </ol>
+<pre>{ "id": "A-007", "type": "arc-add",
+  "text": "Pim fears the tide; overcomes it in ep8",
+  "vote": "5–2", "evidence": ["PL-12 pairwise", "retell 0.86"],
+  "hypothesis": "H-019: Pim-led explainers cut the explainer dip by 8+ pts" }</pre>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 5–12</b>Steps 11–13</div>
+    <div class="body">
+      <h3>Episode loop</h3>
+      <div class="who"><span class="tag mk">Writers' room</span><span class="tag mk">Head of story</span><span class="tag mk">Artists ×9</span><span class="tag nt">Gates</span><span class="tag jd">Pitch judges</span></div>
+      <ol>
+        <li>The writers' room re-beats episodes 5 and 6 from the amended bible. The head of story splits episode 5 into nine sequences.</li>
+        <li>The gates catch Pim's antenna color drifting from his model sheet in sequence 4; it's fixed before any judge sees it. A Braintrust note on a slow middle act comes up at two screenings in a row, so the showrunner has to act on it.</li>
+        <li>Every scene wins its blind A/B and the held-out judges agree with the main panels. The showrunner proposes the lock, the producer confirms the budget, and render begins.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 14–16</b>Steps 14–16</div>
+    <div class="body">
+      <h3>Release and learn</h3>
+      <div class="who"><span class="tag sg">Telemetry</span><span class="tag sg">Audience analyst</span><span class="tag nt">Playbook</span><span class="tag sg">Sim calibration</span></div>
+      <div class="kpis">
+        <div class="kpi"><div class="k">H-019 target</div><div class="v">+8 pts</div><div class="d">explainer dip reduction</div></div>
+        <div class="kpi"><div class="k">Actual</div><div class="v">+4 pts</div><div class="d">partial confirmation</div></div>
+        <div class="kpi"><div class="k">Sim predicted</div><div class="v">+10 pts</div><div class="d">overestimated</div></div>
+        <div class="kpi"><div class="k">Correction</div><div class="v">0.8×</div><div class="d">character-demand weight</div></div>
+      </div>
+      <p class="note">The result goes into the playbook as PB-033 with medium confidence. The audience sim gets recalibrated because it overestimated the effect. In the next round, PV-043′ comes off cooldown and is retested against the sim with its corrected weights.</p>
+    </div>
+  </div>
+</section>
+
+<section id="evolution">
+  <h2>How the system itself evolves</h2>
+  <div class="grid2">
+    <div class="card"><h3>Series bible</h3><p>Versioned charter and canon ledger. Every change is an amendment with the vote, the evidence and a link to the hypothesis behind it. Each episode records which bible version it was built from.</p></div>
+    <div class="card"><h3>Playbook</h3><p>Lessons learned, each with evidence, a confidence level and an expiry date. For example: "cold opens under 20 seconds retain better," with links to the hypotheses that showed it. Lessons that stop holding up decay out of the playbook.</p></div>
+    <div class="card"><h3>Judge calibration set</h3><p>Grows with every release as scenes get labeled by real audience response. This is how audience behavior gradually replaces human taste, without ever handing engagement the power to lock.</p></div>
+    <div class="card"><h3>Agent instructions as code</h3><p>Each season the retro agent proposes changes to agent instructions and rubrics. A change is replayed against past episodes and must win against the held-out judges without regressions before it's adopted. Every version is pinned and logged.</p></div>
+  </div>
+</section>
+
+<section id="rails">
+  <h2>Safety rails</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Monitor</th><th>Trips when</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td>Gaming the judges</td><td>Rubric scores rise while the held-out judges and the retell test stay flat</td><td>Freeze the run, rotate judges, open a retro</td></tr>
+      <tr><td>Charter drift</td><td>Episode summaries drift away from the charter across 3 episodes</td><td>Force a showrunner review of the charter against recent episodes</td></tr>
+      <tr><td>Chasing metrics</td><td>Engagement goes up while the distinctiveness score falls</td><td>Halve the weight given to engagement for one round</td></tr>
+      <tr><td>Canon contradictions</td><td>The continuity gate finds a fact that contradicts the canon ledger</td><td>Block the lock and route it to the head of story</td></tr>
+      <tr><td>No convergence</td><td>No blind A/B wins after K rounds at a level</td><td>One re-break to the outline, then ship the best version so far</td></tr>
+      <tr><td>Budget</td><td>Cost or time goes past its cap</td><td>The producer stops the run and ships the best version so far</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="prose note">Every decision is logged with its charter citation and evidence. No one approves anything inside the loop, but a person can audit any run afterward.</p>
+</section>
+
+<div class="part" id="part-2">
+  <div class="eyebrow">Part 2</div>
+  <h2>Production, post and distribution</h2>
+  <p class="sub">The locked story reel becomes a finished episode rendered in Unreal Engine, then platform variants, then posts whose results feed the story room. The orchestration follows the Fermi agent-orchestration kit and its content-factory adaptation: makers build, checkers verify, one orchestrator locks, and GitHub holds all state.</p>
+</div>
+
+<div class="roomhead" id="room-production">
+  <div class="eyebrow">Part 2 · room 1 of 4</div>
+  <h2>Production room</h2>
+  <p class="sub">Orchestrator: the line producer. Turns the locked story reel into a locked master rendered in Unreal Engine.</p>
+</div>
+
+<section id="production">
+  <h2>Production orchestration</h2>
+  <p class="sub">Production gets its own orchestrator, the line producer, so the story showrunner never locks a shot and the line producer never changes the story. Six actors, each with a hard limit.</p>
+  <div class="actors">
+    <div class="actor"><span class="tag ac">Line producer</span><p>Files shot tickets from the locked reel, launches every worker, rules after three rounds of notes, and is the only role that locks a production stage.</p><p class="never">May never build or check.</p></div>
+    <div class="actor"><span class="tag mk">Makers</span><p>One artifact per ticket, on its own branch and worktree, built only from locked assets. Each posts READY, ADDRESSED or BLOCKED and exits.</p><p class="never">May never lock, merge or touch another shot.</p></div>
+    <div class="actor"><span class="tag nt">Lint (factory CLI)</span><p>Deterministic checks: same input, same result. Returns PASS, FAIL or ERROR. ERROR means the check couldn't run and is never read as either.</p><p class="never">May never make a judgment call.</p></div>
+    <div class="actor"><span class="tag jd">Checkers</span><p>Judged review by an agent that didn't make the work, from a different model family where possible. Notes are Blockers or Issues; only a Blocker stops a lock.</p><p class="never">May never fix the work.</p></div>
+    <div class="actor"><span class="tag ac">Showrunner</span><p>Owns the locked reel, bible and canon. Rules on any production question that would change the story, such as cutting a beat that's too costly to render.</p><p class="never">May never lock a production stage.</p></div>
+    <div class="actor"><span class="tag nt">Producer</span><p>Stands in for a human owner's greenlight. Spending over budget and anything irreversible, such as a public post, passes its automatic gate.</p><p class="never">May never make a creative call.</p></div>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Production rules</h3>
+      <ol>
+        <li>A verdict counts only if it names the head commit and the manifest hash, is newer than the maker's last READY or ADDRESSED, and comes from the stage's named checker.</li>
+        <li>Stages lock cheapest first. No final render until layout, animation, simulation and lighting are locked on previews.</li>
+        <li>Makers see only locked assets. A new asset version marks every shot that uses it stale, at that shot's earliest broken stage.</li>
+        <li>A simulation is locked as a cache, not as solver settings. Renders only read caches.</li>
+        <li>After three rounds of notes on one ticket, the line producer rules.</li>
+        <li>Nothing reaches a public feed without a platform gate PASS on the exact file being posted.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Why Unreal instead of video generation</h3>
+      <p>In a 3D engine the scene is data. A character's height, a prop's position, a camera's focal length and the time of day are values you can read, so continuity and physics become tests with right answers. A generated video only gives you pixels, so every check is a judgment call.</p>
+      <p>The same scene can also be rendered again: from a second camera for a vertical cut, at higher quality for the final, or after one fix without disturbing anything else.</p>
+    </div>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Department</th><th>Maker</th><th>Artifact</th><th>Lint</th><th>Judged checker</th></tr></thead>
+    <tbody>
+      <tr><td>Assets</td><td><span class="tag mk">asset-builder</span></td><td>Character, prop and set packages</td><td>asset-validator</td><td><span class="tag jd">look-dev reviewer</span></td></tr>
+      <tr><td>Rigging</td><td><span class="tag mk">rigger</span></td><td>Control Rig plus a range-of-motion sequence</td><td>rig-tester</td><td><span class="tag jd">deformation reviewer</span></td></tr>
+      <tr><td>Layout</td><td><span class="tag mk">layout-artist</span></td><td>Level Sequence with 16:9 and 9:16 cameras</td><td>layout-checker</td><td><span class="tag jd">cinematography reviewer</span></td></tr>
+      <tr><td>Animation</td><td><span class="tag mk">animator</span></td><td>Body and facial animation, lip-sync</td><td>motion-checker</td><td><span class="tag jd">performance reviewer</span></td></tr>
+      <tr><td>Simulation</td><td><span class="tag mk">sim-artist</span></td><td>Chaos caches for cloth, hair, water, destruction</td><td>sim-determinism check</td><td>None: deterministic only</td></tr>
+      <tr><td>Lighting</td><td><span class="tag mk">lighter</span></td><td>Master lighting per set, shot lighting</td><td>exposure and color lint</td><td><span class="tag jd">look-dev reviewer</span></td></tr>
+      <tr><td>Render</td><td><span class="tag mk">render-wrangler</span></td><td>Final frames per shot</td><td>render QA</td><td><span class="tag jd">dailies reviewer</span></td></tr>
+      <tr><td>Sound + conform</td><td><span class="tag mk">sound-mixer</span>, <span class="tag mk">conform-editor</span></td><td>Mix, stems, master and edit list with beat IDs</td><td>loudness and conform lint</td><td><span class="tag jd">continuity supervisor</span></td></tr>
+      <tr><td>Post</td><td><span class="tag mk">platform-editor</span>, <span class="tag mk">caption-writer</span>, <span class="tag mk">cta-writer</span></td><td>Platform variants, captions, CTAs, thumbnails</td><td>platform gate</td><td><span class="tag jd">charter and spoiler judge</span></td></tr>
+      <tr><td>Distribution</td><td><span class="tag sg">channel agents</span>, <span class="tag sg">community analyst</span></td><td>Posts, telemetry pulls, comment clusters</td><td>publish check: post exists, processed, disclosure set</td><td>None</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="prod-arch">
+  <h2>Production room architecture</h2>
+  <p class="sub">The same five layers as the story room. The line producer is the only role that locks. The showrunner answers story questions but never locks a shot.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 672" role="img" aria-label="Production room architecture: story package, style lock, bible and lab settings feed the line producer, who launches six maker departments. Their work passes lint, golden test levels, judged checkers and a cross-shot pass. Notes return to the line producer; on lock the master goes out, and stale or vertical shots re-enter the makers." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="30" width="1060" height="100" rx="10"/><text class="lane" x="24" y="84">Inputs</text><rect class="band" x="10" y="150" width="1060" height="100" rx="10"/><text class="lane" x="24" y="204">Governance</text><rect class="band" x="10" y="270" width="1060" height="100" rx="10"/><text class="lane" x="24" y="324">Makers</text><rect class="band" x="10" y="390" width="1060" height="100" rx="10"/><text class="lane" x="24" y="444">Checks</text><rect class="band" x="10" y="510" width="1060" height="100" rx="10"/><text class="lane" x="24" y="564">Outputs</text><line class="ar" x1="257.5" y1="112" x2="257.5" y2="140"/><line class="ar" x1="472.5" y1="112" x2="472.5" y2="140"/><line class="ar" x1="687.5" y1="112" x2="687.5" y2="140"/><line class="ar" x1="902.5" y1="112" x2="902.5" y2="140"/><line class="ar" x1="257.5" y1="140" x2="902.5" y2="140"/><line class="ar" x1="902.5" y1="140" x2="902.5" y2="165" marker-end="url(#ah)"/><line class="ar" x1="902.5" y1="232" x2="902.5" y2="260"/><line class="ar" x1="221.7" y1="260" x2="938.4" y2="260"/><line class="ar" x1="221.7" y1="260" x2="221.7" y2="285" marker-end="url(#ah)"/><line class="ar" x1="364.9" y1="260" x2="364.9" y2="285" marker-end="url(#ah)"/><line class="ar" x1="508.3" y1="260" x2="508.3" y2="285" marker-end="url(#ah)"/><line class="ar" x1="651.6" y1="260" x2="651.6" y2="285" marker-end="url(#ah)"/><line class="ar" x1="794.9" y1="260" x2="794.9" y2="285" marker-end="url(#ah)"/><line class="ar" x1="938.4" y1="260" x2="938.4" y2="285" marker-end="url(#ah)"/><line class="ar" x1="221.7" y1="352" x2="221.7" y2="380"/><line class="ar" x1="364.9" y1="352" x2="364.9" y2="380"/><line class="ar" x1="508.3" y1="352" x2="508.3" y2="380"/><line class="ar" x1="651.6" y1="352" x2="651.6" y2="380"/><line class="ar" x1="794.9" y1="352" x2="794.9" y2="380"/><line class="ar" x1="938.4" y1="352" x2="938.4" y2="380"/><line class="ar" x1="221.7" y1="380" x2="938.4" y2="380"/><line class="ar" x1="257.5" y1="380" x2="257.5" y2="405" marker-end="url(#ah)"/><line class="ar" x1="357.0" y1="440" x2="372.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="572.0" y1="440" x2="587.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="787.0" y1="440" x2="802.0" y2="440" marker-end="url(#ah)"/><path class="ar" d="M1000.0 440 H1026 V200 H1004.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1032" y="324.0" text-anchor="start">notes</text><path class="ar" d="M902.5 472 V500 H257.5 V525" fill="none" marker-end="url(#ah)"/><text class="lbl" x="580.0" y="495" text-anchor="middle">on lock</text><path class="ar loop" d="M902.5 592 V636 H146 V320 H157.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="524.25" y="654" text-anchor="middle">stale shots and 9:16 requests re-enter at their earliest broken stage</text><g class="n pv"><rect x="160.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="72.0" text-anchor="middle" dominant-baseline="central">Locked story package</text><text class="bs" x="257.5" y="91.0" text-anchor="middle" dominant-baseline="central">reel, edit list, beat IDs</text></g><g class="n st"><rect x="375.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="72.0" text-anchor="middle" dominant-baseline="central">Style lock</text><text class="bs" x="472.5" y="91.0" text-anchor="middle" dominant-baseline="central">model sheets, color script</text></g><g class="n st"><rect x="590.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="72.0" text-anchor="middle" dominant-baseline="central">Bible version</text><text class="bs" x="687.5" y="91.0" text-anchor="middle" dominant-baseline="central">canon, amendments</text></g><g class="n sg"><rect x="805.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="72.0" text-anchor="middle" dominant-baseline="central">Lab KEEPs</text><text class="bs" x="902.5" y="91.0" text-anchor="middle" dominant-baseline="central">tuned render settings</text></g><g class="n"><rect x="160.0" y="168" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="192.0" text-anchor="middle" dominant-baseline="central">Producer gate</text><text class="bs" x="257.5" y="211.0" text-anchor="middle" dominant-baseline="central">budget, spend</text></g><g class="n st"><rect x="375.0" y="168" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="192.0" text-anchor="middle" dominant-baseline="central">Asset registry</text><text class="bs" x="472.5" y="211.0" text-anchor="middle" dominant-baseline="central">versions, dependents</text></g><g class="n"><rect x="590.0" y="168" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="192.0" text-anchor="middle" dominant-baseline="central">Showrunner</text><text class="bs" x="687.5" y="211.0" text-anchor="middle" dominant-baseline="central">story rulings only</text></g><g class="n ac"><rect x="805.0" y="168" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="192.0" text-anchor="middle" dominant-baseline="central">Line producer</text><text class="bs" x="902.5" y="211.0" text-anchor="middle" dominant-baseline="central">launch, rule, lock</text></g><g class="n mk"><rect x="160.0" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="221.65" y="312.0" text-anchor="middle" dominant-baseline="central">Assets + rigs</text><text class="bs" x="221.65" y="331.0" text-anchor="middle" dominant-baseline="central">models, rigs</text></g><g class="n mk"><rect x="303.3" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="364.95" y="312.0" text-anchor="middle" dominant-baseline="central">Layout</text><text class="bs" x="364.95" y="331.0" text-anchor="middle" dominant-baseline="central">sets, two cameras</text></g><g class="n mk"><rect x="446.7" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="508.34999999999997" y="312.0" text-anchor="middle" dominant-baseline="central">Animation</text><text class="bs" x="508.34999999999997" y="331.0" text-anchor="middle" dominant-baseline="central">body, face, lips</text></g><g class="n mk"><rect x="590.0" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="651.65" y="312.0" text-anchor="middle" dominant-baseline="central">Simulation</text><text class="bs" x="651.65" y="331.0" text-anchor="middle" dominant-baseline="central">Chaos caches</text></g><g class="n mk"><rect x="733.3" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="794.9499999999999" y="312.0" text-anchor="middle" dominant-baseline="central">Lighting</text><text class="bs" x="794.9499999999999" y="331.0" text-anchor="middle" dominant-baseline="central">master, shot</text></g><g class="n mk"><rect x="876.7" y="288" width="123.3" height="64" rx="8"/><text class="bt" x="938.35" y="312.0" text-anchor="middle" dominant-baseline="central">Render + mix</text><text class="bs" x="938.35" y="331.0" text-anchor="middle" dominant-baseline="central">farm, conform</text></g><g class="n"><rect x="160.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="432.0" text-anchor="middle" dominant-baseline="central">factory lint</text><text class="bs" x="257.5" y="451.0" text-anchor="middle" dominant-baseline="central">PASS · FAIL · ERROR</text></g><g class="n"><rect x="375.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="432.0" text-anchor="middle" dominant-baseline="central">Golden test levels</text><text class="bs" x="472.5" y="451.0" text-anchor="middle" dominant-baseline="central">physics, rigs, color</text></g><g class="n jd"><rect x="590.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="432.0" text-anchor="middle" dominant-baseline="central">Judged checkers</text><text class="bs" x="687.5" y="451.0" text-anchor="middle" dominant-baseline="central">look, acting, camera</text></g><g class="n jd"><rect x="805.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="432.0" text-anchor="middle" dominant-baseline="central">Cross-shot pass</text><text class="bs" x="902.5" y="451.0" text-anchor="middle" dominant-baseline="central">world-state diff</text></g><g class="n ac"><rect x="160.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="552.0" text-anchor="middle" dominant-baseline="central">Locked master</text><text class="bs" x="257.5" y="571.0" text-anchor="middle" dominant-baseline="central">master, stems, edit list</text></g><g class="n st"><rect x="375.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="552.0" text-anchor="middle" dominant-baseline="central">Media store</text><text class="bs" x="472.5" y="571.0" text-anchor="middle" dominant-baseline="central">frames, caches</text></g><g class="n st"><rect x="590.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="552.0" text-anchor="middle" dominant-baseline="central">GitHub</text><text class="bs" x="687.5" y="571.0" text-anchor="middle" dominant-baseline="central">markers, locks</text></g><g class="n"><rect x="805.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="552.0" text-anchor="middle" dominant-baseline="central">Re-render queue</text><text class="bs" x="902.5" y="571.0" text-anchor="middle" dominant-baseline="central">stale and vertical shots</text></g><line class="ar" x1="789.0" y1="200" x2="801.0" y2="200" marker-start="url(#ah)" marker-end="url(#ah)"/></svg></div>
+    <div class="legend">
+      <span><i class="sw ac"></i>Orchestrator</span><span><i class="sw mk"></i>Makers</span><span><i class="sw jd"></i>Judged checks</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span><span><i class="sw pv"></i>Story packets and research</span><span><i class="sw st"></i>Dashed outline: shared state</span>
+    </div>
+    <figcaption>Inputs fan in to the line producer. Every maker's work passes the lint first, then the golden test levels, judged checkers and the cross-shot pass. Notes go back to the line producer. Shots made stale by a new asset version, and 9:16 re-render requests from post, come back in at the makers.</figcaption>
+  </figure>
+</section>
+
+<section id="prod-loops">
+  <h2>Production loops on three clocks</h2>
+  <p class="sub">Shots iterate in hours, sequences in days, and the whole episode in about a week. Only the episode loop hands anything to another room.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1000 420" role="img" aria-label="Production loops: shot loop inside sequence loop inside episode loop, each with an exit rule." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="ring sg" x="10" y="10" width="980" height="400" rx="16"/><text class="ringt" x="30" y="36">Episode loop · week</text><g class="n chip sg"><rect x="45" y="50" width="135" height="36" rx="8"/><text class="bt" x="112.5" y="68.0" text-anchor="middle" dominant-baseline="central">Intake</text></g><g class="n chip sg"><rect x="200" y="50" width="135" height="36" rx="8"/><text class="bt" x="267.5" y="68.0" text-anchor="middle" dominant-baseline="central">Asset updates</text></g><g class="n chip sg"><rect x="355" y="50" width="135" height="36" rx="8"/><text class="bt" x="422.5" y="68.0" text-anchor="middle" dominant-baseline="central">Sequences</text></g><g class="n chip sg"><rect x="510" y="50" width="135" height="36" rx="8"/><text class="bt" x="577.5" y="68.0" text-anchor="middle" dominant-baseline="central">Conform + mix</text></g><g class="n chip sg"><rect x="665" y="50" width="135" height="36" rx="8"/><text class="bt" x="732.5" y="68.0" text-anchor="middle" dominant-baseline="central">Master lock</text></g><g class="n chip sg"><rect x="820" y="50" width="135" height="36" rx="8"/><text class="bt" x="887.5" y="68.0" text-anchor="middle" dominant-baseline="central">↻ To post</text></g><line class="ar" x1="182" y1="68" x2="197" y2="68" marker-end="url(#ah)"/><line class="ar" x1="337" y1="68" x2="352" y2="68" marker-end="url(#ah)"/><line class="ar" x1="492" y1="68" x2="507" y2="68" marker-end="url(#ah)"/><line class="ar" x1="647" y1="68" x2="662" y2="68" marker-end="url(#ah)"/><line class="ar" x1="802" y1="68" x2="817" y2="68" marker-end="url(#ah)"/><rect class="ring ac" x="40" y="110" width="920" height="262" rx="14"/><text class="ringt" x="60" y="136">Sequence loop · days</text><g class="n chip ac"><rect x="70" y="150" width="125" height="36" rx="8"/><text class="bt" x="132.5" y="168.0" text-anchor="middle" dominant-baseline="central">Shots by stage</text></g><g class="n chip ac"><rect x="217" y="150" width="125" height="36" rx="8"/><text class="bt" x="279.5" y="168.0" text-anchor="middle" dominant-baseline="central">Cross-shot pass</text></g><g class="n chip ac"><rect x="364" y="150" width="125" height="36" rx="8"/><text class="bt" x="426.5" y="168.0" text-anchor="middle" dominant-baseline="central">Dailies</text></g><g class="n chip ac"><rect x="511" y="150" width="125" height="36" rx="8"/><text class="bt" x="573.5" y="168.0" text-anchor="middle" dominant-baseline="central">Final render</text></g><g class="n chip ac"><rect x="658" y="150" width="125" height="36" rx="8"/><text class="bt" x="720.5" y="168.0" text-anchor="middle" dominant-baseline="central">Stale re-opens</text></g><g class="n chip ac"><rect x="805" y="150" width="125" height="36" rx="8"/><text class="bt" x="867.5" y="168.0" text-anchor="middle" dominant-baseline="central">↻ Sequence lock</text></g><line class="ar" x1="197" y1="168" x2="214" y2="168" marker-end="url(#ah)"/><line class="ar" x1="344" y1="168" x2="361" y2="168" marker-end="url(#ah)"/><line class="ar" x1="491" y1="168" x2="508" y2="168" marker-end="url(#ah)"/><line class="ar" x1="638" y1="168" x2="655" y2="168" marker-end="url(#ah)"/><line class="ar" x1="785" y1="168" x2="802" y2="168" marker-end="url(#ah)"/><rect class="ring mk" x="80" y="210" width="600" height="120" rx="12"/><text class="ringt" x="100" y="236">Shot loop · hours</text><g class="n chip mk"><rect x="100" y="252" width="96" height="36" rx="8"/><text class="bt" x="148.0" y="270.0" text-anchor="middle" dominant-baseline="central">Ticket</text></g><g class="n chip mk"><rect x="216" y="252" width="96" height="36" rx="8"/><text class="bt" x="264.0" y="270.0" text-anchor="middle" dominant-baseline="central">Build</text></g><g class="n chip mk"><rect x="332" y="252" width="96" height="36" rx="8"/><text class="bt" x="380.0" y="270.0" text-anchor="middle" dominant-baseline="central">Preview</text></g><g class="n chip mk"><rect x="448" y="252" width="96" height="36" rx="8"/><text class="bt" x="496.0" y="270.0" text-anchor="middle" dominant-baseline="central">Lint</text></g><g class="n chip mk"><rect x="564" y="252" width="96" height="36" rx="8"/><text class="bt" x="612.0" y="270.0" text-anchor="middle" dominant-baseline="central">↻ Judge</text></g><line class="ar" x1="198" y1="270" x2="213" y2="270" marker-end="url(#ah)"/><line class="ar" x1="314" y1="270" x2="329" y2="270" marker-end="url(#ah)"/><line class="ar" x1="430" y1="270" x2="445" y2="270" marker-end="url(#ah)"/><line class="ar" x1="546" y1="270" x2="561" y2="270" marker-end="url(#ah)"/><text class="bs" x="100" y="312">Exits on a fresh PASS and APPROVED for the current head</text><g class="n st"><rect x="700" y="222" width="240" height="100" rx="8"/></g><text class="bt" x="716" y="244">Exit rules</text><text class="bs" x="716" y="266">Shot: fresh PASS + APPROVED</text><text class="bs" x="716" y="286">Sequence: continuity diff clean</text><text class="bs" x="716" y="306">Episode: master matches the cut</text><text class="bs" x="60" y="358">Stale shots re-enter the shot loop at their earliest broken stage</text><text class="bs" x="30" y="398">The locked master, stems and edit list go to post; tuned render settings come back from the lab</text></svg></div>
+    <figcaption>A shot leaves its loop only with a fresh lint PASS and a judged APPROVED on the current head. A sequence locks when the cross-shot continuity diff is clean. The episode locks when the master matches the locked cut frame for frame.</figcaption>
+  </figure>
+</section>
+
+<section id="ladder">
+  <h2>Stage ladder</h2>
+  <p class="sub">The stages follow Pixar's production pipeline, from story and art through modeling, rigging, sets and cameras, animation, simulation, lighting and rendering. Each shot climbs them in order, and every iteration below the final render runs on fast previews.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 440" role="img" aria-label="Nine production stages climbing left to right from intake to sound and conform. Layout through lighting iterate on previews; only render and sound use the farm. Assets, simulation caches and frames go to the media store." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><g class="n ac"><rect x="20" y="270" width="110" height="48" rx="8"/><text class="bt" x="75.0" y="286.0" text-anchor="middle" dominant-baseline="central">Intake</text><text class="bs" x="75.0" y="305.0" text-anchor="middle" dominant-baseline="central">shot tickets</text></g><g class="n mk"><rect x="136" y="244" width="110" height="48" rx="8"/><text class="bt" x="191.0" y="260.0" text-anchor="middle" dominant-baseline="central">Assets</text><text class="bs" x="191.0" y="279.0" text-anchor="middle" dominant-baseline="central">model, surface</text></g><g class="n mk"><rect x="252" y="218" width="110" height="48" rx="8"/><text class="bt" x="307.0" y="234.0" text-anchor="middle" dominant-baseline="central">Rigging</text><text class="bs" x="307.0" y="253.0" text-anchor="middle" dominant-baseline="central">Control Rig</text></g><g class="n mk"><rect x="368" y="192" width="110" height="48" rx="8"/><text class="bt" x="423.0" y="208.0" text-anchor="middle" dominant-baseline="central">Layout</text><text class="bs" x="423.0" y="227.0" text-anchor="middle" dominant-baseline="central">sets, cameras</text></g><g class="n mk"><rect x="484" y="166" width="110" height="48" rx="8"/><text class="bt" x="539.0" y="182.0" text-anchor="middle" dominant-baseline="central">Animation</text><text class="bs" x="539.0" y="201.0" text-anchor="middle" dominant-baseline="central">performance</text></g><g class="n mk"><rect x="600" y="140" width="110" height="48" rx="8"/><text class="bt" x="655.0" y="156.0" text-anchor="middle" dominant-baseline="central">Simulation</text><text class="bs" x="655.0" y="175.0" text-anchor="middle" dominant-baseline="central">Chaos, cached</text></g><g class="n mk"><rect x="716" y="114" width="110" height="48" rx="8"/><text class="bt" x="771.0" y="130.0" text-anchor="middle" dominant-baseline="central">Lighting</text><text class="bs" x="771.0" y="149.0" text-anchor="middle" dominant-baseline="central">master, shot</text></g><g class="n mk"><rect x="832" y="88" width="110" height="48" rx="8"/><text class="bt" x="887.0" y="104.0" text-anchor="middle" dominant-baseline="central">Render</text><text class="bs" x="887.0" y="123.0" text-anchor="middle" dominant-baseline="central">MRG, farm</text></g><g class="n mk"><rect x="948" y="62" width="110" height="48" rx="8"/><text class="bt" x="1003.0" y="78.0" text-anchor="middle" dominant-baseline="central">Conform</text><text class="bs" x="1003.0" y="97.0" text-anchor="middle" dominant-baseline="central">sound, master</text></g><path class="ar" d="M130 294 H133 V268 H133" fill="none" marker-end="url(#ah)"/><path class="ar" d="M246 268 H249 V242 H249" fill="none" marker-end="url(#ah)"/><path class="ar" d="M362 242 H365 V216 H365" fill="none" marker-end="url(#ah)"/><path class="ar" d="M478 216 H481 V190 H481" fill="none" marker-end="url(#ah)"/><path class="ar" d="M594 190 H597 V164 H597" fill="none" marker-end="url(#ah)"/><path class="ar" d="M710 164 H713 V138 H713" fill="none" marker-end="url(#ah)"/><path class="ar" d="M826 138 H829 V112 H829" fill="none" marker-end="url(#ah)"/><path class="ar" d="M942 112 H945 V86 H945" fill="none" marker-end="url(#ah)"/><rect class="pband" x="362" y="332" width="462" height="26" rx="6"/><text class="bs" x="374" y="349">Preview pass: Lumen, low res, every iteration</text><rect class="fband" x="830" y="332" width="230" height="26" rx="6"/><text class="bs" x="842" y="349">Final: farm</text><g class="n st"><rect x="20" y="382" width="1040" height="40" rx="8"/><text class="bt" x="540.0" y="402.0" text-anchor="middle" dominant-baseline="central">Media store: frames, simulation caches, assets. Git commits only the hashed manifest row.</text></g><line class="ar dot" x1="191" y1="294" x2="191" y2="379" marker-end="url(#ah)"/><line class="ar dot" x1="655" y1="190" x2="655" y2="379" marker-end="url(#ah)"/><line class="ar dot" x1="930" y1="138" x2="930" y2="379" marker-end="url(#ah)"/><path class="ar ret" d="M191 244 V36 H887 V85" fill="none" marker-end="url(#ah)"/><text class="lbl" x="540" y="29" text-anchor="middle">a new asset version marks every downstream shot that uses it stale</text></svg></div>
+    <figcaption>Dotted lines show media going to the store; the pull request commits only a manifest row with hashes. The dashed line is the stale rule: a new version of a locked asset sends every shot that uses it back to its earliest broken stage, as a new ticket.</figcaption>
+  </figure>
+</section>
+
+<section id="checks">
+  <h2>What is checked at each stage</h2>
+  <p class="sub">Every stage pairs a deterministic lint with a judged check by an agent that didn't do the work. Because the scene is queryable, most continuity and physics questions land in the lint column.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Stage</th><th>Deterministic lint (same input, same result)</th><th>Judged check</th></tr></thead>
+    <tbody>
+      <tr><td>Intake</td><td>Shot list matches the locked edit list frame for frame; every shot has beat IDs, characters, set and duration in frames</td><td>None</td></tr>
+      <tr><td>Assets</td><td>Naming, references resolve, geometry, texture and material budgets; scale in centimeters matches the bible (character height ±1 cm); canonical skeleton</td><td>Look-dev review against model sheets and the color script</td></tr>
+      <tr><td>Rigging</td><td>Range-of-motion sequence plays with no joint flips, limits respected, interpenetration under threshold; rig graph hash recorded</td><td>Deformation review on extreme poses</td></tr>
+      <tr><td>Layout</td><td>Focal length, framing and duration match the shot list; the 180° line is computed from character positions; the 9:16 camera keeps subjects inside every platform's safe zone</td><td>Cinematography review against the board</td></tr>
+      <tr><td>Animation</td><td>Foot slide from contact velocity, pops from joint acceleration spikes, interpenetration, lip-sync within one frame of the dialogue track</td><td>Performance review, blind A/B against the previous take</td></tr>
+      <tr><td>Simulation</td><td>Run twice on the same build and node class; cache hashes must match. Velocity and energy stay inside bounds</td><td>None</td></tr>
+      <tr><td>Lighting</td><td>Exposure histogram and color against the sequence color key (ΔE), clipped-pixel budget, time of day consistent across shots in a scene</td><td>Look-dev review against the color script</td></tr>
+      <tr><td>Render</td><td>Frame count, no black or NaN frames, resolution and frame rate, no on-screen engine messages (OCR), sampled frames re-render within an SSIM tolerance</td><td>Dailies: does the shot still play the board's beat?</td></tr>
+      <tr><td>Sound + conform</td><td>Loudness and true-peak targets, dialogue aligned to captions, edit list frame-exact to the locked cut with beat IDs carried through</td><td>Mix review</td></tr>
+      <tr><td>Cross-shot pass</td><td>World state at the end of shot N matches the start of shot N+1: props, wardrobe, damage, lighting</td><td>Continuity supervisor watches the whole sequence</td></tr>
+      <tr><td>Platform gate</td><td>Duration, aspect ratio, safe zones, captions present, CTA lint, spoiler lint, AI disclosure flag set when the realism class requires it</td><td>Charter and spoiler judge</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Determinism contract</h3>
+      <p>Unreal is deterministic only under stated conditions, so the contract names them: one pinned engine build, one render-node hardware class, fixed seeds, and Chaos async physics at a constant fixed step with substepping off and Enhanced Determinism on.</p>
+      <p>Floating-point results can still differ between machines, so the system never relies on simulating twice in production. A locked simulation is stored as a cache, and every render reads the cache. Renders are compared within a perceptual tolerance rather than bit for bit, because temporal effects add noise.</p>
+    </div>
+    <div class="card">
+      <h3>Test levels as evals</h3>
+      <p>Golden scenes run on every engine or asset change, like unit tests:</p>
+      <ul>
+        <li><b>Physics:</b> drop, stack and cloth tests with stored reference caches.</li>
+        <li><b>Characters:</b> range of motion, walk and run cycles, and the full expression and viseme set.</li>
+        <li><b>Sets:</b> a color chart plus chrome and grey balls placed in every set, rendered for exposure and color checks.</li>
+      </ul>
+      <p>A change that moves a golden result past tolerance fails the gate, and the diff is attached to the ticket.</p>
+    </div>
+  </div>
+</section>
+
+<section id="process-map">
+  <h2>Process map: one shot through animation</h2>
+  <p class="sub">The same nine steps repeat at every stage. Workers post a marker and exit; nothing starts the next worker except the line producer.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 360" role="img" aria-label="One animation ticket in nine numbered steps across five lanes: filed by the line producer, animated, previewed, failed by lint, fixed, passed, approved by the checker, locked and merged." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="20" width="1060" height="64" rx="6"/><text class="lane" x="22" y="56">Line producer</text><text class="lane" x="22" y="120">Maker</text><rect class="band" x="10" y="148" width="1060" height="64" rx="6"/><text class="lane" x="22" y="184">Lint</text><text class="lane" x="22" y="248">Checker</text><rect class="band" x="10" y="276" width="1060" height="64" rx="6"/><text class="lane" x="22" y="312">GitHub + store</text><g class="n ac"><rect x="170" y="32" width="92" height="40" rx="8"/><text class="bt" x="216.0" y="52.0" text-anchor="middle" dominant-baseline="central">1 File ticket</text></g><g class="n mk"><rect x="270" y="96" width="92" height="40" rx="8"/><text class="bt" x="316.0" y="116.0" text-anchor="middle" dominant-baseline="central">2 Animate</text></g><g class="n st"><rect x="370" y="288" width="92" height="40" rx="8"/><text class="bt" x="416.0" y="308.0" text-anchor="middle" dominant-baseline="central">3 Preview</text></g><g class="n"><rect x="470" y="160" width="92" height="40" rx="8"/><text class="bt" x="516.0" y="180.0" text-anchor="middle" dominant-baseline="central">4 FAIL B1</text></g><g class="n mk"><rect x="570" y="96" width="92" height="40" rx="8"/><text class="bt" x="616.0" y="116.0" text-anchor="middle" dominant-baseline="central">5 Fix</text></g><g class="n"><rect x="670" y="160" width="92" height="40" rx="8"/><text class="bt" x="716.0" y="180.0" text-anchor="middle" dominant-baseline="central">6 PASS</text></g><g class="n jd"><rect x="770" y="224" width="92" height="40" rx="8"/><text class="bt" x="816.0" y="244.0" text-anchor="middle" dominant-baseline="central">7 APPROVED</text></g><g class="n ac"><rect x="870" y="32" width="92" height="40" rx="8"/><text class="bt" x="916.0" y="52.0" text-anchor="middle" dominant-baseline="central">8 LOCK</text></g><g class="n st"><rect x="970" y="288" width="92" height="40" rx="8"/><text class="bt" x="1016.0" y="308.0" text-anchor="middle" dominant-baseline="central">9 Next stage</text></g><path class="ar" d="M216 72 V116 H267" fill="none" marker-end="url(#ah)"/><path class="ar" d="M316 136 V308 H367" fill="none" marker-end="url(#ah)"/><path class="ar" d="M416 288 V180 H467" fill="none" marker-end="url(#ah)"/><path class="ar" d="M516 160 V116 H567" fill="none" marker-end="url(#ah)"/><path class="ar" d="M616 136 V180 H667" fill="none" marker-end="url(#ah)"/><path class="ar" d="M716 200 V244 H767" fill="none" marker-end="url(#ah)"/><path class="ar" d="M816 224 V52 H867" fill="none" marker-end="url(#ah)"/><path class="ar" d="M916 72 V308 H967" fill="none" marker-end="url(#ah)"/></svg></div>
+    <figcaption>Shot S5.04.012 from the worked example. Lint fails the first take, the animator fixes it, and the lock happens only after fresh verdicts on the new head.</figcaption>
+  </figure>
+  <div class="grid2">
+    <div class="card">
+      <h3>The nine steps</h3>
+      <ol>
+        <li>The line producer files a shot ticket from the locked reel: beat IDs, frames, characters, set and cameras.</li>
+        <li>The animator works in its own worktree from locked assets, renders a preview and posts READY.</li>
+        <li>Preview frames go to the media store. The pull request commits only their manifest row.</li>
+        <li>Lint finds 6 cm of foot slide on frames 112–118 and posts FAIL with blocker B1.</li>
+        <li>The line producer relaunches the animator, which fixes the contact and posts ADDRESSED.</li>
+        <li>Lint runs on the new head: PASS.</li>
+        <li>The performance reviewer compares the take with the board and the previous take, blind: APPROVED.</li>
+        <li>The lock gate confirms every verdict is fresh, names the current head and comes from the named checker. The line producer posts LOCK.</li>
+        <li>The merge is the lock. The shot's simulation ticket opens.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h3>Markers</h3>
+      <p>State comes from labels and the newest marker on the pull request, never set by hand. Every verdict line names the head commit and manifest hash it reviewed.</p>
+<pre>[LINE-PRODUCER] LAUNCH | RULING | LOCK
+[ANIMATOR] READY | ADDRESSED | BLOCKED
+[LINT] PASS | FAIL (B1..Bn) | ERROR
+[PERFORMANCE] APPROVED | NOTES (B1.., I1..)
+[PLATFORM-GATE] PASS | FAIL
+[CHANNEL:YOUTUBE] POSTED | VERIFIED
+[ANALYST] SYMPTOMS
+[AUTORESEARCH] KEEP | NOISE | DISCARD
+               | REBASELINE
+
+reviewed head 3f9c2e1  manifest 7ab0…e41</pre>
+    </div>
+  </div>
+</section>
+
+<section id="prod-seq">
+  <h2>Production sequence: episode 5</h2>
+  <p class="sub">Every message goes through the line producer. Makers never talk to checkers directly, and only the line producer posts LOCK.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1040 640" role="img" aria-label="Production sequence for episode 5: sixteen messages from the locked reel to the locked master, including a lint failure, a fix, a review and a showrunner ruling." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><line class="life" x1="82" y1="60" x2="82" y2="628"/><g class="n"><rect x="26" y="16" width="112" height="40" rx="8"/><text class="bt" x="82.0" y="36.0" text-anchor="middle" dominant-baseline="central">Showrunner</text></g><line class="life" x1="207" y1="60" x2="207" y2="628"/><g class="n ac"><rect x="151" y="16" width="112" height="40" rx="8"/><text class="bt" x="207.0" y="36.0" text-anchor="middle" dominant-baseline="central">Line producer</text></g><line class="life" x1="332" y1="60" x2="332" y2="628"/><g class="n st"><rect x="276" y="16" width="112" height="40" rx="8"/><text class="bt" x="332.0" y="36.0" text-anchor="middle" dominant-baseline="central">Asset registry</text></g><line class="life" x1="457" y1="60" x2="457" y2="628"/><g class="n mk"><rect x="401" y="16" width="112" height="40" rx="8"/><text class="bt" x="457.0" y="36.0" text-anchor="middle" dominant-baseline="central">Makers</text></g><line class="life" x1="582" y1="60" x2="582" y2="628"/><g class="n"><rect x="526" y="16" width="112" height="40" rx="8"/><text class="bt" x="582.0" y="36.0" text-anchor="middle" dominant-baseline="central">Lint</text></g><line class="life" x1="707" y1="60" x2="707" y2="628"/><g class="n jd"><rect x="651" y="16" width="112" height="40" rx="8"/><text class="bt" x="707.0" y="36.0" text-anchor="middle" dominant-baseline="central">Checkers</text></g><line class="life" x1="832" y1="60" x2="832" y2="628"/><g class="n st"><rect x="776" y="16" width="112" height="40" rx="8"/><text class="bt" x="832.0" y="36.0" text-anchor="middle" dominant-baseline="central">GitHub + store</text></g><line class="life" x1="957" y1="60" x2="957" y2="628"/><g class="n"><rect x="901" y="16" width="112" height="40" rx="8"/><text class="bt" x="957.0" y="36.0" text-anchor="middle" dominant-baseline="central">Post</text></g><line class="ar" x1="86" y1="90" x2="201" y2="90" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="83" text-anchor="middle">1  locked reel ep5</text><line class="ar" x1="211" y1="124" x2="326" y2="124" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="117" text-anchor="middle">2  asset versions?</text><line class="ar ret" x1="328" y1="158" x2="213" y2="158" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="151" text-anchor="middle">3  Pim v4: 9 stale</text><line class="ar" x1="211" y1="192" x2="451" y2="192" marker-end="url(#ah)"/><text class="lbl" x="332.0" y="185" text-anchor="middle">4  41 shot tickets</text><line class="ar" x1="461" y1="226" x2="826" y2="226" marker-end="url(#ah)"/><text class="lbl" x="644.5" y="219" text-anchor="middle">5  preview frames</text><line class="ar" x1="461" y1="260" x2="576" y2="260" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="253" text-anchor="middle">6  READY S5.04.012</text><line class="ar ret" x1="578" y1="294" x2="213" y2="294" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="287" text-anchor="middle">7  FAIL B1 foot slide</text><line class="ar" x1="211" y1="328" x2="451" y2="328" marker-end="url(#ah)"/><text class="lbl" x="332.0" y="321" text-anchor="middle">8  relaunch: fix B1</text><line class="ar" x1="461" y1="362" x2="576" y2="362" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="355" text-anchor="middle">9  ADDRESSED</text><line class="ar ret" x1="578" y1="396" x2="213" y2="396" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="389" text-anchor="middle">10  PASS on new head</text><line class="ar" x1="211" y1="430" x2="701" y2="430" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="423" text-anchor="middle">11  launch review</text><line class="ar ret" x1="703" y1="464" x2="213" y2="464" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="457" text-anchor="middle">12  APPROVED</text><line class="ar" x1="211" y1="498" x2="826" y2="498" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="491" text-anchor="middle">13  LOCK + manifest</text><line class="ar" x1="203" y1="532" x2="88" y2="532" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="525" text-anchor="middle">14  trim shot 31?</text><line class="ar ret" x1="86" y1="566" x2="201" y2="566" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="559" text-anchor="middle">15  ruling: re-animate</text><line class="ar" x1="211" y1="600" x2="951" y2="600" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="593" text-anchor="middle">16  locked master</text></svg></div>
+    <figcaption>Dashed arrows are replies. Steps 6–12 are the one-shot process map above, seen as messages. Steps 14–15 show the one case where production asks the story room: a change that would alter a beat.</figcaption>
+  </figure>
+</section>
+
+<div class="roomhead" id="room-post">
+  <div class="eyebrow">Part 2 · room 2 of 4</div>
+  <h2>Post room</h2>
+  <p class="sub">Orchestrator: the post supervisor. Turns one locked master into gated packages for each platform.</p>
+</div>
+
+<section id="post-arch">
+  <h2>Post room architecture</h2>
+  <p class="sub">Five makers build the variants. Deterministic gates check them against the platform rulebook before any judge spends time on them.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 672" role="img" aria-label="Post room architecture: the locked master, story intent packet, platform rulebook and lab winners feed the post supervisor, who assigns five makers. Their variants pass the platform gate, CTA and spoiler lint, a charter judge and packaging judges. On lock, gated packages go to distribution; re-render requests go to production; rulebook updates feed the next round." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="30" width="1060" height="100" rx="10"/><text class="lane" x="24" y="84">Inputs</text><rect class="band" x="10" y="150" width="1060" height="100" rx="10"/><text class="lane" x="24" y="204">Governance</text><rect class="band" x="10" y="270" width="1060" height="100" rx="10"/><text class="lane" x="24" y="324">Makers</text><rect class="band" x="10" y="390" width="1060" height="100" rx="10"/><text class="lane" x="24" y="444">Checks</text><rect class="band" x="10" y="510" width="1060" height="100" rx="10"/><text class="lane" x="24" y="564">Outputs</text><line class="ar" x1="257.5" y1="112" x2="257.5" y2="140"/><line class="ar" x1="472.5" y1="112" x2="472.5" y2="140"/><line class="ar" x1="687.5" y1="112" x2="687.5" y2="140"/><line class="ar" x1="902.5" y1="112" x2="902.5" y2="140"/><line class="ar" x1="257.5" y1="140" x2="902.5" y2="140"/><line class="ar" x1="866.6" y1="140" x2="866.6" y2="165" marker-end="url(#ah)"/><line class="ar" x1="866.6" y1="232" x2="866.6" y2="260"/><line class="ar" x1="236.0" y1="260" x2="924.0" y2="260"/><line class="ar" x1="236.0" y1="260" x2="236.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="408.0" y1="260" x2="408.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="580.0" y1="260" x2="580.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="752.0" y1="260" x2="752.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="924.0" y1="260" x2="924.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="236.0" y1="352" x2="236.0" y2="380"/><line class="ar" x1="408.0" y1="352" x2="408.0" y2="380"/><line class="ar" x1="580.0" y1="352" x2="580.0" y2="380"/><line class="ar" x1="752.0" y1="352" x2="752.0" y2="380"/><line class="ar" x1="924.0" y1="352" x2="924.0" y2="380"/><line class="ar" x1="236.0" y1="380" x2="924.0" y2="380"/><line class="ar" x1="257.5" y1="380" x2="257.5" y2="405" marker-end="url(#ah)"/><line class="ar" x1="357.0" y1="440" x2="372.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="572.0" y1="440" x2="587.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="787.0" y1="440" x2="802.0" y2="440" marker-end="url(#ah)"/><path class="ar" d="M1000.0 440 H1026 V200 H1004.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1032" y="324.0" text-anchor="start">notes</text><path class="ar" d="M902.5 472 V500 H293.4 V525" fill="none" marker-end="url(#ah)"/><text class="lbl" x="597.95" y="495" text-anchor="middle">on lock</text><path class="ar loop" d="M866.6 592 V636 H146 V38 H687.5 V45" fill="none" marker-end="url(#ah)"/><text class="lbl" x="506.3" y="654" text-anchor="middle">platform notes update the rulebook the next gate reads</text><g class="n"><rect x="160.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="72.0" text-anchor="middle" dominant-baseline="central">Locked master</text><text class="bs" x="257.5" y="91.0" text-anchor="middle" dominant-baseline="central">from production</text></g><g class="n pv"><rect x="375.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="72.0" text-anchor="middle" dominant-baseline="central">Story intent packet</text><text class="bs" x="472.5" y="91.0" text-anchor="middle" dominant-baseline="central">hook, spoilers, CTAs</text></g><g class="n st"><rect x="590.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="72.0" text-anchor="middle" dominant-baseline="central">Platform rulebook</text><text class="bs" x="687.5" y="91.0" text-anchor="middle" dominant-baseline="central">specs, safe zones, policy</text></g><g class="n sg"><rect x="805.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="72.0" text-anchor="middle" dominant-baseline="central">Lab KEEPs</text><text class="bs" x="902.5" y="91.0" text-anchor="middle" dominant-baseline="central">packaging winners</text></g><g class="n"><rect x="160.0" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="293.35" y="192.0" text-anchor="middle" dominant-baseline="central">Producer gate</text><text class="bs" x="293.35" y="211.0" text-anchor="middle" dominant-baseline="central">disclosure, spend</text></g><g class="n st"><rect x="446.7" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="580.05" y="192.0" text-anchor="middle" dominant-baseline="central">Variant registry</text><text class="bs" x="580.05" y="211.0" text-anchor="middle" dominant-baseline="central">hash per file</text></g><g class="n ac"><rect x="733.3" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="866.65" y="192.0" text-anchor="middle" dominant-baseline="central">Post supervisor</text><text class="bs" x="866.65" y="211.0" text-anchor="middle" dominant-baseline="central">assign, rule, lock</text></g><g class="n mk"><rect x="160.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="236.0" y="312.0" text-anchor="middle" dominant-baseline="central">Platform editor</text><text class="bs" x="236.0" y="331.0" text-anchor="middle" dominant-baseline="central">lengths, pacing</text></g><g class="n mk"><rect x="332.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="408.0" y="312.0" text-anchor="middle" dominant-baseline="central">Reframe</text><text class="bs" x="408.0" y="331.0" text-anchor="middle" dominant-baseline="central">9:16 re-renders</text></g><g class="n mk"><rect x="504.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="580.0" y="312.0" text-anchor="middle" dominant-baseline="central">Caption writer</text><text class="bs" x="580.0" y="331.0" text-anchor="middle" dominant-baseline="central">from the script</text></g><g class="n mk"><rect x="676.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="752.0" y="312.0" text-anchor="middle" dominant-baseline="central">CTA writer</text><text class="bs" x="752.0" y="331.0" text-anchor="middle" dominant-baseline="central">story questions</text></g><g class="n mk"><rect x="848.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="924.0" y="312.0" text-anchor="middle" dominant-baseline="central">Thumbnails</text><text class="bs" x="924.0" y="331.0" text-anchor="middle" dominant-baseline="central">titles, covers</text></g><g class="n"><rect x="160.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="432.0" text-anchor="middle" dominant-baseline="central">Platform gate</text><text class="bs" x="257.5" y="451.0" text-anchor="middle" dominant-baseline="central">duration, safe zones</text></g><g class="n"><rect x="375.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="432.0" text-anchor="middle" dominant-baseline="central">CTA + spoiler lint</text><text class="bs" x="472.5" y="451.0" text-anchor="middle" dominant-baseline="central">bait patterns, spoilers</text></g><g class="n jd"><rect x="590.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="432.0" text-anchor="middle" dominant-baseline="central">Charter judge</text><text class="bs" x="687.5" y="451.0" text-anchor="middle" dominant-baseline="central">tone, spoilers</text></g><g class="n jd"><rect x="805.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="432.0" text-anchor="middle" dominant-baseline="central">Packaging judges</text><text class="bs" x="902.5" y="451.0" text-anchor="middle" dominant-baseline="central">blind hook A/B</text></g><g class="n ac"><rect x="160.0" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="293.35" y="552.0" text-anchor="middle" dominant-baseline="central">Gated packages</text><text class="bs" x="293.35" y="571.0" text-anchor="middle" dominant-baseline="central">variants + hashes</text></g><g class="n"><rect x="446.7" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="580.05" y="552.0" text-anchor="middle" dominant-baseline="central">Re-render requests</text><text class="bs" x="580.05" y="571.0" text-anchor="middle" dominant-baseline="central">to the line producer</text></g><g class="n st"><rect x="733.3" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="866.65" y="552.0" text-anchor="middle" dominant-baseline="central">Rulebook updates</text><text class="bs" x="866.65" y="571.0" text-anchor="middle" dominant-baseline="central">from platform notes</text></g></svg></div>
+    <div class="legend">
+      <span><i class="sw ac"></i>Orchestrator</span><span><i class="sw mk"></i>Makers</span><span><i class="sw jd"></i>Judged checks</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span><span><i class="sw pv"></i>Story packets and research</span><span><i class="sw st"></i>Dashed outline: shared state</span>
+    </div>
+    <figcaption>The rulebook holds each platform's specs, safe zones and policies, and is updated from platform notes. Vertical shots are re-rendered by production on request, never cropped by default. Only packages whose every file passed lock and move on.</figcaption>
+  </figure>
+</section>
+
+<section id="post-loops">
+  <h2>Post loops on three clocks</h2>
+  <p class="sub">Variants iterate in minutes, packages in hours, and a release window in days.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1000 420" role="img" aria-label="Post loops: variant loop inside package loop inside release window, each with an exit rule." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="ring sg" x="10" y="10" width="980" height="400" rx="16"/><text class="ringt" x="30" y="36">Release window · days</text><g class="n chip sg"><rect x="45" y="50" width="135" height="36" rx="8"/><text class="bt" x="112.5" y="68.0" text-anchor="middle" dominant-baseline="central">Master in</text></g><g class="n chip sg"><rect x="200" y="50" width="135" height="36" rx="8"/><text class="bt" x="267.5" y="68.0" text-anchor="middle" dominant-baseline="central">Packages</text></g><g class="n chip sg"><rect x="355" y="50" width="135" height="36" rx="8"/><text class="bt" x="422.5" y="68.0" text-anchor="middle" dominant-baseline="central">Producer gate</text></g><g class="n chip sg"><rect x="510" y="50" width="135" height="36" rx="8"/><text class="bt" x="577.5" y="68.0" text-anchor="middle" dominant-baseline="central">Channel desk</text></g><g class="n chip sg"><rect x="665" y="50" width="135" height="36" rx="8"/><text class="bt" x="732.5" y="68.0" text-anchor="middle" dominant-baseline="central">Platform notes</text></g><g class="n chip sg"><rect x="820" y="50" width="135" height="36" rx="8"/><text class="bt" x="887.5" y="68.0" text-anchor="middle" dominant-baseline="central">↻ Rulebook</text></g><line class="ar" x1="182" y1="68" x2="197" y2="68" marker-end="url(#ah)"/><line class="ar" x1="337" y1="68" x2="352" y2="68" marker-end="url(#ah)"/><line class="ar" x1="492" y1="68" x2="507" y2="68" marker-end="url(#ah)"/><line class="ar" x1="647" y1="68" x2="662" y2="68" marker-end="url(#ah)"/><line class="ar" x1="802" y1="68" x2="817" y2="68" marker-end="url(#ah)"/><rect class="ring ac" x="40" y="110" width="920" height="262" rx="14"/><text class="ringt" x="60" y="136">Package loop · hours</text><g class="n chip ac"><rect x="70" y="150" width="125" height="36" rx="8"/><text class="bt" x="132.5" y="168.0" text-anchor="middle" dominant-baseline="central">Platform set</text></g><g class="n chip ac"><rect x="217" y="150" width="125" height="36" rx="8"/><text class="bt" x="279.5" y="168.0" text-anchor="middle" dominant-baseline="central">Cut length</text></g><g class="n chip ac"><rect x="364" y="150" width="125" height="36" rx="8"/><text class="bt" x="426.5" y="168.0" text-anchor="middle" dominant-baseline="central">Reframe</text></g><g class="n chip ac"><rect x="511" y="150" width="125" height="36" rx="8"/><text class="bt" x="573.5" y="168.0" text-anchor="middle" dominant-baseline="central">Captions + CTA</text></g><g class="n chip ac"><rect x="658" y="150" width="125" height="36" rx="8"/><text class="bt" x="720.5" y="168.0" text-anchor="middle" dominant-baseline="central">Thumbnail</text></g><g class="n chip ac"><rect x="805" y="150" width="125" height="36" rx="8"/><text class="bt" x="867.5" y="168.0" text-anchor="middle" dominant-baseline="central">↻ Package lock</text></g><line class="ar" x1="197" y1="168" x2="214" y2="168" marker-end="url(#ah)"/><line class="ar" x1="344" y1="168" x2="361" y2="168" marker-end="url(#ah)"/><line class="ar" x1="491" y1="168" x2="508" y2="168" marker-end="url(#ah)"/><line class="ar" x1="638" y1="168" x2="655" y2="168" marker-end="url(#ah)"/><line class="ar" x1="785" y1="168" x2="802" y2="168" marker-end="url(#ah)"/><rect class="ring mk" x="80" y="210" width="600" height="120" rx="12"/><text class="ringt" x="100" y="236">Variant loop · minutes</text><g class="n chip mk"><rect x="100" y="252" width="96" height="36" rx="8"/><text class="bt" x="148.0" y="270.0" text-anchor="middle" dominant-baseline="central">Draft</text></g><g class="n chip mk"><rect x="216" y="252" width="96" height="36" rx="8"/><text class="bt" x="264.0" y="270.0" text-anchor="middle" dominant-baseline="central">Gate lint</text></g><g class="n chip mk"><rect x="332" y="252" width="96" height="36" rx="8"/><text class="bt" x="380.0" y="270.0" text-anchor="middle" dominant-baseline="central">CTA lint</text></g><g class="n chip mk"><rect x="448" y="252" width="96" height="36" rx="8"/><text class="bt" x="496.0" y="270.0" text-anchor="middle" dominant-baseline="central">Judges</text></g><g class="n chip mk"><rect x="564" y="252" width="96" height="36" rx="8"/><text class="bt" x="612.0" y="270.0" text-anchor="middle" dominant-baseline="central">↻ Fix</text></g><line class="ar" x1="198" y1="270" x2="213" y2="270" marker-end="url(#ah)"/><line class="ar" x1="314" y1="270" x2="329" y2="270" marker-end="url(#ah)"/><line class="ar" x1="430" y1="270" x2="445" y2="270" marker-end="url(#ah)"/><line class="ar" x1="546" y1="270" x2="561" y2="270" marker-end="url(#ah)"/><text class="bs" x="100" y="312">Exits when the exact file hash has a gate PASS and judge approval</text><g class="n st"><rect x="700" y="222" width="240" height="100" rx="8"/></g><text class="bt" x="716" y="244">Exit rules</text><text class="bs" x="716" y="266">Variant: PASS on the file hash</text><text class="bs" x="716" y="286">Package: every variant locked</text><text class="bs" x="716" y="306">Release: producer approves</text><text class="bs" x="60" y="358">A package locks only when every platform&#x27;s variant has passed</text><text class="bs" x="30" y="398">Platform notes update the rulebook that the next episode&#x27;s gate reads</text></svg></div>
+    <figcaption>A variant's verdicts name the exact file hash, so any edit to the file needs new verdicts. The producer's gate approves the release, not a human.</figcaption>
+  </figure>
+</section>
+
+<section id="post">
+  <h2>Post and platform editing</h2>
+  <p class="sub">One locked master becomes a set of platform variants. Each platform has different limits on the video and gives back different data, so the post supervisor builds a variant per platform and the gate checks each one against that platform's rules.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Platform</th><th>Variants</th><th>Rules the platform gate enforces</th><th>What comes back</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag nt">YouTube</span></td><td>16:9 episode, vertical Shorts cut</td><td>AI disclosure flag (<code>containsSyntheticMedia</code>) set for realistic content. Uploads from an unverified API project stay private. No API for end screens or cards was found, so CTAs are rendered into the video</td><td>A 100-point retention curve per video, 2–3 days after posting; empty for videos with very few views</td></tr>
+      <tr><td><span class="tag nt">TikTok</span></td><td>9:16 cut</td><td>Until TikTok audits the app, API posts stay private and only 5 users can post through it per 24 hours. Access tokens expire every 24 hours</td><td>Views, likes, comments and shares per video. Watch-through may need the Business API</td></tr>
+      <tr><td><span class="tag nt">Instagram</span></td><td>9:16 Reel, 90 seconds or less for the recommendable cut</td><td>Reels over 90 seconds aren't recommended in the Reels tab or Explore. Identical reposts lose recommendation to the original</td><td>Average watch time (in milliseconds), plays, shares, saves. Missing data comes back empty, not as zero</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Reframe by re-rendering</h3>
+      <p>Layout authors a 9:16 camera for every shot alongside the 16:9 one, so the vertical cut is re-rendered with its own framing instead of cropped. The gate checks that faces, action and captions stay inside each platform's safe zone, which differs because each app puts its buttons in different places. Cropping is only a fallback.</p>
+    </div>
+    <div class="card">
+      <h3>Captions from the script</h3>
+      <p>Captions come from the locked script and the dialogue track, not from speech recognition, so the words are known to be right. Lint checks timing against the audio, characters per line and the safe zone.</p>
+    </div>
+    <div class="card">
+      <h3>CTAs that ask real questions</h3>
+      <p>The CTA writer drafts from the story intent packet. Lint blocks known engagement-bait patterns, such as asking for a single word or emoji in the comments, and requires a comment prompt to ask something about the story.</p>
+      <ul>
+        <li><b>Passes:</b> "Where do you think Pim goes when the tide turns?"</li>
+        <li><b>Fails:</b> "Comment PIM if you want more!"</li>
+        <li>One CTA per video. A subscribe line appears once, after the hook lands, never in the opening seconds.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Staged release</h3>
+      <p>A public post can't be taken back once people have seen it, so release is staged: private upload, a check that the platform finished processing and kept captions and disclosure, then a scheduled public switch. The producer's gate approves the switch; no human does.</p>
+    </div>
+  </div>
+</section>
+
+<section id="post-seq">
+  <h2>Post sequence: episode 5 packaging</h2>
+  <p class="sub">Two gate failures and a spoiler note, all fixed before anything reaches the channel desk.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1040 776" role="img" aria-label="Post sequence for episode 5: twenty messages from the locked master to gated packages, with two gate failures and a spoiler note fixed along the way." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><line class="life" x1="82" y1="60" x2="82" y2="764"/><g class="n"><rect x="26" y="16" width="112" height="40" rx="8"/><text class="bt" x="82.0" y="36.0" text-anchor="middle" dominant-baseline="central">Production</text></g><line class="life" x1="207" y1="60" x2="207" y2="764"/><g class="n"><rect x="151" y="16" width="112" height="40" rx="8"/><text class="bt" x="207.0" y="36.0" text-anchor="middle" dominant-baseline="central">Story room</text></g><line class="life" x1="332" y1="60" x2="332" y2="764"/><g class="n ac"><rect x="276" y="16" width="112" height="40" rx="8"/><text class="bt" x="332.0" y="36.0" text-anchor="middle" dominant-baseline="central">Post supervisor</text></g><line class="life" x1="457" y1="60" x2="457" y2="764"/><g class="n mk"><rect x="401" y="16" width="112" height="40" rx="8"/><text class="bt" x="457.0" y="36.0" text-anchor="middle" dominant-baseline="central">Editors</text></g><line class="life" x1="582" y1="60" x2="582" y2="764"/><g class="n"><rect x="526" y="16" width="112" height="40" rx="8"/><text class="bt" x="582.0" y="36.0" text-anchor="middle" dominant-baseline="central">Gate + lint</text></g><line class="life" x1="707" y1="60" x2="707" y2="764"/><g class="n jd"><rect x="651" y="16" width="112" height="40" rx="8"/><text class="bt" x="707.0" y="36.0" text-anchor="middle" dominant-baseline="central">Judges</text></g><line class="life" x1="832" y1="60" x2="832" y2="764"/><g class="n st"><rect x="776" y="16" width="112" height="40" rx="8"/><text class="bt" x="832.0" y="36.0" text-anchor="middle" dominant-baseline="central">Registry</text></g><line class="life" x1="957" y1="60" x2="957" y2="764"/><g class="n sg"><rect x="901" y="16" width="112" height="40" rx="8"/><text class="bt" x="957.0" y="36.0" text-anchor="middle" dominant-baseline="central">Channel desk</text></g><line class="ar" x1="86" y1="90" x2="326" y2="90" marker-end="url(#ah)"/><text class="lbl" x="207.0" y="83" text-anchor="middle">1  locked master ep5</text><line class="ar" x1="211" y1="124" x2="326" y2="124" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="117" text-anchor="middle">2  intent packet</text><line class="ar" x1="336" y1="158" x2="451" y2="158" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="151" text-anchor="middle">3  4 variant tickets</text><line class="ar" x1="453" y1="192" x2="88" y2="192" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="185" text-anchor="middle">4  9:16 re-render</text><line class="ar ret" x1="86" y1="226" x2="451" y2="226" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="219" text-anchor="middle">5  vertical frames</text><line class="ar" x1="461" y1="260" x2="576" y2="260" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="253" text-anchor="middle">6  IG cut 1:31</text><line class="ar ret" x1="578" y1="294" x2="338" y2="294" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="287" text-anchor="middle">7  FAIL: over 90 s</text><line class="ar" x1="336" y1="328" x2="451" y2="328" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="321" text-anchor="middle">8  recut to 1:24</text><line class="ar" x1="461" y1="362" x2="576" y2="362" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="355" text-anchor="middle">9  cut + CTA</text><line class="ar ret" x1="578" y1="396" x2="338" y2="396" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="389" text-anchor="middle">10  FAIL: CTA bait</text><line class="ar" x1="336" y1="430" x2="451" y2="430" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="423" text-anchor="middle">11  rewrite as question</text><line class="ar" x1="461" y1="464" x2="576" y2="464" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="457" text-anchor="middle">12  resubmit</text><line class="ar ret" x1="578" y1="498" x2="338" y2="498" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="491" text-anchor="middle">13  PASS on hash</text><line class="ar" x1="336" y1="532" x2="701" y2="532" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="525" text-anchor="middle">14  spoiler + charter</text><line class="ar ret" x1="703" y1="566" x2="338" y2="566" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="559" text-anchor="middle">15  NOTES: thumb spoils</text><line class="ar" x1="336" y1="600" x2="451" y2="600" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="593" text-anchor="middle">16  swap thumbnail</text><line class="ar" x1="336" y1="634" x2="701" y2="634" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="627" text-anchor="middle">17  re-review</text><line class="ar ret" x1="703" y1="668" x2="338" y2="668" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="661" text-anchor="middle">18  APPROVED</text><line class="ar" x1="336" y1="702" x2="826" y2="702" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="695" text-anchor="middle">19  lock 4 variants</text><line class="ar" x1="336" y1="736" x2="951" y2="736" marker-end="url(#ah)"/><text class="lbl" x="644.5" y="729" text-anchor="middle">20  gated packages</text></svg></div>
+    <figcaption>Dashed arrows are replies. The Instagram cut fails on length, then on its CTA. The judges then catch a thumbnail that gives away the octopus.</figcaption>
+  </figure>
+</section>
+
+<div class="roomhead" id="room-distribution">
+  <div class="eyebrow">Part 2 · room 3 of 4</div>
+  <h2>Distribution room</h2>
+  <p class="sub">Orchestrator: the channel desk. Publishes gated packages, verifies them live, and turns platform data into notes.</p>
+</div>
+
+<section id="dist-arch">
+  <h2>Distribution room architecture</h2>
+  <p class="sub">Operators instead of makers: each platform agent holds only its own platform's token, and posts only files with a gate PASS on the exact hash.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 672" role="img" aria-label="Distribution room architecture: gated packages, the intent packet, the release calendar and platform tokens feed the channel desk, which runs three platform agents, a telemetry puller and a community analyst. Publish checks, telemetry lint, comment safety and a theory judge come next. Outputs are platform notes, symptom notes, experiment results and a telemetry store; the story room answers with the next intent packet." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="30" width="1060" height="100" rx="10"/><text class="lane" x="24" y="84">Inputs</text><rect class="band" x="10" y="150" width="1060" height="100" rx="10"/><text class="lane" x="24" y="204">Governance</text><rect class="band" x="10" y="270" width="1060" height="100" rx="10"/><text class="lane" x="24" y="324">Operators</text><rect class="band" x="10" y="390" width="1060" height="100" rx="10"/><text class="lane" x="24" y="444">Checks</text><rect class="band" x="10" y="510" width="1060" height="100" rx="10"/><text class="lane" x="24" y="564">Outputs</text><line class="ar" x1="257.5" y1="112" x2="257.5" y2="140"/><line class="ar" x1="472.5" y1="112" x2="472.5" y2="140"/><line class="ar" x1="687.5" y1="112" x2="687.5" y2="140"/><line class="ar" x1="902.5" y1="112" x2="902.5" y2="140"/><line class="ar" x1="257.5" y1="140" x2="902.5" y2="140"/><line class="ar" x1="866.6" y1="140" x2="866.6" y2="165" marker-end="url(#ah)"/><line class="ar" x1="866.6" y1="232" x2="866.6" y2="260"/><line class="ar" x1="236.0" y1="260" x2="924.0" y2="260"/><line class="ar" x1="236.0" y1="260" x2="236.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="408.0" y1="260" x2="408.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="580.0" y1="260" x2="580.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="752.0" y1="260" x2="752.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="924.0" y1="260" x2="924.0" y2="285" marker-end="url(#ah)"/><line class="ar" x1="236.0" y1="352" x2="236.0" y2="380"/><line class="ar" x1="408.0" y1="352" x2="408.0" y2="380"/><line class="ar" x1="580.0" y1="352" x2="580.0" y2="380"/><line class="ar" x1="752.0" y1="352" x2="752.0" y2="380"/><line class="ar" x1="924.0" y1="352" x2="924.0" y2="380"/><line class="ar" x1="236.0" y1="380" x2="924.0" y2="380"/><line class="ar" x1="257.5" y1="380" x2="257.5" y2="405" marker-end="url(#ah)"/><line class="ar" x1="357.0" y1="440" x2="372.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="572.0" y1="440" x2="587.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="787.0" y1="440" x2="802.0" y2="440" marker-end="url(#ah)"/><path class="ar" d="M1000.0 440 H1026 V200 H1004.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1032" y="324.0" text-anchor="start">notes</text><path class="ar" d="M902.5 472 V500 H257.5 V525" fill="none" marker-end="url(#ah)"/><text class="lbl" x="580.0" y="495" text-anchor="middle">on lock</text><path class="ar loop" d="M257.5 592 V636 H146 V38 H472.5 V45" fill="none" marker-end="url(#ah)"/><text class="lbl" x="201.75" y="654" text-anchor="middle">the story room answers with the next intent packet</text><g class="n"><rect x="160.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="72.0" text-anchor="middle" dominant-baseline="central">Gated packages</text><text class="bs" x="257.5" y="91.0" text-anchor="middle" dominant-baseline="central">variants + hashes</text></g><g class="n pv"><rect x="375.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="72.0" text-anchor="middle" dominant-baseline="central">Story intent packet</text><text class="bs" x="472.5" y="91.0" text-anchor="middle" dominant-baseline="central">beats, spoilers</text></g><g class="n st"><rect x="590.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="72.0" text-anchor="middle" dominant-baseline="central">Release calendar</text><text class="bs" x="687.5" y="91.0" text-anchor="middle" dominant-baseline="central">slots per platform</text></g><g class="n st"><rect x="805.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="72.0" text-anchor="middle" dominant-baseline="central">Platform tokens</text><text class="bs" x="902.5" y="91.0" text-anchor="middle" dominant-baseline="central">environment only</text></g><g class="n"><rect x="160.0" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="293.35" y="192.0" text-anchor="middle" dominant-baseline="central">Producer gate</text><text class="bs" x="293.35" y="211.0" text-anchor="middle" dominant-baseline="central">public switch</text></g><g class="n st"><rect x="446.7" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="580.05" y="192.0" text-anchor="middle" dominant-baseline="central">Post registry</text><text class="bs" x="580.05" y="211.0" text-anchor="middle" dominant-baseline="central">post, hash, beats</text></g><g class="n ac"><rect x="733.3" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="866.65" y="192.0" text-anchor="middle" dominant-baseline="central">Channel desk</text><text class="bs" x="866.65" y="211.0" text-anchor="middle" dominant-baseline="central">schedule, verify</text></g><g class="n sg"><rect x="160.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="236.0" y="312.0" text-anchor="middle" dominant-baseline="central">YouTube agent</text><text class="bs" x="236.0" y="331.0" text-anchor="middle" dominant-baseline="central">upload, disclose</text></g><g class="n sg"><rect x="332.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="408.0" y="312.0" text-anchor="middle" dominant-baseline="central">TikTok agent</text><text class="bs" x="408.0" y="331.0" text-anchor="middle" dominant-baseline="central">upload, status</text></g><g class="n sg"><rect x="504.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="580.0" y="312.0" text-anchor="middle" dominant-baseline="central">Instagram agent</text><text class="bs" x="580.0" y="331.0" text-anchor="middle" dominant-baseline="central">Reel, insights</text></g><g class="n sg"><rect x="676.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="752.0" y="312.0" text-anchor="middle" dominant-baseline="central">Telemetry puller</text><text class="bs" x="752.0" y="331.0" text-anchor="middle" dominant-baseline="central">1 h, 24 h, 7 d</text></g><g class="n sg"><rect x="848.0" y="288" width="152.0" height="64" rx="8"/><text class="bt" x="924.0" y="312.0" text-anchor="middle" dominant-baseline="central">Community analyst</text><text class="bs" x="924.0" y="331.0" text-anchor="middle" dominant-baseline="central">theories, safety</text></g><g class="n"><rect x="160.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="432.0" text-anchor="middle" dominant-baseline="central">Publish check</text><text class="bs" x="257.5" y="451.0" text-anchor="middle" dominant-baseline="central">exists, processed, hash</text></g><g class="n"><rect x="375.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="432.0" text-anchor="middle" dominant-baseline="central">Telemetry lint</text><text class="bs" x="472.5" y="451.0" text-anchor="middle" dominant-baseline="central">schema, empty ≠ 0</text></g><g class="n jd"><rect x="590.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="432.0" text-anchor="middle" dominant-baseline="central">Comment safety</text><text class="bs" x="687.5" y="451.0" text-anchor="middle" dominant-baseline="central">spam, abuse</text></g><g class="n jd"><rect x="805.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="432.0" text-anchor="middle" dominant-baseline="central">Theory judge</text><text class="bs" x="902.5" y="451.0" text-anchor="middle" dominant-baseline="central">clusters, shares</text></g><g class="n pv"><rect x="160.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="552.0" text-anchor="middle" dominant-baseline="central">Platform notes</text><text class="bs" x="257.5" y="571.0" text-anchor="middle" dominant-baseline="central">to the story room</text></g><g class="n sg"><rect x="375.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="552.0" text-anchor="middle" dominant-baseline="central">Symptom notes</text><text class="bs" x="472.5" y="571.0" text-anchor="middle" dominant-baseline="central">to the analysts</text></g><g class="n sg"><rect x="590.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="552.0" text-anchor="middle" dominant-baseline="central">Experiment results</text><text class="bs" x="687.5" y="571.0" text-anchor="middle" dominant-baseline="central">to the lab</text></g><g class="n st"><rect x="805.0" y="528" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="552.0" text-anchor="middle" dominant-baseline="central">Telemetry store</text><text class="bs" x="902.5" y="571.0" text-anchor="middle" dominant-baseline="central">7-day snapshots</text></g></svg></div>
+    <div class="legend">
+      <span><i class="sw ac"></i>Orchestrator</span><span><i class="sw mk"></i>Makers</span><span><i class="sw jd"></i>Judged checks</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span><span><i class="sw pv"></i>Story packets and research</span><span><i class="sw st"></i>Dashed outline: shared state</span>
+    </div>
+    <figcaption>The post registry links every live post to its file hash and beat map, which is how retention data finds its way back to story beats. The theory judge clusters comments into plot theories for the story room.</figcaption>
+  </figure>
+</section>
+
+<section id="dist-loops">
+  <h2>Distribution loops on three clocks</h2>
+  <p class="sub">A post goes live in hours, is measured over a seven-day window, and feeds the season loop.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1000 420" role="img" aria-label="Distribution loops: post lifecycle inside a seven-day measurement window inside the season loop, each with an exit rule." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="ring sg" x="10" y="10" width="980" height="400" rx="16"/><text class="ringt" x="30" y="36">Season loop · weeks</text><g class="n chip sg"><rect x="45" y="50" width="135" height="36" rx="8"/><text class="bt" x="112.5" y="68.0" text-anchor="middle" dominant-baseline="central">Notes out</text></g><g class="n chip sg"><rect x="200" y="50" width="135" height="36" rx="8"/><text class="bt" x="267.5" y="68.0" text-anchor="middle" dominant-baseline="central">Story room</text></g><g class="n chip sg"><rect x="355" y="50" width="135" height="36" rx="8"/><text class="bt" x="422.5" y="68.0" text-anchor="middle" dominant-baseline="central">New episode</text></g><g class="n chip sg"><rect x="510" y="50" width="135" height="36" rx="8"/><text class="bt" x="577.5" y="68.0" text-anchor="middle" dominant-baseline="central">Intent packet</text></g><g class="n chip sg"><rect x="665" y="50" width="135" height="36" rx="8"/><text class="bt" x="732.5" y="68.0" text-anchor="middle" dominant-baseline="central">Release</text></g><g class="n chip sg"><rect x="820" y="50" width="135" height="36" rx="8"/><text class="bt" x="887.5" y="68.0" text-anchor="middle" dominant-baseline="central">↻ Compare</text></g><line class="ar" x1="182" y1="68" x2="197" y2="68" marker-end="url(#ah)"/><line class="ar" x1="337" y1="68" x2="352" y2="68" marker-end="url(#ah)"/><line class="ar" x1="492" y1="68" x2="507" y2="68" marker-end="url(#ah)"/><line class="ar" x1="647" y1="68" x2="662" y2="68" marker-end="url(#ah)"/><line class="ar" x1="802" y1="68" x2="817" y2="68" marker-end="url(#ah)"/><rect class="ring ac" x="40" y="110" width="920" height="262" rx="14"/><text class="ringt" x="60" y="136">Measurement window · 7 days</text><g class="n chip ac"><rect x="70" y="150" width="125" height="36" rx="8"/><text class="bt" x="132.5" y="168.0" text-anchor="middle" dominant-baseline="central">1 h pull</text></g><g class="n chip ac"><rect x="217" y="150" width="125" height="36" rx="8"/><text class="bt" x="279.5" y="168.0" text-anchor="middle" dominant-baseline="central">24 h pull</text></g><g class="n chip ac"><rect x="364" y="150" width="125" height="36" rx="8"/><text class="bt" x="426.5" y="168.0" text-anchor="middle" dominant-baseline="central">Day 3 curve</text></g><g class="n chip ac"><rect x="511" y="150" width="125" height="36" rx="8"/><text class="bt" x="573.5" y="168.0" text-anchor="middle" dominant-baseline="central">7 d snapshot</text></g><g class="n chip ac"><rect x="658" y="150" width="125" height="36" rx="8"/><text class="bt" x="720.5" y="168.0" text-anchor="middle" dominant-baseline="central">Beat map</text></g><g class="n chip ac"><rect x="805" y="150" width="125" height="36" rx="8"/><text class="bt" x="867.5" y="168.0" text-anchor="middle" dominant-baseline="central">↻ Notes out</text></g><line class="ar" x1="197" y1="168" x2="214" y2="168" marker-end="url(#ah)"/><line class="ar" x1="344" y1="168" x2="361" y2="168" marker-end="url(#ah)"/><line class="ar" x1="491" y1="168" x2="508" y2="168" marker-end="url(#ah)"/><line class="ar" x1="638" y1="168" x2="655" y2="168" marker-end="url(#ah)"/><line class="ar" x1="785" y1="168" x2="802" y2="168" marker-end="url(#ah)"/><rect class="ring mk" x="80" y="210" width="600" height="120" rx="12"/><text class="ringt" x="100" y="236">Post lifecycle · hours</text><g class="n chip mk"><rect x="100" y="252" width="96" height="36" rx="8"/><text class="bt" x="148.0" y="270.0" text-anchor="middle" dominant-baseline="central">Private</text></g><g class="n chip mk"><rect x="216" y="252" width="96" height="36" rx="8"/><text class="bt" x="264.0" y="270.0" text-anchor="middle" dominant-baseline="central">Processed</text></g><g class="n chip mk"><rect x="332" y="252" width="96" height="36" rx="8"/><text class="bt" x="380.0" y="270.0" text-anchor="middle" dominant-baseline="central">Verify</text></g><g class="n chip mk"><rect x="448" y="252" width="96" height="36" rx="8"/><text class="bt" x="496.0" y="270.0" text-anchor="middle" dominant-baseline="central">Gate</text></g><g class="n chip mk"><rect x="564" y="252" width="96" height="36" rx="8"/><text class="bt" x="612.0" y="270.0" text-anchor="middle" dominant-baseline="central">↻ Public</text></g><line class="ar" x1="198" y1="270" x2="213" y2="270" marker-end="url(#ah)"/><line class="ar" x1="314" y1="270" x2="329" y2="270" marker-end="url(#ah)"/><line class="ar" x1="430" y1="270" x2="445" y2="270" marker-end="url(#ah)"/><line class="ar" x1="546" y1="270" x2="561" y2="270" marker-end="url(#ah)"/><text class="bs" x="100" y="312">Exits when the live post is verified against the file hash, captions and disclosure</text><g class="n st"><rect x="700" y="222" width="240" height="100" rx="8"/></g><text class="bt" x="716" y="244">Exit rules</text><text class="bs" x="716" y="266">Post: VERIFIED on the live post</text><text class="bs" x="716" y="286">Window: 7-day snapshot frozen</text><text class="bs" x="716" y="306">Season: story room answers</text><text class="bs" x="60" y="358">Only YouTube returns a retention curve, so only YouTube gets a beat map</text><text class="bs" x="30" y="398">Theories and format limits travel as platform notes; the story room decides what to do with them</text></svg></div>
+    <figcaption>Telemetry is pulled at fixed points so episodes compare at the same age. The YouTube curve arrives around day 3, so the beat map waits for it.</figcaption>
+  </figure>
+</section>
+
+<section id="comms">
+  <h2>How story and distribution talk</h2>
+  <p class="sub">The writers' room and the channel desk exchange two structured packets as GitHub issues. Neither side edits the other's work, and both packets are checked before they're used.</p>
+  <div class="grid2">
+    <div class="card">
+      <h3>Story intent packet (story → post and distribution)</h3>
+      <p>Sent with every locked episode. It tells the packaging agents what the episode is for, what it must not give away and which questions are worth asking the audience.</p>
+<pre>{ "episode": 5, "bible": "A-007",
+  "logline": "Mara teaches Pim to read the tide",
+  "open_question": "Where does Pim go when the tide turns?",
+  "beats": [
+    {"id": "S5.B1", "t": "00:00–00:06", "role": "hook"},
+    {"id": "S5.B9", "t": "02:31–02:44", "role": "cliffhanger"}],
+  "spoilers": ["octopus rival", "Pim's antenna glows"],
+  "loved": ["Pim"],
+  "cta_prompts": ["Where do you think Pim goes when the tide turns?"],
+  "tone": "curious, never mocking" }</pre>
+    </div>
+    <div class="card">
+      <h3>Platform notes (distribution → story)</h3>
+      <p>Sent after each release. They enter the story room as notes and pivot proposals under the same rule as all engagement data: they can propose, never lock.</p>
+<pre>{ "episode": 4, "from": "channel-desk",
+  "format": "IG recommendable cut must be ≤ 90 s; ep4 ran 2:41",
+  "cta_results": "story question CTA: 1.4× comments vs subscribe-only",
+  "theories": [
+    {"theory": "Pim is hiding something in the shell", "share": 0.31},
+    {"theory": "the tide is controlled", "share": 0.18}],
+  "asks": ["Vertical cuts: hook must land by 0:03"] }</pre>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Rules for the exchange</h3>
+    <ul>
+      <li><b>Theories are signal, not script.</b> When comments predict the plot, writers can satisfy or subvert the theory. The charter decides, and the analyst tracks whether surprises or payoffs hold attention better.</li>
+      <li><b>Spoiler lint</b> checks every title, caption, thumbnail and CTA against the packet's spoiler list.</li>
+      <li><b>Beat-level diagnosis runs on YouTube only,</b> because it's the only platform that returns a curve across the video. TikTok and Instagram questions get answered by comparing episodes, never by reposting the same video.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="dist-seq">
+  <h2>Distribution sequence: episode 5 release</h2>
+  <p class="sub">Private uploads first, a gated public switch, then data from each platform at its own level of detail.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1040 640" role="img" aria-label="Distribution sequence for episode 5: sixteen messages from gated packages to private uploads, a gated public switch, telemetry from each platform, and notes back to the story room." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><line class="life" x1="82" y1="60" x2="82" y2="628"/><g class="n"><rect x="26" y="16" width="112" height="40" rx="8"/><text class="bt" x="82.0" y="36.0" text-anchor="middle" dominant-baseline="central">Post room</text></g><line class="life" x1="207" y1="60" x2="207" y2="628"/><g class="n ac"><rect x="151" y="16" width="112" height="40" rx="8"/><text class="bt" x="207.0" y="36.0" text-anchor="middle" dominant-baseline="central">Channel desk</text></g><line class="life" x1="332" y1="60" x2="332" y2="628"/><g class="n sg"><rect x="276" y="16" width="112" height="40" rx="8"/><text class="bt" x="332.0" y="36.0" text-anchor="middle" dominant-baseline="central">YouTube agent</text></g><line class="life" x1="457" y1="60" x2="457" y2="628"/><g class="n sg"><rect x="401" y="16" width="112" height="40" rx="8"/><text class="bt" x="457.0" y="36.0" text-anchor="middle" dominant-baseline="central">TikTok agent</text></g><line class="life" x1="582" y1="60" x2="582" y2="628"/><g class="n sg"><rect x="526" y="16" width="112" height="40" rx="8"/><text class="bt" x="582.0" y="36.0" text-anchor="middle" dominant-baseline="central">Instagram agent</text></g><line class="life" x1="707" y1="60" x2="707" y2="628"/><g class="n"><rect x="651" y="16" width="112" height="40" rx="8"/><text class="bt" x="707.0" y="36.0" text-anchor="middle" dominant-baseline="central">Producer gate</text></g><line class="life" x1="832" y1="60" x2="832" y2="628"/><g class="n sg"><rect x="776" y="16" width="112" height="40" rx="8"/><text class="bt" x="832.0" y="36.0" text-anchor="middle" dominant-baseline="central">Analysts</text></g><line class="life" x1="957" y1="60" x2="957" y2="628"/><g class="n"><rect x="901" y="16" width="112" height="40" rx="8"/><text class="bt" x="957.0" y="36.0" text-anchor="middle" dominant-baseline="central">Story room</text></g><line class="ar" x1="86" y1="90" x2="201" y2="90" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="83" text-anchor="middle">1  gated packages</text><line class="ar" x1="211" y1="124" x2="326" y2="124" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="117" text-anchor="middle">2  private upload</text><line class="ar" x1="211" y1="158" x2="451" y2="158" marker-end="url(#ah)"/><text class="lbl" x="332.0" y="151" text-anchor="middle">3  private upload</text><line class="ar" x1="211" y1="192" x2="576" y2="192" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="185" text-anchor="middle">4  private upload</text><line class="ar ret" x1="328" y1="226" x2="213" y2="226" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="219" text-anchor="middle">5  processed</text><line class="ar ret" x1="453" y1="260" x2="213" y2="260" marker-end="url(#ah)"/><text class="lbl" x="332.0" y="253" text-anchor="middle">6  processed</text><line class="ar ret" x1="578" y1="294" x2="213" y2="294" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="287" text-anchor="middle">7  processed</text><line class="ar" x1="211" y1="328" x2="701" y2="328" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="321" text-anchor="middle">8  public at 18:00?</text><line class="ar ret" x1="703" y1="362" x2="213" y2="362" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="355" text-anchor="middle">9  approved</text><line class="ar" x1="211" y1="396" x2="326" y2="396" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="389" text-anchor="middle">10  go public, all three</text><line class="ar" x1="336" y1="430" x2="826" y2="430" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="423" text-anchor="middle">11  day 3: retention curve</text><line class="ar" x1="461" y1="464" x2="826" y2="464" marker-end="url(#ah)"/><text class="lbl" x="644.5" y="457" text-anchor="middle">12  views, shares</text><line class="ar" x1="586" y1="498" x2="826" y2="498" marker-end="url(#ah)"/><text class="lbl" x="707.0" y="491" text-anchor="middle">13  avg watch (ms)</text><line class="ar" x1="836" y1="532" x2="951" y2="532" marker-end="url(#ah)"/><text class="lbl" x="894.5" y="525" text-anchor="middle">14  symptom notes</text><line class="ar" x1="211" y1="566" x2="951" y2="566" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="559" text-anchor="middle">15  platform notes</text><line class="ar ret" x1="953" y1="600" x2="213" y2="600" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="593" text-anchor="middle">16  next intent packet</text></svg></div>
+    <figcaption>Dashed arrows are replies. Each platform returns different data: a retention curve from YouTube, per-video counts from TikTok, average watch time from Instagram.</figcaption>
+  </figure>
+</section>
+
+<div class="roomhead" id="room-lab">
+  <div class="eyebrow">Part 2 · room 4 of 4</div>
+  <h2>Autoresearch lab</h2>
+  <p class="sub">Orchestrator: the lab director. Runs improvement experiments for every room and proposes the winners back to each room's orchestrator.</p>
+</div>
+
+<section id="autoresearch">
+  <h2>Autoresearch: how the studio improves itself</h2>
+  <p class="sub">The researchers and analysts run loops from the Fermi autoresearch skill: change one thing, measure one number, keep the change only if it beats the best result by more than the noise, and log every run. No loop can edit its own metric, harness or judges.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 250" role="img" aria-label="Autoresearch loop: hypothesis, one change, gates, measure, noise test, log. The noise test ends in keep, noise or discard. The metric, harness, tests and judges are frozen." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><g class="n st"><rect x="20" y="16" width="1040" height="40" rx="8"/><text class="bt" x="540.0" y="36.0" text-anchor="middle" dominant-baseline="central">Frozen for the agent: the metric, the harness, tests, judges and the keep threshold</text></g><g class="n mk"><rect x="25" y="90" width="150" height="52" rx="8"/><text class="bt" x="100.0" y="108.0" text-anchor="middle" dominant-baseline="central">Hypothesis</text><text class="bs" x="100.0" y="127.0" text-anchor="middle" dominant-baseline="central">names a mechanism</text></g><g class="n mk"><rect x="201" y="90" width="150" height="52" rx="8"/><text class="bt" x="276.0" y="108.0" text-anchor="middle" dominant-baseline="central">One change</text><text class="bs" x="276.0" y="127.0" text-anchor="middle" dominant-baseline="central">1–3 files, allowlist</text></g><g class="n"><rect x="377" y="90" width="150" height="52" rx="8"/><text class="bt" x="452.0" y="108.0" text-anchor="middle" dominant-baseline="central">Gates</text><text class="bs" x="452.0" y="127.0" text-anchor="middle" dominant-baseline="central">tests are sacred</text></g><g class="n sg"><rect x="553" y="90" width="150" height="52" rx="8"/><text class="bt" x="628.0" y="108.0" text-anchor="middle" dominant-baseline="central">Measure</text><text class="bs" x="628.0" y="127.0" text-anchor="middle" dominant-baseline="central">median of N runs</text></g><g class="n ac"><rect x="729" y="90" width="150" height="52" rx="8"/><text class="bt" x="804.0" y="108.0" text-anchor="middle" dominant-baseline="central">Noise test</text><text class="bs" x="804.0" y="127.0" text-anchor="middle" dominant-baseline="central">beat best by 2× SD</text></g><g class="n st"><rect x="905" y="90" width="150" height="52" rx="8"/><text class="bt" x="980.0" y="108.0" text-anchor="middle" dominant-baseline="central">Log</text><text class="bs" x="980.0" y="127.0" text-anchor="middle" dominant-baseline="central">append-only TSV</text></g><line class="ar" x1="177" y1="116" x2="198" y2="116" marker-end="url(#ah)"/><line class="ar" x1="353" y1="116" x2="374" y2="116" marker-end="url(#ah)"/><line class="ar" x1="529" y1="116" x2="550" y2="116" marker-end="url(#ah)"/><line class="ar" x1="705" y1="116" x2="726" y2="116" marker-end="url(#ah)"/><line class="ar" x1="881" y1="116" x2="902" y2="116" marker-end="url(#ah)"/><line class="ar" x1="804" y1="144" x2="804" y2="170" marker-end="url(#ah)"/><g class="n sg"><rect x="667" y="174" width="85" height="30" rx="8"/><text class="bt" x="709.5" y="189.0" text-anchor="middle" dominant-baseline="central">KEEP</text></g><g class="n"><rect x="762" y="174" width="85" height="30" rx="8"/><text class="bt" x="804.5" y="189.0" text-anchor="middle" dominant-baseline="central">NOISE</text></g><g class="n jd"><rect x="857" y="174" width="85" height="30" rx="8"/><text class="bt" x="899.5" y="189.0" text-anchor="middle" dominant-baseline="central">DISCARD</text></g><text class="bs" x="960" y="194">↻ next run</text><text class="bs" x="20" y="236">Every 10–15 runs a no-op control checks for drift. Drift past the threshold logs REBASELINE and resets the baseline.</text></svg></div>
+    <figcaption>One loop. Each loop below runs this cycle with its own single metric. A KEEP is re-run once before it counts.</figcaption>
+  </figure>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Loop</th><th>One metric</th><th>Lever the agent may change</th><th>Noise</th></tr></thead>
+    <tbody>
+      <tr><td>Render cost</td><td>GPU minutes per finished second, holding a quality floor (SSIM against a path-traced reference)</td><td>Render graph settings, LODs, lighting and shadow settings</td><td><span class="tag sg">Low</span></td></tr>
+      <tr><td>Checker strength</td><td>Share of seeded defects caught in a frozen defect corpus: foot slide, pops, a wrong prop, color drift</td><td>Lint rules and thresholds</td><td><span class="tag sg">None</span></td></tr>
+      <tr><td>Judge calibration</td><td>Rank agreement between judge scores and real retention on held-out episodes</td><td>Judge rubrics and prompts</td><td><span class="tag pv">Medium</span></td></tr>
+      <tr><td>Craft</td><td>Blind win rate of new agent instructions, replayed on past episodes and scored by held-out judges</td><td>Writer, artist, animator and CTA instructions</td><td><span class="tag pv">Medium</span></td></tr>
+      <tr><td>Packaging (live)</td><td>Average watch time or early hold rate per platform</td><td>Hooks, caption style, CTA placement, thumbnails</td><td><span class="tag jd">High</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <h3>Recursion with a guard</h3>
+      <p>Method researchers read new papers and engine releases and turn them into hypotheses in the experiment queue. The retro agent updates each loop's strategy list from the results log.</p>
+      <p>A loop never changes its own metric. Changing a metric is a metric amendment, accepted only if the new metric predicts real audience outcomes better than the old one on held-out episodes.</p>
+    </div>
+    <div class="card">
+      <h3>Noise first</h3>
+      <p>Each loop runs 5–10 no-op controls before it starts and sets its keep threshold at two or more times their spread. A candidate that clears it is re-run before it's kept.</p>
+      <p>Live platform tests are slow and noisy, and each needs a new episode, since reposts lose to originals. So live loops only confirm what offline loops already found.</p>
+    </div>
+  </div>
+</section>
+
+<section id="lab-arch">
+  <h2>Autoresearch lab architecture</h2>
+  <p class="sub">The lab never changes a room directly. A winning change becomes a pull request that the room's own orchestrator must lock after that room's checks.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1080 672" role="img" aria-label="Autoresearch lab architecture: results logs, method research, real outcomes and a frozen defect corpus feed the lab director, who runs a hypothesis writer, five experimenters, a retro agent and a metric proposer. Correctness gates, a noise test, held-out judges and amendment review come next. Outputs are configuration pull requests to each room&#x27;s orchestrator, the results log and rebaselines." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="band" x="10" y="30" width="1060" height="100" rx="10"/><text class="lane" x="24" y="84">Inputs</text><rect class="band" x="10" y="150" width="1060" height="100" rx="10"/><text class="lane" x="24" y="204">Governance</text><rect class="band" x="10" y="270" width="1060" height="100" rx="10"/><text class="lane" x="24" y="324">Makers</text><rect class="band" x="10" y="390" width="1060" height="100" rx="10"/><text class="lane" x="24" y="444">Checks</text><rect class="band" x="10" y="510" width="1060" height="100" rx="10"/><text class="lane" x="24" y="564">Outputs</text><line class="ar" x1="257.5" y1="112" x2="257.5" y2="140"/><line class="ar" x1="472.5" y1="112" x2="472.5" y2="140"/><line class="ar" x1="687.5" y1="112" x2="687.5" y2="140"/><line class="ar" x1="902.5" y1="112" x2="902.5" y2="140"/><line class="ar" x1="257.5" y1="140" x2="902.5" y2="140"/><line class="ar" x1="866.6" y1="140" x2="866.6" y2="165" marker-end="url(#ah)"/><line class="ar" x1="866.6" y1="232" x2="866.6" y2="260"/><line class="ar" x1="257.5" y1="260" x2="902.5" y2="260"/><line class="ar" x1="257.5" y1="260" x2="257.5" y2="285" marker-end="url(#ah)"/><line class="ar" x1="472.5" y1="260" x2="472.5" y2="285" marker-end="url(#ah)"/><line class="ar" x1="687.5" y1="260" x2="687.5" y2="285" marker-end="url(#ah)"/><line class="ar" x1="902.5" y1="260" x2="902.5" y2="285" marker-end="url(#ah)"/><line class="ar" x1="257.5" y1="352" x2="257.5" y2="380"/><line class="ar" x1="472.5" y1="352" x2="472.5" y2="380"/><line class="ar" x1="687.5" y1="352" x2="687.5" y2="380"/><line class="ar" x1="902.5" y1="352" x2="902.5" y2="380"/><line class="ar" x1="257.5" y1="380" x2="902.5" y2="380"/><line class="ar" x1="257.5" y1="380" x2="257.5" y2="405" marker-end="url(#ah)"/><line class="ar" x1="357.0" y1="440" x2="372.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="572.0" y1="440" x2="587.0" y2="440" marker-end="url(#ah)"/><line class="ar" x1="787.0" y1="440" x2="802.0" y2="440" marker-end="url(#ah)"/><path class="ar" d="M1000.0 440 H1026 V200 H1004.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="1032" y="324.0" text-anchor="start">notes</text><path class="ar" d="M902.5 472 V500 H293.4 V525" fill="none" marker-end="url(#ah)"/><text class="lbl" x="597.95" y="495" text-anchor="middle">on lock</text><path class="ar loop" d="M580.0 592 V636 H146 V80 H157.0" fill="none" marker-end="url(#ah)"/><text class="lbl" x="363.0" y="654" text-anchor="middle">the log seeds the next hypotheses</text><g class="n st"><rect x="160.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="72.0" text-anchor="middle" dominant-baseline="central">Results logs</text><text class="bs" x="257.5" y="91.0" text-anchor="middle" dominant-baseline="central">every run, every room</text></g><g class="n pv"><rect x="375.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="72.0" text-anchor="middle" dominant-baseline="central">Method research</text><text class="bs" x="472.5" y="91.0" text-anchor="middle" dominant-baseline="central">papers, engine releases</text></g><g class="n sg"><rect x="590.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="72.0" text-anchor="middle" dominant-baseline="central">Real outcomes</text><text class="bs" x="687.5" y="91.0" text-anchor="middle" dominant-baseline="central">telemetry, retention</text></g><g class="n st"><rect x="805.0" y="48" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="72.0" text-anchor="middle" dominant-baseline="central">Defect corpus</text><text class="bs" x="902.5" y="91.0" text-anchor="middle" dominant-baseline="central">seeded, frozen</text></g><g class="n"><rect x="160.0" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="293.35" y="192.0" text-anchor="middle" dominant-baseline="central">Producer gate</text><text class="bs" x="293.35" y="211.0" text-anchor="middle" dominant-baseline="central">compute budget</text></g><g class="n st"><rect x="446.7" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="580.05" y="192.0" text-anchor="middle" dominant-baseline="central">Frozen harness</text><text class="bs" x="580.05" y="211.0" text-anchor="middle" dominant-baseline="central">metrics, judges, thresholds</text></g><g class="n ac"><rect x="733.3" y="168" width="266.7" height="64" rx="8"/><text class="bt" x="866.65" y="192.0" text-anchor="middle" dominant-baseline="central">Lab director</text><text class="bs" x="866.65" y="211.0" text-anchor="middle" dominant-baseline="central">queue, launch, stop</text></g><g class="n mk"><rect x="160.0" y="288" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="312.0" text-anchor="middle" dominant-baseline="central">Hypothesis writer</text><text class="bs" x="257.5" y="331.0" text-anchor="middle" dominant-baseline="central">names a mechanism</text></g><g class="n mk"><rect x="375.0" y="288" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="312.0" text-anchor="middle" dominant-baseline="central">Experimenters ×5</text><text class="bs" x="472.5" y="331.0" text-anchor="middle" dominant-baseline="central">one per loop</text></g><g class="n mk"><rect x="590.0" y="288" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="312.0" text-anchor="middle" dominant-baseline="central">Retro agent</text><text class="bs" x="687.5" y="331.0" text-anchor="middle" dominant-baseline="central">strategy lists</text></g><g class="n mk"><rect x="805.0" y="288" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="312.0" text-anchor="middle" dominant-baseline="central">Metric proposer</text><text class="bs" x="902.5" y="331.0" text-anchor="middle" dominant-baseline="central">amendments</text></g><g class="n"><rect x="160.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="257.5" y="432.0" text-anchor="middle" dominant-baseline="central">Correctness gates</text><text class="bs" x="257.5" y="451.0" text-anchor="middle" dominant-baseline="central">tests are sacred</text></g><g class="n"><rect x="375.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="472.5" y="432.0" text-anchor="middle" dominant-baseline="central">Noise test</text><text class="bs" x="472.5" y="451.0" text-anchor="middle" dominant-baseline="central">2× SD, then re-run</text></g><g class="n jd"><rect x="590.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="687.5" y="432.0" text-anchor="middle" dominant-baseline="central">Held-out judges</text><text class="bs" x="687.5" y="451.0" text-anchor="middle" dominant-baseline="central">never tuned against</text></g><g class="n jd"><rect x="805.0" y="408" width="195.0" height="64" rx="8"/><text class="bt" x="902.5" y="432.0" text-anchor="middle" dominant-baseline="central">Amendment review</text><text class="bs" x="902.5" y="451.0" text-anchor="middle" dominant-baseline="central">predicts outcomes?</text></g><g class="n ac"><rect x="160.0" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="293.35" y="552.0" text-anchor="middle" dominant-baseline="central">Config PRs</text><text class="bs" x="293.35" y="571.0" text-anchor="middle" dominant-baseline="central">to each room&#x27;s orchestrator</text></g><g class="n st"><rect x="446.7" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="580.05" y="552.0" text-anchor="middle" dominant-baseline="central">results.tsv</text><text class="bs" x="580.05" y="571.0" text-anchor="middle" dominant-baseline="central">dashboard</text></g><g class="n"><rect x="733.3" y="528" width="266.7" height="64" rx="8"/><text class="bt" x="866.65" y="552.0" text-anchor="middle" dominant-baseline="central">REBASELINE</text><text class="bs" x="866.65" y="571.0" text-anchor="middle" dominant-baseline="central">drift resets</text></g></svg></div>
+    <div class="legend">
+      <span><i class="sw ac"></i>Orchestrator</span><span><i class="sw mk"></i>Makers</span><span><i class="sw jd"></i>Judged checks</span>
+      <span><i class="sw sg"></i>Telemetry and audience</span><span><i class="sw pv"></i>Story packets and research</span><span><i class="sw st"></i>Dashed outline: shared state</span>
+    </div>
+    <figcaption>The frozen harness holds every loop's metric, judges and thresholds, and no experimenter can write to it. Metric changes go through the metric proposer and amendment review, outside any running loop.</figcaption>
+  </figure>
+</section>
+
+<section id="lab-loops">
+  <h2>Autoresearch loops on three clocks</h2>
+  <p class="sub">Experiments run in minutes, programs in days, and metrics change at most once a season.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1000 420" role="img" aria-label="Autoresearch loops: experiment loop inside program loop inside metric loop, each with an exit rule." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><rect class="ring sg" x="10" y="10" width="980" height="400" rx="16"/><text class="ringt" x="30" y="36">Metric loop · season</text><g class="n chip sg"><rect x="45" y="50" width="135" height="36" rx="8"/><text class="bt" x="112.5" y="68.0" text-anchor="middle" dominant-baseline="central">Propose metric</text></g><g class="n chip sg"><rect x="200" y="50" width="135" height="36" rx="8"/><text class="bt" x="267.5" y="68.0" text-anchor="middle" dominant-baseline="central">Held-out test</text></g><g class="n chip sg"><rect x="355" y="50" width="135" height="36" rx="8"/><text class="bt" x="422.5" y="68.0" text-anchor="middle" dominant-baseline="central">Compare</text></g><g class="n chip sg"><rect x="510" y="50" width="135" height="36" rx="8"/><text class="bt" x="577.5" y="68.0" text-anchor="middle" dominant-baseline="central">Amendment</text></g><g class="n chip sg"><rect x="665" y="50" width="135" height="36" rx="8"/><text class="bt" x="732.5" y="68.0" text-anchor="middle" dominant-baseline="central">Freeze</text></g><g class="n chip sg"><rect x="820" y="50" width="135" height="36" rx="8"/><text class="bt" x="887.5" y="68.0" text-anchor="middle" dominant-baseline="central">↻ Next season</text></g><line class="ar" x1="182" y1="68" x2="197" y2="68" marker-end="url(#ah)"/><line class="ar" x1="337" y1="68" x2="352" y2="68" marker-end="url(#ah)"/><line class="ar" x1="492" y1="68" x2="507" y2="68" marker-end="url(#ah)"/><line class="ar" x1="647" y1="68" x2="662" y2="68" marker-end="url(#ah)"/><line class="ar" x1="802" y1="68" x2="817" y2="68" marker-end="url(#ah)"/><rect class="ring ac" x="40" y="110" width="920" height="262" rx="14"/><text class="ringt" x="60" y="136">Program loop · days</text><g class="n chip ac"><rect x="70" y="150" width="125" height="36" rx="8"/><text class="bt" x="132.5" y="168.0" text-anchor="middle" dominant-baseline="central">Queue</text></g><g class="n chip ac"><rect x="217" y="150" width="125" height="36" rx="8"/><text class="bt" x="279.5" y="168.0" text-anchor="middle" dominant-baseline="central">Controls</text></g><g class="n chip ac"><rect x="364" y="150" width="125" height="36" rx="8"/><text class="bt" x="426.5" y="168.0" text-anchor="middle" dominant-baseline="central">Run loop</text></g><g class="n chip ac"><rect x="511" y="150" width="125" height="36" rx="8"/><text class="bt" x="573.5" y="168.0" text-anchor="middle" dominant-baseline="central">Stop rule</text></g><g class="n chip ac"><rect x="658" y="150" width="125" height="36" rx="8"/><text class="bt" x="720.5" y="168.0" text-anchor="middle" dominant-baseline="central">Summary</text></g><g class="n chip ac"><rect x="805" y="150" width="125" height="36" rx="8"/><text class="bt" x="867.5" y="168.0" text-anchor="middle" dominant-baseline="central">↻ Retro</text></g><line class="ar" x1="197" y1="168" x2="214" y2="168" marker-end="url(#ah)"/><line class="ar" x1="344" y1="168" x2="361" y2="168" marker-end="url(#ah)"/><line class="ar" x1="491" y1="168" x2="508" y2="168" marker-end="url(#ah)"/><line class="ar" x1="638" y1="168" x2="655" y2="168" marker-end="url(#ah)"/><line class="ar" x1="785" y1="168" x2="802" y2="168" marker-end="url(#ah)"/><rect class="ring mk" x="80" y="210" width="600" height="120" rx="12"/><text class="ringt" x="100" y="236">Experiment loop · minutes</text><g class="n chip mk"><rect x="100" y="252" width="96" height="36" rx="8"/><text class="bt" x="148.0" y="270.0" text-anchor="middle" dominant-baseline="central">Change</text></g><g class="n chip mk"><rect x="216" y="252" width="96" height="36" rx="8"/><text class="bt" x="264.0" y="270.0" text-anchor="middle" dominant-baseline="central">Gates</text></g><g class="n chip mk"><rect x="332" y="252" width="96" height="36" rx="8"/><text class="bt" x="380.0" y="270.0" text-anchor="middle" dominant-baseline="central">Measure</text></g><g class="n chip mk"><rect x="448" y="252" width="96" height="36" rx="8"/><text class="bt" x="496.0" y="270.0" text-anchor="middle" dominant-baseline="central">Noise test</text></g><g class="n chip mk"><rect x="564" y="252" width="96" height="36" rx="8"/><text class="bt" x="612.0" y="270.0" text-anchor="middle" dominant-baseline="central">↻ Log</text></g><line class="ar" x1="198" y1="270" x2="213" y2="270" marker-end="url(#ah)"/><line class="ar" x1="314" y1="270" x2="329" y2="270" marker-end="url(#ah)"/><line class="ar" x1="430" y1="270" x2="445" y2="270" marker-end="url(#ah)"/><line class="ar" x1="546" y1="270" x2="561" y2="270" marker-end="url(#ah)"/><text class="bs" x="100" y="312">Exits KEEP only when the change beats the best result by 2× SD, twice</text><g class="n st"><rect x="700" y="222" width="240" height="100" rx="8"/></g><text class="bt" x="716" y="244">Exit rules</text><text class="bs" x="716" y="266">Run: beats best by 2× SD, twice</text><text class="bs" x="716" y="286">Program: 5 NOISE in a row or cap</text><text class="bs" x="716" y="306">Metric: predicts outcomes better</text><text class="bs" x="60" y="358">Each loop optimizes one metric; drift past the threshold triggers REBASELINE</text><text class="bs" x="30" y="398">A metric changes only by amendment, never from inside its own loop</text></svg></div>
+    <figcaption>A program stops after five NOISE results in a row, after every idea category has been tried, or at its time cap, then writes a summary for the retro agent.</figcaption>
+  </figure>
+</section>
+
+<section id="lab-seq">
+  <h2>Autoresearch sequence: one render-cost experiment</h2>
+  <p class="sub">From a researcher's hypothesis to a setting locked in production.</p>
+  <figure>
+    <div class="scroll"><svg viewBox="0 0 1040 606" role="img" aria-label="Autoresearch sequence: fifteen messages from a method hypothesis through controls, one change, measurement and confirmation, to a KEEP that the line producer locks after golden tests." class="dg"><defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></marker></defs><line class="life" x1="82" y1="60" x2="82" y2="594"/><g class="n pv"><rect x="26" y="16" width="112" height="40" rx="8"/><text class="bt" x="82.0" y="36.0" text-anchor="middle" dominant-baseline="central">Method research</text></g><line class="life" x1="207" y1="60" x2="207" y2="594"/><g class="n ac"><rect x="151" y="16" width="112" height="40" rx="8"/><text class="bt" x="207.0" y="36.0" text-anchor="middle" dominant-baseline="central">Lab director</text></g><line class="life" x1="332" y1="60" x2="332" y2="594"/><g class="n mk"><rect x="276" y="16" width="112" height="40" rx="8"/><text class="bt" x="332.0" y="36.0" text-anchor="middle" dominant-baseline="central">Experimenter</text></g><line class="life" x1="457" y1="60" x2="457" y2="594"/><g class="n st"><rect x="401" y="16" width="112" height="40" rx="8"/><text class="bt" x="457.0" y="36.0" text-anchor="middle" dominant-baseline="central">Frozen harness</text></g><line class="life" x1="582" y1="60" x2="582" y2="594"/><g class="n"><rect x="526" y="16" width="112" height="40" rx="8"/><text class="bt" x="582.0" y="36.0" text-anchor="middle" dominant-baseline="central">Gates</text></g><line class="life" x1="707" y1="60" x2="707" y2="594"/><g class="n st"><rect x="651" y="16" width="112" height="40" rx="8"/><text class="bt" x="707.0" y="36.0" text-anchor="middle" dominant-baseline="central">Results log</text></g><line class="life" x1="832" y1="60" x2="832" y2="594"/><g class="n ac"><rect x="776" y="16" width="112" height="40" rx="8"/><text class="bt" x="832.0" y="36.0" text-anchor="middle" dominant-baseline="central">Line producer</text></g><line class="life" x1="957" y1="60" x2="957" y2="594"/><g class="n mk"><rect x="901" y="16" width="112" height="40" rx="8"/><text class="bt" x="957.0" y="36.0" text-anchor="middle" dominant-baseline="central">Retro agent</text></g><line class="ar" x1="86" y1="90" x2="201" y2="90" marker-end="url(#ah)"/><text class="lbl" x="144.5" y="83" text-anchor="middle">1  hypothesis H-31</text><line class="ar" x1="211" y1="124" x2="326" y2="124" marker-end="url(#ah)"/><text class="lbl" x="269.5" y="117" text-anchor="middle">2  run render-cost loop</text><line class="ar" x1="336" y1="158" x2="451" y2="158" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="151" text-anchor="middle">3  8 no-op controls</text><line class="ar ret" x1="453" y1="192" x2="338" y2="192" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="185" text-anchor="middle">4  noise ±2.1%</text><line class="ar" x1="336" y1="226" x2="576" y2="226" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="219" text-anchor="middle">5  one change</text><line class="ar ret" x1="578" y1="260" x2="338" y2="260" marker-end="url(#ah)"/><text class="lbl" x="457.0" y="253" text-anchor="middle">6  tests pass</text><line class="ar" x1="336" y1="294" x2="451" y2="294" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="287" text-anchor="middle">7  measure ×5</text><line class="ar ret" x1="453" y1="328" x2="338" y2="328" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="321" text-anchor="middle">8  −7.4% GPU min</text><line class="ar" x1="336" y1="362" x2="451" y2="362" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="355" text-anchor="middle">9  confirm re-run</text><line class="ar ret" x1="453" y1="396" x2="338" y2="396" marker-end="url(#ah)"/><text class="lbl" x="394.5" y="389" text-anchor="middle">10  −6.9%</text><line class="ar" x1="336" y1="430" x2="701" y2="430" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="423" text-anchor="middle">11  KEEP #014</text><line class="ar" x1="211" y1="464" x2="826" y2="464" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="457" text-anchor="middle">12  config PR</text><line class="ar ret" x1="828" y1="498" x2="213" y2="498" marker-end="url(#ah)"/><text class="lbl" x="519.5" y="491" text-anchor="middle">13  LOCK after golden tests</text><line class="ar" x1="711" y1="532" x2="951" y2="532" marker-end="url(#ah)"/><text class="lbl" x="832.0" y="525" text-anchor="middle">14  weekly results</text><line class="ar" x1="953" y1="566" x2="213" y2="566" marker-end="url(#ah)"/><text class="lbl" x="582.0" y="559" text-anchor="middle">15  strategy updated</text></svg></div>
+    <figcaption>Dashed arrows are replies. The KEEP needs a confirming re-run, and it reaches production only after the line producer runs the golden test levels on it.</figcaption>
+  </figure>
+</section>
+
+<div class="roomhead" id="shared"><div class="eyebrow">Part 2 · across rooms</div><h2>Example, comparison and build plan</h2></div>
+
+<section id="production-example">
+  <h2>Worked example: episode 5 in production</h2>
+  <p class="sub">This continues Low Tide Station from Part 1, starting at the showrunner's lock. Names and numbers are illustrative.</p>
+
+  <div class="phase">
+    <div class="when"><b>Day 16–17</b>Intake</div>
+    <div class="body">
+      <h3>Tickets and a stale asset</h3>
+      <div class="who"><span class="tag ac">Line producer</span><span class="tag mk">asset-builder</span><span class="tag nt">Lint</span></div>
+      <ol>
+        <li>The line producer files 41 shot tickets from the locked reel. Intake lint confirms they add up to the locked cut frame for frame.</li>
+        <li>Amendment A-007 gave Pim a fear of the tide, which needs new expressions. The rig moves to v4, and 9 shots that use Pim are marked stale at rigging.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 17–20</b>Shots climb</div>
+    <div class="body">
+      <h3>Two lint catches</h3>
+      <div class="who"><span class="tag mk">animator</span><span class="tag mk">sim-artist</span><span class="tag nt">Lint</span><span class="tag jd">performance reviewer</span></div>
+      <ol>
+        <li>Shot S5.04.012 fails motion lint on foot slide and goes through the nine-step loop above.</li>
+        <li>The wave hitting the station fails the run-twice check: the two caches don't match. The cause is substepping left on in a level override. With it off, the hashes match and the cache is locked.</li>
+      </ol>
+<pre>[LINT] FAIL B1  shot S5.04.012  stage simulation
+  run A cache 9e1f…  run B cache 4c07…  (mismatch)
+  cause: bSubstepping=true in level override
+reviewed head 51ab9d0  manifest 2f6e…a10</pre>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 21</b>Final render</div>
+    <div class="body">
+      <h3>Render QA and dailies</h3>
+      <div class="who"><span class="tag mk">render-wrangler</span><span class="tag nt">Render QA</span><span class="tag jd">dailies reviewer</span></div>
+      <ol>
+        <li>OCR finds an engine warning burned into 12 frames of one shot, a known problem with command-line renders. The shot re-renders with on-screen messages disabled and passes.</li>
+        <li>Dailies flags shot 31: Mara's realization now lands after the cut, so it no longer plays the board's beat. Notes go back to animation, and the new take is approved.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 22</b>Post</div>
+    <div class="body">
+      <h3>Variants and the platform gate</h3>
+      <div class="who"><span class="tag mk">platform-editor</span><span class="tag mk">cta-writer</span><span class="tag nt">Platform gate</span><span class="tag jd">spoiler judge</span></div>
+      <div class="kpis">
+        <div class="kpi"><div class="k">YouTube</div><div class="v">2:44</div><div class="d">16:9 episode</div></div>
+        <div class="kpi"><div class="k">Shorts</div><div class="v">0:58</div><div class="d">re-rendered 9:16</div></div>
+        <div class="kpi"><div class="k">TikTok</div><div class="v">1:10</div><div class="d">re-rendered 9:16</div></div>
+        <div class="kpi"><div class="k">Instagram</div><div class="v">1:24</div><div class="d">first cut 1:31 failed</div></div>
+      </div>
+      <ol>
+        <li>The gate fails the first Instagram cut at 1:31, over the 90-second limit, and the editor recuts it to 84 seconds.</li>
+        <li>CTA lint fails "Comment PIM if you want more!" and passes "Where do you think Pim goes when the tide turns?"</li>
+        <li>Spoiler lint blocks a thumbnail showing the octopus. The YouTube disclosure flag is set because the station set is photoreal.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="when"><b>Day 23–26</b>Release and learn</div>
+    <div class="body">
+      <h3>Back to the story room</h3>
+      <div class="who"><span class="tag sg">Channel desk</span><span class="tag sg">Community analyst</span><span class="tag sg">Audience analyst</span><span class="tag pv">Autoresearch</span></div>
+      <ol>
+        <li>Each channel agent uploads privately, verifies processing, captions and disclosure, then the producer's gate switches the post to public on schedule.</li>
+        <li>Two to three days later the YouTube curve arrives and maps onto the beat IDs. Instagram and TikTok report per-video numbers.</li>
+        <li>Comment theories are clustered and sent as platform notes. The packaging loop logs its result against the episode before.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="compare">
+  <h2>Compared with the Fermi orchestration kit</h2>
+  <p class="sub">Most parts carry over from the software kit. What changes is that artifacts are media, and half of every check is about how something looks.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Software kit</th><th>Production factory</th><th>What changed</th></tr></thead>
+    <tbody>
+      <tr><td>Orchestrator, the only role that merges</td><td>Line producer, the only role that locks</td><td>A merge is a lock. The story showrunner stays out of production locks</td></tr>
+      <tr><td>Builder</td><td>Maker (animator, lighter and so on)</td><td>Delivers an artifact plus a preview render, not just a code change</td></tr>
+      <tr><td>Verifier with a functional matrix</td><td>Lint plus a judged checker, with a shot condition matrix</td><td>Deterministic and judged results are separate verdicts</td></tr>
+      <tr><td>UX reviewer</td><td>Look-dev, cinematography and performance reviewers</td><td>Judged against model sheets, the color script and the board</td></tr>
+      <tr><td>Cross-page journey</td><td>Cross-shot continuity pass</td><td>Compares world-state snapshots instead of clicking through pages</td></tr>
+      <tr><td>Live / real-data wave gate</td><td>Platform gate plus private test uploads</td><td>Real platform processing stands in for the real backend</td></tr>
+      <tr><td>Blast-radius review</td><td>Asset blast radius</td><td>A new asset version marks dependent shots stale</td></tr>
+      <tr><td>CI gates</td><td>factory lint</td><td>PASS, FAIL or ERROR; ERROR is never FAIL</td></tr>
+      <tr><td>Edge-case matrix in every issue</td><td>Condition matrix in every shot ticket</td><td>Rows for 16:9 and 9:16, preview and final, every wardrobe and damage state</td></tr>
+      <tr><td>Merge on the verified head commit</td><td>Lock on the verified head and manifest hash</td><td>The hash covers media bytes, not just code</td></tr>
+      <tr><td>Wave 0 is verification tooling</td><td>Wave 0 is golden test levels and lint</td><td>Same rule: build the checks first</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="tools">
+  <h2>Tools by department</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Department</th><th>Tools</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Orchestration</td><td>git, gh, Python 3, bash, factory CLI, the Fermi orchestration kit</td><td><span class="tag sg">v0</span></td></tr>
+      <tr><td>Assets through animation</td><td>Unreal Engine 5 with Python editor scripting, Control Rig, Sequencer</td><td><span class="tag nt">planned</span></td></tr>
+      <tr><td>Simulation</td><td>Chaos with async fixed-step physics, simulation caches</td><td><span class="tag nt">planned</span></td></tr>
+      <tr><td>Render</td><td>Movie Render Graph, scripted in Python and run from the command line on GPU nodes</td><td><span class="tag nt">planned</span></td></tr>
+      <tr><td>Sound and conform</td><td>FFmpeg for loudness measurement and encoding, OpenTimelineIO edit lists</td><td><span class="tag nt">planned</span></td></tr>
+      <tr><td>Post</td><td>FFmpeg variant builds, caption files from the script, OCR for on-screen text</td><td><span class="tag nt">planned</span></td></tr>
+      <tr><td>Distribution</td><td>YouTube Data and Analytics APIs, TikTok Content Posting and Display APIs, Instagram Graph API publishing and insights</td><td><span class="tag pv">needs audits</span></td></tr>
+      <tr><td>Storage</td><td>Object store for media with hashed manifests; Git LFS or Perforce for Unreal assets</td><td><span class="tag pv">open question</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="build-order">
+  <h2>Trust boundaries, open questions, build order</h2>
+  <div class="grid2">
+    <div class="card">
+      <h3>Trust boundaries</h3>
+      <ul>
+        <li>Workers reach only their worktree, locked assets (read-only) and their ticket's path in the media store.</li>
+        <li>Only the line producer locks production stages; only the post supervisor locks variants.</li>
+        <li>Only channel agents hold platform tokens, and they post only files with a platform gate PASS on the exact hash.</li>
+        <li>No agent edits its own harness, metric, tests or judges.</li>
+        <li>Credentials live in the environment, never in tickets, prompts or comments.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Open questions</h3>
+      <ul>
+        <li>Git LFS or Perforce for Unreal's binary assets?</li>
+        <li>Pin one GPU node class for reproducible renders, or accept a perceptual tolerance across classes?</li>
+        <li>Which characters and sets are realistic enough to need AI disclosure on each platform?</li>
+        <li>Who replies to comments, and within what limits?</li>
+        <li>Music licensing that covers all three platforms.</li>
+        <li>Real cost per finished minute. Nothing has been measured.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Wave</th><th>Scope</th><th>Done when</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag ac">0</span></td><td>Verification tooling: factory lint, golden test levels, seeded-defect corpus, render reproducibility harness. Start the TikTok audit and YouTube API verification</td><td>Every lint fails on a seeded defect and passes on a clean shot</td></tr>
+      <tr><td><span class="tag ac">1</span></td><td>Pilot: one 10-second shot through every stage, to private uploads on all three platforms</td><td>The shot is locked at every stage and visible privately on each platform</td></tr>
+      <tr><td><span class="tag ac">2</span></td><td>One full episode on YouTube only, for the retention curve</td><td>The curve maps onto beat IDs</td></tr>
+      <tr><td><span class="tag ac">3</span></td><td>Vertical cuts, captions, CTAs, TikTok and Instagram; offline autoresearch loops for render cost, checker strength and craft</td><td>All variants pass the gate; each loop has a measured noise floor</td></tr>
+      <tr><td><span class="tag ac">4</span></td><td>Live loops: judge calibration on real retention, packaging experiments</td><td>Judge rankings agree with real retention above a set threshold</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<footer>
+  <p>Roles in Part 1 are adapted from Pixar's story process. The production stages follow Pixar's published production pipeline. The orchestration pattern adapts the Fermi skills github-agent-orchestration, agent-orchestration-operating-rules and autoresearch-setup, and the enrico-factory content factory architecture. The example show, its numbers and the research it cites are invented for illustration.</p>
+  <h3 style="margin-top:16px">Sources for platform and engine facts</h3>
+  <ul class="sources">
+    <li><a href="https://dev.epicgames.com/documentation/unreal-engine/programming-a-render-in-mrg-in-unreal-engine?lang=en-US">Epic: Programming a render in Movie Render Graph</a></li>
+    <li><a href="https://forums.unrealengine.com/t/movie-render-graph-hide-display-messages/2434459">Unreal forums: display messages in command-line MRG renders</a></li>
+    <li><a href="https://bugnet.io/blog/fix-unreal-async-physics-tick-stepoverride-violates-determinism">Bugnet: async physics substepping and determinism</a></li>
+    <li><a href="https://dev.epicgames.com/documentation/unreal-engine/physics-settings-in-the-unreal-engine-project-settings">Epic: Physics settings (async fixed time step)</a></li>
+    <li><a href="https://forums.unrealengine.com/t/how-can-ue4-be-converted-to-fixed-frame-step-aka-deterministic-physics/42640">Unreal forums: floating-point drift across machines</a></li>
+    <li><a href="https://docs.zernio.com/analytics/get-youtube-video-retention">Zernio: YouTube retention curve (100 points, 2–3 day delay)</a></li>
+    <li><a href="https://support.google.com/youtube/answer/14328491">YouTube Help: disclosing altered or synthetic content</a></li>
+    <li><a href="https://developers.google.com/youtube/2.0/developers_guide_protocol_release_notes">YouTube Data API revision history: containsSyntheticMedia</a></li>
+    <li><a href="https://singhamandeep.com/?p=1572">Unverified API project uploads forced private</a></li>
+    <li><a href="https://www.ayrshare.com/tiktok-api.md">Ayrshare: TikTok Content Posting API audit limits</a></li>
+    <li><a href="https://www.getphyllo.com/post/tiktok-api-integration-guide-2026-setup-endpoints-common-pitfalls">Phyllo: TikTok token expiry and rate limits</a></li>
+    <li><a href="https://developers.facebook.com/documentation/instagram-platform/reference/instagram-media/insights.md">Meta: Instagram media insights</a></li>
+    <li><a href="https://www.socialmediatoday.com/news/instagram-clarifies-advice-single-word-ctas-longer-reels/718151/">Social Media Today: Instagram on single-word CTAs and 90-second Reels</a></li>
+    <li><a href="https://creators.instagram.com/recommendations-and-Originality">Instagram: originality and recommendations</a></li>
+    <li><a href="https://transparency.meta.com/features/approach-to-ranking/content-distribution-guidelines/engagement-bait/">Meta: engagement bait guideline</a></li>
+  </ul>
+</footer>
+</div>
+</body>
+</html>

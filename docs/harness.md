@@ -1,0 +1,215 @@
+# Harness: how a role runs
+
+Companion to `docs/system-brief.md` (section 14). Design, 2026-11-11: nothing here is built yet.
+Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
+gitignored `production.local.env` of each production and are named in `docs/resources.md`.
+
+## 1. The harness is a primitive
+
+Every role runs on **hbar**, a Claude Code-compatible command-line agent. The factory treats it the
+way a build treats a compiler:
+
+- It is used only through its public surface: the flags and environment variables in section 3.
+- The factory never patches it, never reads its internals and never depends on an unreleased build.
+- Each production pins one harness build. Every `LAUNCH` marker records the harness version, so a
+  result can be traced to the build that produced it.
+- Everything that makes a role behave differently is outside the harness: the role file, the tools it
+  is allowed, the knowledge it can read, the lints and judges that check it.
+
+All harness-specific code is one adapter, `kit/lib/harness.py`: it turns a role file and a ticket into
+a command line and reads the result back. Nothing else in the kit knows which harness runs.
+
+## 2. What the factory needs from a harness
+
+Any harness that provides these eight things can run a role. They are the adapter's whole contract.
+
+| # | Need | Used for |
+|---|---|---|
+| 1 | One headless run: prompt in, exit code out, no questions asked | every worker is detached |
+| 2 | A tool allowlist per run | a role gets only the tools its file names |
+| 3 | MCP servers set per run, and only those | the knowledge gateway is the one server a role sees |
+| 4 | Model chosen per run | maker and checker slots; a different model family for `family: other` |
+| 5 | A final answer that follows a JSON schema | the result object in section 5 |
+| 6 | A login passed out of band, not in arguments or the environment | section 4 |
+| 7 | User and machine settings ignored | a worker must not inherit the owner's hooks, plugins or servers |
+| 8 | A version string | recorded in `LAUNCH` |
+
+## 3. One launch
+
+`factory launch <role> <ticket-or-pr>` does this, in order. A failure at any step launches nothing.
+
+1. Read `kit/roles/<role>.md`. Check the ticket's stage names this role and the upstream stage is locked.
+2. For an operator: require a counting `[PRODUCER] GATE PASS` on the job's hash.
+3. Create the worktree: a branch for a maker or operator, a detached checkout for a checker or judge.
+   For a blind judge, `factory blind` has already replaced old and new with `A` and `B`.
+4. Render the prompt from the role body and write it, with its sha256, outside the worktree.
+5. Post `[<ORCHESTRATOR>] LAUNCH <role> <id>`: the prompt, its hash, model, harness version, base commit.
+6. Start the knowledge gateway for this run with the role's `knowledge` capabilities (section 6).
+7. Start the harness inside the sandbox (section 7), detached:
+
+```
+<harness> -p
+  --model <model of the role's slot>
+  --tools <the role's tools>
+  --strict-mcp-config --mcp-config <this run's gateway only>
+  --setting-sources project
+  --permission-mode bypassPermissions
+  --output-format json --json-schema <result schema>
+  < prompt
+```
+
+8. When it exits, the launcher (not the worker) finishes the job:
+   - reads the result object and refuses a marker the role's kind may not post;
+   - commits the changed files that match the role's `writes` globs, and lists any other changed path
+     in the marker as dropped;
+   - computes the head and the manifest hash from git itself;
+   - pushes the branch, opens the pull request if there is none, and posts the marker.
+
+A worker that dies, times out or returns no valid result gets `[<ROLE>] BLOCKED` posted for it with the
+exit status. A missing result is never read as approval.
+
+## 4. Inference: logins only
+
+- Models are reached through subscription (OAuth) logins. No role and no program in the kit is given
+  an inference API key, and the launcher clears any such variable before it starts a worker.
+- The owner creates a long-lived inference-only token for each account once (the harness's
+  `setup-token` command). Tokens are files outside every repository, readable by the launcher only.
+- The launcher hands the token to the harness on a file descriptor. It is not in the arguments or the
+  environment, so the tools a worker starts cannot read it. The token can run inference and nothing
+  else: it cannot reach account settings or connectors.
+- **Account pool.** `production.local.env` lists the accounts for each model slot. The launcher picks
+  one per launch. When an account is out of usage the launch fails with a named reason, `factory tick`
+  moves to the next account, and the ticket waits if none is left. It never falls back to an API key.
+- **A second model family.** A role with `family: other` (judges and checkers, where one is available)
+  runs on a model from a different vendor than its maker. It is still reached by login: a local proxy
+  holds that vendor's subscription login and speaks the harness's API, and the adapter points the
+  harness at it. When no second family is logged in, the launch records `family: same` in `LAUNCH`
+  and the lab's judge-calibration loop is told, since same-family judging is a known weakness.
+- **Failure states the launcher must tell apart:** out of usage (wait or rotate), token expired or
+  revoked (stop that account, raise a `resource:down` issue for the owner), proxy down (same).
+
+## 5. The result object
+
+A worker's last message is one JSON object. The harness enforces the schema; the launcher posts it.
+
+```json
+{
+  "marker": "READY",
+  "summary": "one paragraph",
+  "evidence": [{"criterion": "…", "result": "…", "command": "…"}],
+  "notes": [{"id": "B1", "severity": "Blocker", "text": "…", "evidence": "…"}],
+  "prefers": {"choice": "A", "cited": ["panel 3"]},
+  "blocked": {"missing": "…", "tried": "…", "resume_from": "…"}
+}
+```
+
+| Kind | Markers it may return |
+|---|---|
+| maker, operator | `READY`, `ADDRESSED`, `BLOCKED` |
+| checker | `APPROVED`, `NOTES`, `BLOCKED` |
+| judge | `PREFERS A`, `PREFERS B`, `NO PREFERENCE`, `BLOCKED` |
+| analyst | `SYMPTOMS`, `BLOCKED` |
+| orchestrator | `RULING`, `SELECTED`, `BLOCKED` |
+
+Because the launcher posts, a role cannot post another role's verdict, cannot name a head it did not
+review, and holds no GitHub credential to misuse. `LOCK`, `[LINT]`, `[PRODUCER]` and `[PLATFORM-GATE]`
+markers are posted only by the `factory` commands that compute them.
+
+## 6. Knowledge: the Fermi layer
+
+Fermi (an MCP server) is the studio's knowledge and memory. GitHub stays the state.
+
+| Lives in Fermi | Lives in GitHub |
+|---|---|
+| Procedures: how to do a craft task, as skills | Every artifact, verdict, lock and ledger line |
+| Craft knowledge and reference notes | The bible, the playbook, the rulebook, the registries |
+| Recall: what happened on earlier tickets | Anything a lint, a gate or a lock reads |
+| Search over indexed sources | |
+
+Rules:
+
+- **A memory advises; a file binds.** A role may be reminded by Fermi. It may cite only files. A
+  lesson becomes binding when it is a playbook file locked by pull request; on that lock the launcher
+  writes the lesson to Fermi as a skill or memory, so the two cannot disagree for long.
+- **A role sees capabilities, not the server.** The role file's `knowledge` line names capabilities:
+
+| Capability | Fermi tools behind it | Typical roles |
+|---|---|---|
+| `skills` | search and load skills | every role |
+| `memory-read` | recall | makers, checkers, orchestrators |
+| `memory-write` | write a memory, tagged with production, role and ticket | makers, analysts, orchestrators |
+| `search` | search indexed sources | researcher, trend-scout, method-researcher |
+| `skills-write` | create or change a skill | retro-agent, lab-director |
+
+  Judges get none: a judge that can recall earlier rounds is no longer blind.
+
+- **Nothing else is reachable.** Fermi's other tools (secrets, code execution, files, browser, the
+  desktop bridge, messaging, schedules, cloud agents) are never exposed to a role.
+- **Enforcement.** A full Fermi login exposes every tool, so no worker holds one. The launcher starts
+  a **knowledge gateway** for each run: a small local MCP server that holds the Fermi login outside
+  the sandbox, exposes only the role's capabilities, adds the production tag to every write and
+  restricts every read to that production's tag plus the shared `studio` tag. It is built in wave 2.
+  The stronger form is a scoped token in Fermi itself with a data namespace per production. That
+  changes the live Fermi server, so it is the owner's call (`docs/resources.md`, open decisions).
+- **Fermi down is not a blocker.** Role prompts say so: with the gateway unreachable, a role works
+  from the repository alone and says so in its result.
+
+## 7. Sandbox
+
+A worker runs with every permission prompt off, so the boundary is the operating system, not the prompt.
+
+| A worker can | A worker cannot |
+|---|---|
+| read the production repository | read tokens, key files or the launcher's state directory |
+| write inside its own worktree and a scratch directory | write anywhere else, including the kit and other worktrees |
+| reach the model endpoint and its knowledge gateway | reach GitHub with a credential, or any tool endpoint not named for its role |
+| reach the web, if its role names a web tool | start schedulers, background services or other agents |
+
+On macOS this is a `sandbox-exec` profile generated per launch; on a Linux render node, a container.
+The profile is part of the kit and is tested the same way as a lint: each denied action has a test
+that fails if the action succeeds.
+
+## 8. Tools and credentials
+
+- **Tools a role holds** are the harness's own (read, edit, write, search, shell, web) as its file lists.
+- **Tools that cost money or cannot be undone** (generation, voice, render, upload) are never called
+  by an agent directly. An operator writes a job file; `factory gate` passes or stops it; then
+  `factory run <job>` makes the call with the credential and writes the outputs and the ledger line.
+  The operator reads the outputs and reports. The credential never enters the worker.
+- **Injected credentials** are the exception, for a tool an agent must drive step by step (the render
+  node's remote control). The role file names the secret, the launcher injects only that one, only for
+  a job with a gate PASS, and prefers a short-lived credential minted for the job.
+- Keys are files outside every repository, one per resource id in `kit/resources.json`.
+  `factory doctor` checks that each exists and works, and prints names and states, never values.
+
+## 9. When a harness is forked
+
+The default answer to a failing role is never the harness. The order:
+
+1. **The role**: its prompt, rubric, tools and knowledge. The lab's craft loop changes these.
+2. **The checks**: a lint or a judge that is wrong.
+3. **The inputs**: the upstream package was bad.
+4. **The harness**, only when all of these hold:
+   - the role's eval suite (`kit/evals/<role>/`) has failed its threshold in **three lab programs in a
+     row**, each of which tried changes at levels 1 to 3;
+   - the lab has a written cause in the harness, with a minimal reproduction that does not involve the
+     role's prompt (for example: the context is cut before the storyboard is read; a tool result is
+     dropped; a schema is not enforced);
+   - the same reproduction fails on the pinned build and no harness setting fixes it.
+
+Then:
+
+- The lab director opens a `harness-fork` issue with the evidence. The producer gate checks the three
+  conditions; no one argues a fork into existence.
+- The fork is a separate repository, named for the one process it serves (for example
+  `hbar-storyboard`). It serves **that process only**: every other role stays on the primitive.
+- A **dedicated engineering team** owns it: its own orchestrator, builders and verifiers, run with the
+  software pattern this repository is built with. Its single metric is the failing role's eval suite,
+  which it cannot edit. It keeps a change only if the eval beats the best result by more than the
+  noise, and logs every experiment.
+- The fork tracks upstream: it merges each new primitive build and re-runs the eval. When the
+  primitive passes the eval by itself, the fork is retired and the process moves back.
+- A production names a fork per role in `production.env` (`HARNESS_<ROLE>`); the default is the primitive.
+
+A fix that would help every process is not a fork: it is an issue on the harness's own repository,
+handled by that project's own loop.
