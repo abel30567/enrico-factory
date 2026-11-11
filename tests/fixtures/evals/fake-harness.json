@@ -1,0 +1,135 @@
+[
+ {
+  "match": "eval clean-01\\b",
+  "result": {
+   "marker": "APPROVED",
+   "summary": "The pages are clean."
+  }
+ },
+ {
+  "match": "eval seeded-01\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-1.md:3",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "The page is unsigned."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval seeded-02\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-2.md:1",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "Missing title on page 2."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval clean-01\\b",
+  "result": {
+   "marker": "APPROVED",
+   "notes": [
+    {
+     "evidence": "pages/page-1.md:1",
+     "id": "I1",
+     "severity": "Issue",
+     "text": "The title could be shorter."
+    }
+   ],
+   "summary": "The pages are clean."
+  }
+ },
+ {
+  "match": "eval seeded-01\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-1.md:3",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "The page is unsigned."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval seeded-02\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-2.md:1",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "Missing title."
+    },
+    {
+     "evidence": "pages/page-2.md:1",
+     "id": "I1",
+     "severity": "Issue",
+     "text": "Page 2 reads flat."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval clean-01\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-1.md:3",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "The signature is misspelled."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval seeded-01\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-1.md:3",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "The page is unsigned."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ },
+ {
+  "match": "eval seeded-02\\b",
+  "result": {
+   "marker": "NOTES",
+   "notes": [
+    {
+     "evidence": "pages/page-2.md:1",
+     "id": "B1",
+     "severity": "Blocker",
+     "text": "Missing title on page 2."
+    }
+   ],
+   "summary": "Notes on the pages."
+  }
+ }
+]
