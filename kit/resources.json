@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "about": "Every resource a production run needs. docs/resources.md explains each one. `factory doctor` reads this file and prints a name and a state per resource, never a value.",
+  "settings_files": ["production.env", "production.local.env"],
+  "secrets_dir_setting": "SECRETS_DIR",
+  "check_kinds": {
+    "command": "argv runs and exits 0; with `match_all`, every pattern is found in its output. `{NAME}` is replaced by setting NAME.",
+    "module": "the Python module `name` can be imported",
+    "secret": "`<secrets dir>/<name>` is a non-empty file readable by its owner only, or a directory holding at least `min` such files",
+    "setting": "setting `name` is not empty; with `one_of`, its value is in the list",
+    "path": "setting `setting` names a file or directory that exists"
+  },
+  "resources": [
+    {
+      "id": "harness",
+      "title": "Agent harness, pinned build",
+      "class": "harness",
+      "auth": "none",
+      "holder": "launcher",
+      "rooms": ["all"],
+      "wave": 2,
+      "setup": "agent",
+      "checks": [{"kind": "command", "argv": ["{HARNESS}", "--version"], "match_all": ["[0-9]+\\.[0-9]+"]}]
+    },
+    {
+      "id": "inference.primary",
+      "title": "Subscription logins for the maker and checker model slots",
+      "class": "inference",
+      "auth": "login",
+      "holder": "launcher",
+      "rooms": ["all"],
+      "wave": 2,
+      "setup": "owner",
+      "renew": "one long-lived inference-only token per account, renewed yearly",
+      "checks": [{"kind": "secret", "name": "inference.primary", "min": 1}]
+    },
+    {
+      "id": "inference.other",
+      "title": "Second model family for judges, through a local proxy that holds that vendor's subscription login",
+      "class": "inference",
+      "auth": "login",
+      "holder": "launcher",
+      "rooms": ["all"],
+      "wave": 2,
+      "setup": "owner",
+      "optional": true,
+      "renew": "the proxy refreshes; the owner logs in again when the refresh fails",
+      "checks": [{"kind": "setting", "name": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}]
+    },
+    {
+      "id": "knowledge.fermi",
+      "title": "Fermi MCP server, reached only through the knowledge gateway",
+      "class": "knowledge",
+      "auth": "login",
+      "holder": "gateway",
+      "rooms": ["all"],
+      "wave": 2,
+      "setup": "owner",
+      "checks": [{"kind": "setting", "name": "FERMI_URL"}, {"kind": "secret", "name": "knowledge.fermi"}]
+    },
+    {
+      "id": "state.github",
+      "title": "GitHub: issues, pull requests, markers",
+      "class": "state",
+      "auth": "login",
+      "holder": "launcher",
+      "rooms": ["all"],
+      "wave": 2,
+      "setup": "owner",
+      "checks": [
+        {"kind": "command", "argv": ["git", "--version"]},
+        {"kind": "command", "argv": ["gh", "auth", "status"]}
+      ]
+    },
+    {
+      "id": "gen.image.login",
+      "title": "Image and image-to-video generation by subscription login, through the local proxy",
+      "class": "generator",
+      "auth": "login",
+      "holder": "run",
+      "rooms": ["story", "production"],
+      "wave": 3,
+      "setup": "owner",
+      "renew": "the proxy refreshes; the owner logs in again when the refresh fails",
+      "checks": [{"kind": "setting", "name": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}]
+    },
+    {
+      "id": "gen.image.key",
+      "title": "Image generation and editing by API key",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["story", "post"],
+      "wave": 3,
+      "setup": "owner",
+      "optional": true,
+      "checks": [{"kind": "secret", "name": "gen.image.key"}]
+    },
+    {
+      "id": "store.media",
+      "title": "Media store: an object bucket with public URLs",
+      "class": "store",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["story", "production", "post", "distribution"],
+      "wave": 3,
+      "setup": "owner",
+      "checks": [
+        {"kind": "setting", "name": "MEDIA_STORE"},
+        {"kind": "setting", "name": "MEDIA_PUBLIC_BASE"},
+        {"kind": "secret", "name": "store.media"}
+      ]
+    },
+    {
+      "id": "local.ffmpeg",
+      "title": "ffmpeg and ffprobe with the loudness, similarity and detection filters",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["story", "production", "post", "lab"],
+      "wave": 3,
+      "setup": "agent",
+      "checks": [
+        {"kind": "command", "argv": ["ffprobe", "-version"]},
+        {
+          "kind": "command",
+          "argv": ["ffmpeg", "-hide_banner", "-filters"],
+          "match_all": ["ebur128", "loudnorm", "ssim", "libvmaf", "blackdetect", "freezedetect", "silencedetect", "subtitles"]
+        }
+      ]
+    },
+    {
+      "id": "engine.unreal",
+      "title": "Unreal Engine, the version the production pins",
+      "class": "engine",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["production"],
+      "wave": 4,
+      "setup": "owner",
+      "checks": [{"kind": "path", "setting": "UNREAL_EDITOR"}]
+    },
+    {
+      "id": "render.node",
+      "title": "GPU render node that a program can start and stop",
+      "class": "engine",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 4,
+      "setup": "owner",
+      "checks": [{"kind": "setting", "name": "RENDER_PROVIDER"}, {"kind": "secret", "name": "render.node"}]
+    },
+    {
+      "id": "store.assets",
+      "title": "Asset store: engine binaries by content hash",
+      "class": "store",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 4,
+      "setup": "owner",
+      "checks": [{"kind": "setting", "name": "ASSET_STORE"}, {"kind": "secret", "name": "store.assets"}]
+    },
+    {
+      "id": "local.metrics",
+      "title": "Perceptual and character-identity metrics, calibrated on the production's own characters",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["production", "lab"],
+      "wave": 4,
+      "setup": "agent",
+      "checks": [{"kind": "setting", "name": "IDENTITY_METRIC"}, {"kind": "setting", "name": "PERCEPTUAL_METRIC"}]
+    },
+    {
+      "id": "gen.model3d",
+      "title": "Text or image to 3D model",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "gen.model3d"}]
+    },
+    {
+      "id": "gen.rig",
+      "title": "Automatic rigging",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "gen.rig"}]
+    },
+    {
+      "id": "gen.motion",
+      "title": "Text to motion, or motion capture from video",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "optional": true,
+      "checks": [{"kind": "secret", "name": "gen.motion"}]
+    },
+    {
+      "id": "gen.lipsync",
+      "title": "Audio to facial animation, run locally on the render node",
+      "class": "generator",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "agent",
+      "checks": [{"kind": "setting", "name": "LIPSYNC_TOOL"}]
+    },
+    {
+      "id": "gen.voice",
+      "title": "Text to speech with a stored voice per character",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "gen.voice"}]
+    },
+    {
+      "id": "gen.music",
+      "title": "Music with one licence valid on every platform the production posts to",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "gen.music"}]
+    },
+    {
+      "id": "gen.sfx",
+      "title": "Sound effects",
+      "class": "generator",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["production"],
+      "wave": 5,
+      "setup": "owner",
+      "checks": [{"kind": "secret", "name": "gen.sfx"}]
+    },
+    {
+      "id": "local.timeline",
+      "title": "OpenTimelineIO, for the conform",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["production", "post"],
+      "wave": 5,
+      "setup": "agent",
+      "checks": [{"kind": "module", "name": "opentimelineio"}]
+    },
+    {
+      "id": "platform.youtube",
+      "title": "YouTube: upload and analytics, one OAuth grant",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["distribution", "lab"],
+      "wave": 5,
+      "setup": "owner",
+      "renew": "a program refreshes the access token; the OAuth app must be in production, or the grant ends after 7 days",
+      "checks": [
+        {"kind": "secret", "name": "platform.youtube"},
+        {"kind": "setting", "name": "YOUTUBE_OAUTH_APP", "one_of": ["production"]}
+      ]
+    },
+    {
+      "id": "platform.instagram",
+      "title": "Instagram: Reels publishing and insights, one OAuth grant",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["distribution", "lab"],
+      "wave": 5,
+      "setup": "owner",
+      "renew": "a program refreshes the 60-day token on a schedule; if it lapses the owner logs in again",
+      "checks": [{"kind": "secret", "name": "platform.instagram"}]
+    },
+    {
+      "id": "platform.tiktok",
+      "title": "TikTok: posting and counts, one OAuth grant",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["distribution", "lab"],
+      "wave": 5,
+      "setup": "owner",
+      "renew": "a program refreshes and stores the rotating refresh token; exactly one program may refresh",
+      "checks": [
+        {"kind": "secret", "name": "platform.tiktok"},
+        {"kind": "setting", "name": "TIKTOK_POSTING", "one_of": ["inbox", "private", "direct"]}
+      ]
+    },
+    {
+      "id": "platform.tiktok.insights",
+      "title": "TikTok watch-through, from the business API",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["distribution", "lab"],
+      "wave": 6,
+      "setup": "owner",
+      "optional": true,
+      "checks": [{"kind": "secret", "name": "platform.tiktok.insights"}]
+    },
+    {
+      "id": "local.ocr",
+      "title": "OCR, for caption and safe-area checks",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["post"],
+      "wave": 6,
+      "setup": "agent",
+      "checks": [{"kind": "command", "argv": ["tesseract", "--version"]}]
+    },
+    {
+      "id": "local.transcribe",
+      "title": "Speech to text run locally, for caption and dialogue checks",
+      "class": "local",
+      "auth": "none",
+      "holder": "none",
+      "rooms": ["production", "post"],
+      "wave": 6,
+      "setup": "agent",
+      "checks": [{"kind": "setting", "name": "TRANSCRIBE_CMD"}, {"kind": "path", "setting": "TRANSCRIBE_MODEL"}]
+    }
+  ]
+}
