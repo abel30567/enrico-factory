@@ -1,0 +1,35 @@
+[
+  {"kind": "maker", "actor": "SKETCHER", "result": {
+    "marker": "READY", "summary": "Sketched the invented scene.",
+    "evidence": [{"criterion": "1", "result": "pass", "command": "make check"}]}},
+  {"kind": "operator", "actor": "UPLOADER", "result": {
+    "marker": "ADDRESSED", "summary": "Fixed the note.",
+    "evidence": [{"criterion": "1", "result": "pass", "command": "make check"}],
+    "addressed": [{"note": "B1", "by": "EDITOR", "action": "changed", "text": "Renamed the file."}]}},
+  {"kind": "maker", "actor": "SKETCHER", "result": {
+    "marker": "BLOCKED", "summary": "Cannot start.",
+    "blocked": {"missing": "the outline", "tried": "searched notes/", "resume_from": "branch @ 1234567"}}},
+  {"kind": "checker", "actor": "EDITOR", "result": {
+    "marker": "APPROVED", "summary": "Reads clean.",
+    "notes": [{"id": "I1", "severity": "Issue", "text": "A small nit.", "evidence": "line 3"}]}},
+  {"kind": "checker", "actor": "EDITOR", "result": {
+    "marker": "NOTES", "summary": "Two notes.",
+    "notes": [{"id": "B1", "severity": "Blocker", "text": "Wrong name.", "evidence": "line 1"},
+              {"id": "I1", "severity": "Issue", "text": "A small nit.", "evidence": "line 3"}]}},
+  {"kind": "judge", "actor": "PANEL", "result": {
+    "marker": "PREFERS A", "summary": "A is clearer.", "prefers": {"choice": "A", "cited": ["panel 3"]}}},
+  {"kind": "judge", "actor": "PANEL", "result": {
+    "marker": "PREFERS B", "summary": "B is clearer.", "prefers": {"choice": "B", "cited": ["panel 1"]}}},
+  {"kind": "judge", "actor": "PANEL", "result": {
+    "marker": "NO PREFERENCE", "summary": "Equal.", "prefers": {"choice": "none", "cited": []}}},
+  {"kind": "analyst", "actor": "ANALYST", "result": {
+    "marker": "SYMPTOMS", "summary": "One symptom.",
+    "notes": [{"id": "I1", "severity": "Issue", "text": "Viewers leave at 0:04.", "evidence": "metrics row 2"}]}},
+  {"kind": "orchestrator", "actor": "CHIEF", "result": {
+    "marker": "RULING", "summary": "Keep the invented title."}},
+  {"kind": "orchestrator", "actor": "CHIEF", "result": {
+    "marker": "SELECTED", "summary": "The second pitch is stronger.", "selected": 12}},
+  {"kind": "judge", "actor": "BRAINTRUST", "result": {
+    "marker": "VOTE", "summary": "Amendment carried.",
+    "vote": {"for": 3, "against": 1, "reasons": ["seat 1: clearer", "seat 2: fits", "seat 3: fine", "seat 4: too long"]}}}
+]
