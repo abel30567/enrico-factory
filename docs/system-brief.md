@@ -85,7 +85,9 @@ Rules between rooms:
 
 ## 4. Roles
 
-A role is one file in `kit/roles/`. Adding a department adds files, not code. Kinds: `orchestrator`,
+A role is one file in `kit/roles/`. Adding a department adds files, not code. A role with
+`room: studio` serves every room (`look-reviewer`, `continuity-supervisor`) and is launched by the
+orchestrator of the room whose ticket it works on. Kinds: `orchestrator`,
 `maker`, `checker` (judged, gives notes), `judge` (scores or prefers, blind), `operator` (requests gated
 jobs), `analyst` (turns data into notes and proposals).
 
@@ -167,11 +169,16 @@ Checker and judge bodies contain their rubric. A judge body never receives the m
 rooms built so far: each room adds its entries together with its lints. One entry per stage:
 
 ```json
-{"room": "story", "stage": "board", "unit": "sequence", "after": "script",
+{"room": "story", "stage": "board", "unit": "sequence", "after": "sequences",
  "maker": "story-artist", "lint": ["structure", "provenance", "references", "media"],
  "checker": "continuity-supervisor", "judge": "pitch-judge", "blind": true,
  "pitches": 1, "paths": ["episodes/*/sequences/*/shots/**"]}
 ```
+
+Stages run in table order; `after` names the stage that must be locked first. Two exceptions: `style`
+follows `bible` and must be locked before `board`, and `cross-shot` runs once every shot of the
+sequence has locked `lighting`, before any of them renders. `maker`, `checker` and `judge` are each a
+role id, a list, or empty.
 
 `blind: true` means a revision of an already locked unit needs a blind win over the locked version
 (rule 4). `pitches: N` launches N makers on one ticket; the judge scores all of them on one rubric and
@@ -188,8 +195,8 @@ the orchestrator selects one.
 | story | `sequences` | episode | head-of-story | every scene assigned to one sequence | continuity-supervisor |
 | story | `style` | style lock | art-director | references resolve, palette values present | look-reviewer |
 | story | `board` | sequence | story-artist | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
-| story | `reel` | episode | editorial | edit list covers every beat ID, runtime | Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
-| production | `intake` | episode | line-producer | shot list equals the locked edit list frame for frame | none |
+| story | `reel` | episode | editorial | edit list covers every beat ID, runtime | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
+| production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame | none |
 | production | `assets` | asset | asset-builder | naming, references, budgets, scale against the bible, skeleton | look-reviewer |
 | production | `rigging` | asset | rigger | range of motion, limits, interpenetration, rig hash | deformation-reviewer |
 | production | `layout` | shot | layout-artist | focal length, framing, duration, 180° line, 9:16 safe zones | cinematography-reviewer |
@@ -244,7 +251,9 @@ tested on stylised animation: each is a starting value, and the lab changes it f
 
 ## 7. Shared stores
 
-All are files in the production repository, changed only by pull request.
+All are files in the production repository, changed only by pull request. The exceptions are the
+append-only logs (ledger, results log, registries): the `factory` command that owns each one appends
+to it on the base branch, and nothing else may write it.
 
 | Store | Path | Written by | Notes |
 |---|---|---|---|
@@ -317,7 +326,7 @@ Merging a pull request is the lock. `factory lock` merges at most one pull reque
 
 1. `[LINT] PASS` counts for the head, for every lint the stage names.
 2. Every checker the stage names has a counting `APPROVED`, and no Blocker is open.
-3. Where the stage is `blind` and a locked version exists, a counting blind preference for the new one.
+3. Every judge the stage names has a counting verdict on the head. Where the stage is `blind` and a locked version exists, the verdicts prefer the new one (for a panel, a majority).
 4. The upstream stage of the same unit is locked, or the format skips it; in production, every cheaper stage of the shot is locked.
 5. On a pitched ticket, the pull request is the one selected.
 6. A pull request touching `bible/**` carries its amendment, the vote its class requires, and `canon-reviewer` `APPROVED`.
@@ -375,6 +384,8 @@ must pass on.
   `GATE STOP` with the cap that tripped. `factory run` then makes the call with the credential, and
   refuses a job without a counting PASS. The credential does not enter the operator's session
   (`docs/harness.md`, section 8).
+- **Locks that need a gate PASS**: a lock that hands a package to another room (the story package,
+  the master, a platform package), and any lock on a ticket that has passed its iteration cap.
 - **Release is staged**: private upload, a check that the platform finished processing and kept
   captions and disclosure, then a scheduled public switch that is its own gated job.
 - **Kill switch**: `factory freeze` stops every launch and every gate in the production.
@@ -391,7 +402,8 @@ must pass on.
 
 ## 12. Loops
 
-Each room runs three nested loops; only the outermost hands anything to another room.
+Each room runs three nested loops. A package leaves a room when the loop that locks it exits; only
+the outermost loop changes the room's own rules.
 
 | Room | Inner loop, exit | Middle loop, exit | Outer loop, exit |
 |---|---|---|---|
@@ -419,6 +431,11 @@ the experiment, the tests, the judges and the keep threshold.
 | Judge calibration | rank agreement between judge scores and real retention on held-out episodes | judge rubrics and prompts | medium |
 | Craft | blind win rate of new role instructions, replayed on past episodes, scored by held-out judges | writer, artist, animator and CTA role files | medium |
 | Packaging (live) | average watch time or early hold rate per platform | hooks, caption style, CTA placement, thumbnails | high |
+
+Verdicts: `KEEP` beats the best result by more than the threshold, twice. `NOISE` is inside the
+threshold either way. `DISCARD` is worse than the best by more than the threshold, or breaks a frozen
+floor. A KEEP becomes a pull request that the `experimenter` opens in the target room and that room's
+orchestrator locks.
 
 Before a loop starts it runs 5 to 10 no-op controls and sets its keep threshold at twice their
 spread or more. A KEEP is re-run once before it counts. Every 10 to 15 runs a no-op control checks for
@@ -488,6 +505,27 @@ production/<ep>/          shot tickets' scene scripts and manifests (engine bina
 post/<ep>/  distribution/<ep>/
 media/manifest.tsv
 ```
+
+### Episode files
+
+These are the shapes the `structure` lint checks. IDs are stable once locked: beats `B<n>`, scenes
+`S<n>`, lines `L<n>`, sequences `Q<n>`, shots `<sequence>-<n>`.
+
+| File | Shape |
+|---|---|
+| `premise.md` | front matter `format: <format id>` and `logline: <one sentence>`; then the pitch |
+| `beats.md` | one `## B<n> <beat name>` heading per beat of the format, in the format's order; the first line under each is `duration: <seconds>`. The durations sum to a value inside the format's runtime |
+| `outline.md` | one `## S<n> <title>` heading per scene; the first line under each is `beats: B<n>, ...`. Every beat is named by at least one scene. Absent when the format skips `outline` |
+| `script.md` | the same `## S<n>` headings as the outline (or, without an outline, each followed by a `beats:` line); a spoken line starts `L<n> <SPEAKER>:` |
+| `lines.json` | a list of `{id, scene, speaker, text}`: exactly the `L<n>` lines of the script |
+| `ledger.json` | a list of `{subject, attribute, value, tag, source, scene}`: the facts the episode asserts |
+| `sequences/<Q>/sequence.json` | `{id, scenes: [S<n>, ...]}`. Every scene is in exactly one sequence |
+| `sequences/<Q>/shots/<shot>.json` | `{id, scene, beat, duration, characters: [...], set, camera, action}`, optional `panel: media:<id>`. `duration` is seconds, above zero. Each character is a file `bible/canon/characters/<id>.md` and the set a file `bible/canon/places/<id>.md` |
+| `reel/edit-list.json` | `{fps, events: [{shot, beat, start, duration}]}`: events in order with no gap or overlap, every shot exists, every beat ID appears, and the total is inside the format's runtime |
+| `intent-packet.json` | `{hook, spoilers: [...], cta: [...], tone}` |
+
+The lint checks a file only when it exists, and the files a stage needs only from that stage on:
+a premise alone passes; a script without `lines.json` fails.
 
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
 the canon ledger, the episode ledger, the role file, the task.
