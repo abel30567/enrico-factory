@@ -489,6 +489,27 @@ post/<ep>/  distribution/<ep>/
 media/manifest.tsv
 ```
 
+### Episode files
+
+These are the shapes the `structure` lint checks. IDs are stable once locked: beats `B<n>`, scenes
+`S<n>`, lines `L<n>`, sequences `Q<n>`, shots `<sequence>-<n>`.
+
+| File | Shape |
+|---|---|
+| `premise.md` | front matter `format: <format id>` and `logline: <one sentence>`; then the pitch |
+| `beats.md` | one `## B<n> <beat name>` heading per beat of the format, in the format's order; the first line under each is `duration: <seconds>`. The durations sum to a value inside the format's runtime |
+| `outline.md` | one `## S<n> <title>` heading per scene; the first line under each is `beats: B<n>, ...`. Every beat is named by at least one scene. Absent when the format skips `outline` |
+| `script.md` | the same `## S<n>` headings as the outline (or, without an outline, each followed by a `beats:` line); a spoken line starts `L<n> <SPEAKER>:` |
+| `lines.json` | a list of `{id, scene, speaker, text}`: exactly the `L<n>` lines of the script |
+| `ledger.json` | a list of `{subject, attribute, value, tag, source, scene}`: the facts the episode asserts |
+| `sequences/<Q>/sequence.json` | `{id, scenes: [S<n>, ...]}`. Every scene is in exactly one sequence |
+| `sequences/<Q>/shots/<shot>.json` | `{id, scene, beat, duration, characters: [...], set, camera, action}`, optional `panel: media:<id>`. `duration` is seconds, above zero. Each character is a file `bible/canon/characters/<id>.md` and the set a file `bible/canon/places/<id>.md` |
+| `reel/edit-list.json` | `{fps, events: [{shot, beat, start, duration}]}`: events in order with no gap or overlap, every shot exists, every beat ID appears, and the total is inside the format's runtime |
+| `intent-packet.json` | `{hook, spoilers: [...], cta: [...], tone}` |
+
+The lint checks a file only when it exists, and the files a stage needs only from that stage on:
+a premise alone passes; a script without `lines.json` fails.
+
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
 the canon ledger, the episode ledger, the role file, the task.
 
