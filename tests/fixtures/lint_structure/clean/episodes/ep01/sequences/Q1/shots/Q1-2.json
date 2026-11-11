@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 12,
+  "characters": [
+    "ama"
+  ],
+  "set": "harbour",
+  "camera": "high, slow push",
+  "action": "The lantern rises."
+}

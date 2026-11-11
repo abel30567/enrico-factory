@@ -1,0 +1,32 @@
+[
+  {
+    "id": "L1",
+    "scene": "S1",
+    "speaker": "TOBI",
+    "text": "A storm is coming."
+  },
+  {
+    "id": "L2",
+    "scene": "S1",
+    "speaker": "AMA",
+    "text": "Then we keep the light."
+  },
+  {
+    "id": "L3",
+    "scene": "S2",
+    "speaker": "AMA",
+    "text": "The lamp is cracked."
+  },
+  {
+    "id": "L4",
+    "scene": "S3",
+    "speaker": "TOBI",
+    "text": "The ferry is still out."
+  },
+  {
+    "id": "L5",
+    "scene": "S3",
+    "speaker": "AMA",
+    "text": "Then we bring it in."
+  }
+]
