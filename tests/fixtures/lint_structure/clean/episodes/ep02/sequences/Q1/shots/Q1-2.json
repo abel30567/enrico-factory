@@ -1,0 +1,13 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 300,
+  "characters": [
+    "ama",
+    "tobi"
+  ],
+  "set": "lighthouse",
+  "camera": "medium",
+  "action": "They work."
+}
