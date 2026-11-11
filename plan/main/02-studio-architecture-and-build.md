@@ -66,9 +66,9 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #36 (w2-07) ticket state (merged in PR #39)
 - [x] #34 (w2-16) checker and judge roles (merged in PR #38)
 - [x] #37 (w2-18) eval runner and the one prompt renderer (merged in PR #41)
-- [ ] #26 w2-05 init (PR #33): verified, hold removed, next in the merge gate
-- [ ] in review, verifiers launched: #42 w2-08 status and freeze (PR #47), #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
-- [ ] #44 w2-10 launch prepare: builder launched. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [x] #26 (w2-05) factory init (merged in PR #33)
+- [ ] in review, verifiers queued behind the host load limit (`~/.agent-orch/enrico-factory/launch-queue.sh`, log beside it): #42 w2-08 status and freeze (PR #47), #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
+- [ ] #44 w2-10 launch prepare: builder queued behind the same limit. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
 - [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
 - [ ] rule on the remaining questions (Q7 to Q11, Q16, Q19) before group D; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
