@@ -71,6 +71,18 @@ class LintCase(unittest.TestCase):
                 (root / rel).write_text(body, encoding="utf-8")
         return root
 
+    def git_init(self, root, ignore=None):
+        """Make root a git work tree, blind to any user-wide ignore file; `ignore` is its .gitignore."""
+        git(root, "init", "-q")
+        (root / ".git" / "no-excludes").write_text("")
+        git(root, "config", "core.excludesFile", str(root / ".git" / "no-excludes"))
+        if ignore is not None:
+            (root / ".gitignore").write_text(ignore, encoding="utf-8")
+
+
+def git(root, *args):
+    return subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True).stdout.decode()
+
 
 RAISES = "def check(root):\n    raise RuntimeError('boom')\n"
 
@@ -136,8 +148,8 @@ class Output(LintCase):
     def test_json_twice_is_byte_identical(self):
         for name in ("clean", "r3_ledger_tag", "r6_media_id"):
             with self.subTest(name):
-                a = cli("--root", str(FIX / name), "--json")
-                b = cli("--root", str(FIX / name), "--json")
+                a = cli("--root", str(FIX / name), "--json", "--only", ",".join(CHECKS))
+                b = cli("--root", str(FIX / name), "--json", "--only", ",".join(CHECKS))
                 self.assertEqual(a.stdout, b.stdout)
                 self.assertIn(json.loads(a.stdout)["status"], ("PASS", "FAIL"))
 
@@ -177,6 +189,61 @@ class Output(LintCase):
         self.assertIn("| references | FAIL | 1 finding |", body)
         self.assertEqual(body[-2:], ["Blockers:",
                                      "- B1 references data/scene.json:4 source missing/notes.md does not exist"])
+
+
+class FileSet(LintCase):
+    """`lint.files`: the files git would commit, or every file but `.git/` outside a work tree."""
+
+    PYC = {"__pycache__/x.pyc": b"\x00compiled\n"}
+
+    def media(self, root):
+        r = lint.run(root, only=["media"])["media"]
+        return r.status, [(f.path, f.line, f.rule) for f in r.findings]
+
+    def test_ignored_file_is_not_read(self):
+        root = self.variant(self.PYC)
+        self.git_init(root, ignore="__pycache__/\n")
+        self.assertEqual(self.media(root), (lint.PASS, []))
+        self.assertNotIn(Path("__pycache__/x.pyc"), lint.files(root))
+
+    def test_untracked_not_ignored_file_is_read(self):
+        root = self.variant(self.PYC)
+        self.git_init(root)
+        self.assertEqual(self.media(root), (lint.FAIL, [("__pycache__/x.pyc", 1, "media-bytes")]))
+
+    def test_outside_a_work_tree_every_file_but_git_is_read(self):
+        root = self.variant({**self.PYC, ".gitignore": "__pycache__/\n", ".git/objects/x.png": b"\x00"})
+        self.assertEqual(self.media(root), (lint.FAIL, [("__pycache__/x.pyc", 1, "media-bytes")]))
+        self.assertIn(Path("__pycache__/x.pyc"), lint.files(root))
+        self.assertFalse(any(p.parts[0] == ".git" for p in lint.files(root)))
+
+    def test_tracked_and_untracked_files_sorted_and_deleted_files_dropped(self):
+        root = self.variant({"research/gone.md": "- a tracked file deleted from disk\n",
+                             "ignored/a.md": "- ignored\n"})
+        self.git_init(root, ignore="ignored/\n")
+        git(root, "add", "-A")
+        (root / "research" / "gone.md").unlink()
+        (root / "research" / "new.md").write_text("- an untracked untagged item\n")
+        (root / "untracked.md").write_text("[x](missing.md)\n")
+        got = lint.files(root)
+        self.assertEqual(got, sorted(got))
+        self.assertIn(Path("research/new.md"), got)
+        self.assertIn(Path("research/harbour.md"), got)
+        self.assertNotIn(Path("research/gone.md"), got)
+        self.assertNotIn(Path("ignored/a.md"), got)
+        self.assertIn("research/gone.md", git(root, "ls-files"))
+        self.assertNotIn("research/new.md", git(root, "ls-files"))
+        results = lint.run(root, only=CHECKS)
+        self.assertEqual({k: r.status for k, r in results.items()},
+                         {"media": lint.PASS, "provenance": lint.FAIL, "references": lint.FAIL})
+        self.assertEqual([(f.path, f.line) for f in results["provenance"].findings], [("research/new.md", 1)])
+        self.assertEqual([(f.path, f.line) for f in results["references"].findings], [("untracked.md", 1)])
+
+    def test_ignored_files_skipped_by_provenance_and_references(self):
+        root = self.variant({"research/draft.md": "- untagged\n[x](missing.md)\n"})
+        self.git_init(root, ignore="draft.md\n")
+        results = lint.run(root, only=CHECKS)
+        self.assertEqual({k: r.status for k, r in results.items()}, dict.fromkeys(CHECKS, lint.PASS))
 
 
 if __name__ == "__main__":

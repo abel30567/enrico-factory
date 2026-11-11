@@ -32,6 +32,25 @@ class Media(LintCase):
                              "data/late-nul.txt": b"a" * 8192 + b"\x00"})
         self.assertEqual(lint.run(root, only=["media"])["media"].status, lint.PASS)
 
+    def test_rule9_dangling_symbolic_link(self):
+        for name, setup in {"outside a work tree": lambda root: None, "in a work tree": self.git_init}.items():
+            with self.subTest(name):
+                root = self.variant({})
+                setup(root)
+                (root / "art").mkdir()
+                (root / "art" / "gone.txt").symlink_to("missing.txt")
+                self.assertOnly(root, "media", [("art/gone.txt", 1, "media-link")])
+                result = lint.run(root, only=["media"])["media"]
+                self.assertEqual(result.findings[0].message, "dangling symbolic link")
+
+    def test_rule9_link_to_existing_file_is_judged_as_that_file(self):
+        root = self.variant({"data/notes.txt": "plain text\n"})
+        (root / "data" / "link.txt").symlink_to("notes.txt")
+        self.assertEqual(lint.run(root, only=["media"])["media"].status, lint.PASS)
+        tmp = Path(self.variant({"blob.dat": b"\x00"})) / "blob.dat"  # outside the tree
+        (root / "data" / "blob-link.txt").symlink_to(tmp)
+        self.assertOnly(root, "media", [("data/blob-link.txt", 1, "media-bytes")])
+
     def test_rule8_duplicate_id(self):
         self.assertOnly(FIX / "r8_manifest", "media", [("media/manifest.tsv", 3, "manifest-id")])
 
