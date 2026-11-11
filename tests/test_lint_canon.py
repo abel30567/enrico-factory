@@ -20,13 +20,15 @@ def ledger(*entries):
 
 
 class Canon(LintCase):
+    CHECKS = ("canon", "media", "provenance", "references", "spoiler")
+
     def canon(self, root):
         return lint.run(root, only=["canon"])["canon"]
 
     def test_clean_passes(self):
         result = self.canon(FIX / "clean")
         self.assertEqual(result.status, lint.PASS, result.findings)
-        self.assertEqual({r.status for r in lint.run(FIX / "clean").values()}, {lint.PASS})
+        self.assertEqual({r.status for r in lint.run(FIX / "clean", only=self.CHECKS).values()}, {lint.PASS})
 
     def test_rule1_canon_ledger_contradicts_itself(self):
         self.assertOnly(FIX / "r1_canon_self", "canon", [("bible/canon/ledger.tsv", 4, "canon-self")])

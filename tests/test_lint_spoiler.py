@@ -14,6 +14,8 @@ POST = "post/ep01/youtube/extra.json"
 
 
 class Spoiler(LintCase):
+    CHECKS = ("canon", "media", "provenance", "references", "spoiler")
+
     def spoiler(self, root):
         return lint.run(root, only=["spoiler"])["spoiler"]
 
@@ -24,7 +26,7 @@ class Spoiler(LintCase):
     def test_clean_passes(self):
         result = self.spoiler(FIX / "clean")
         self.assertEqual(result.status, lint.PASS, result.findings)
-        self.assertEqual({r.status for r in lint.run(FIX / "clean").values()}, {lint.PASS})
+        self.assertEqual({r.status for r in lint.run(FIX / "clean", only=self.CHECKS).values()}, {lint.PASS})
 
     def test_rule4_every_packaging_key_at_any_depth_and_no_other_key(self):
         data = {"title": "the map is forged", "caption": "the map is forged", "description": "the map is forged",

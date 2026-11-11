@@ -43,7 +43,7 @@ class Provenance(LintCase):
     def test_rule3_ledger_shape(self):
         root = self.variant({"episodes/ep02/ledger.json": '{"tag": "text"}\n'})
         self.assertOnly(root, "provenance", [("episodes/ep02/ledger.json", 1, "ledger-shape")])
-        root = self.variant({"bible/canon/ledger.tsv": "subject\tvalue\nkeeper\tblue\n"})
+        root = self.variant({"bible/canon/ledger.tsv": "subject\tattribute\tvalue\nkeeper\tboat colour\tblue\n"})
         self.assertOnly(root, "provenance", [("bible/canon/ledger.tsv", 1, "ledger-shape")])
 
     def test_unparseable_ledger_is_error(self):
