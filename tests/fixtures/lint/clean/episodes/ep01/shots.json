@@ -1,0 +1,6 @@
+{
+  "shots": [
+    {"id": "s1", "path": "premise.md", "ref": "media:harbour-sketch", "note": "path: missing.md"},
+    {"id": "s2", "path": "episodes/ep01/ledger.json", "source": "https://example.com/missing", "tags": ["media:harbour-sketch"]}
+  ]
+}
