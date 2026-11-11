@@ -55,7 +55,12 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 ## Wave 2 progress
 
 - [ ] #19 markers whose actor is not the role id (builder launched 2026-11-11)
-- [ ] remaining wave 2 tickets: drafted from brief section 17, to be reviewed and filed
+- [x] dev kit: `launch.sh` posts every worker's exact prompt as `[ORCHESTRATOR] LAUNCH` on its issue or PR before it starts (`register-prompt.py`), and the verifier reads the builder's as acceptance criteria
+- [x] wave 2 drafted: 20 tickets, dependency graph and 20 open questions in the state dir (`inputs/wave2/SUMMARY.md`)
+- [ ] group A in flight: #21 (w2-01 production context), #22 (w2-02 GitHub adapter), #23 (w2-03 git state)
+- [ ] group A to review and file: w2-04 harness adapter, w2-05 init, w2-06 sandbox profile, w2-16 checker and judge roles
+- [ ] rule on Q1 to Q20 before group C; fix `kit/pipeline.json` (Q1) and `docs/harness.md` section 5 (Q14)
+- [ ] groups B to E: review, file and launch as their dependencies merge
 
 ## Review
 
