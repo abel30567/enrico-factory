@@ -1,0 +1,12 @@
+{
+ "base_ref": "main",
+ "body": "Ticket: #1\n\nFirst pass at the lighthouse scene.\n",
+ "created_at": "2026-11-02T10:00:00Z",
+ "head_ref": "feat/1-opening",
+ "labels": [],
+ "merged_at": null,
+ "number": 3,
+ "state": "open",
+ "ticket": 1,
+ "title": "Opening scene, first draft"
+}
