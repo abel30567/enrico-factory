@@ -1,0 +1,1 @@
+{"type": "result", "subtype": "success", "is_error": false, "result": "", "structured_output": {"marker": "READY", "summary": "Drafted the invented scene.", "evidence": [{"criterion": "1", "result": "pass", "command": "make check"}]}}

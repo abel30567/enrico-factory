@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""A stand-in for the agent harness, for tests. It never opens a network connection.
+
+`--version` prints `0.0.0 (fake)`. Otherwise it reads the prompt from standard input and the steps in
+`fake-harness.json` beside this file, takes the first unused step whose `match` is found in the
+prompt, writes the step's `files` under the current directory (null deletes), records the call in
+`fake-harness.calls.jsonl`, sleeps `sleep` seconds, prints `stdout`, `envelope` or a success
+envelope carrying `result`, and exits with `exit`. Used step indexes are kept in `fake-harness.used`.
+With no matching step it prints nothing and exits 3.
+"""
+
+import fcntl
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+
+def fd3_readable():
+    """Whether descriptor 3 is open for reading. Its content is never read."""
+    try:
+        flags = fcntl.fcntl(3, fcntl.F_GETFL)
+    except OSError:
+        return False
+    return flags & os.O_ACCMODE in (os.O_RDONLY, os.O_RDWR)
+
+
+def take_step(here, prompt):
+    """The index and step to run, marking it used; (None, None) when no unused step matches."""
+    steps = json.loads((here / "fake-harness.json").read_text(encoding="utf-8"))
+    with open(here / "fake-harness.used", "a+", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        handle.seek(0)
+        used = json.loads(handle.read() or "[]")
+        for index, step in enumerate(steps):
+            if index not in used and re.search(step["match"], prompt):
+                handle.seek(0)
+                handle.truncate()
+                handle.write(json.dumps(sorted(used + [index])))
+                return index, step
+    return None, None
+
+
+def main():
+    fd3 = fd3_readable()  # first, before this process opens any file of its own
+    if "--version" in sys.argv[1:]:
+        print("0.0.0 (fake)")
+        return 0
+    prompt = sys.stdin.read()
+    here = Path(sys.argv[0]).resolve().parent
+    index, step = take_step(here, prompt)
+    if step is None:
+        return 3
+    for relative, text in sorted((step.get("files") or {}).items()):
+        target = Path.cwd() / relative
+        if text is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding="utf-8")
+    call = {"argv": sys.argv, "cwd": os.getcwd(), "env_keys": sorted(os.environ), "fd3": fd3,
+            "step": index}
+    with open(here / "fake-harness.calls.jsonl", "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(call, sort_keys=True) + "\n")
+    time.sleep(step.get("sleep", 0))
+    if "stdout" in step:
+        sys.stdout.write(step["stdout"])
+    else:
+        envelope = step["envelope"] if "envelope" in step else {
+            "type": "result", "subtype": "success", "is_error": False, "result": "",
+            "structured_output": step.get("result")}
+        print(json.dumps(envelope, sort_keys=True))
+    return step.get("exit", 0)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

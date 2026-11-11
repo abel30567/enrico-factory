@@ -1,0 +1,3 @@
+starting run
+{"type": "system", "subtype": "init"}
+{"type": "result", "subtype": "success", "is_error": false, "result": "", "structured_output": {"marker": "APPROVED", "summary": "Reads clean."}}
