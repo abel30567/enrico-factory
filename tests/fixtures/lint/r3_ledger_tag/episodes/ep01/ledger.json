@@ -1,0 +1,5 @@
+[
+  {"subject": "lamp", "attribute": "colour", "value": "green", "tag": "invented", "scene": "s1"},
+  {"subject": "keeper", "attribute": "age", "value": "60", "tag": "rumour", "scene": "s1"},
+  {"subject": "harbour", "attribute": "winter", "value": "freezes", "tag": "text", "source": "", "scene": "s2"}
+]
