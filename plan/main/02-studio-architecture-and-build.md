@@ -62,9 +62,12 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #22 (w2-02) GitHub adapter (merged in PR #31)
 - [x] #23 (w2-03) git state (merged in PR #30)
 - [x] #27 (w2-06) sandbox profile (merged in PR #32)
-- [ ] verified, waiting for the merge gate (one merge per run): #26 w2-05 init with the dispatcher fix (PR #33), #25 w2-04 harness adapter (PR #35), #34 w2-16 checker and judge roles (PR #38)
-- [ ] #36 w2-07 ticket state (PR #39): verifier launched
-- [ ] filed, waiting on a merge: #37 w2-18 eval runner (needs #25; also owns the one prompt renderer `kit/lib/prompt.py`, which w2-10 must use), #40 w2-17 orchestrator, maker and analyst roles (needs #34)
+- [x] #25 (w2-04) harness adapter (merged in PR #35)
+- [ ] verified, waiting for the merge gate (one merge per run): #34 w2-16 checker and judge roles (PR #38), #36 w2-07 ticket state (PR #39), then #26 w2-05 init (PR #33)
+- [ ] PR #33 carries `merge:hold` for merge order only (it unblocks nothing; #38 and #39 do). Remove the label once #38 and #39 are merged
+- [ ] #37 w2-18 eval runner and the one prompt renderer: builder launched
+- [ ] #40 w2-17 orchestrator, maker and analyst roles: filed, needs #34
+- [ ] group C (08, 09, 10, 12, 13): drafts under review against the merged modules; file when #36 merges (w2-10 also needs #37)
 - [ ] rule on the remaining questions (Q5 to Q14, Q16, Q18 to Q20) before group C; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
 
