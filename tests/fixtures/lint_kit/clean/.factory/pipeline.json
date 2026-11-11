@@ -1,0 +1,5 @@
+[
+ {"room": "story", "stage": "draft", "unit": "episode", "after": "", "maker": "writer", "lint": ["wordcount"], "checker": "editor", "judge": "panel", "blind": false, "pitches": 2, "paths": ["drafts/*/draft.md"]},
+ {"room": "story", "stage": "polish", "unit": "episode", "after": "draft", "maker": ["writer"], "lint": ["wordcount", "spelling"], "checker": ["editor"], "judge": [], "blind": true, "pitches": 1, "paths": ["drafts/*/final.md"]},
+ {"room": "distribution", "stage": "publish", "unit": "post", "after": "", "maker": "uploader", "lint": [], "checker": "", "judge": "", "blind": false, "pitches": 1, "paths": ["jobs/*.json"]}
+]
