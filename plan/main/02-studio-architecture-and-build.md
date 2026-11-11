@@ -59,10 +59,11 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] wave 2 drafted: 20 tickets, dependency graph and 20 open questions in the state dir (`inputs/wave2/SUMMARY.md`)
 - [x] #24 (w2-00) `kit/pipeline.json` matches brief sections 6 and 16 (Q1; merged in PR #29)
 - [x] #21 (w2-01) production context (merged in PR #28)
-- [ ] group A in review: #22 w2-02 GitHub adapter (PR #31), #27 w2-06 sandbox profile (PR #32), #25 w2-04 harness adapter (PR #35)
-- [ ] #23 w2-03 git state (PR #30): round 1 found `export` crashing on an absolute symlink; ruled to fail closed with `GitError`, fixer launched
-- [ ] #26 w2-05 init (PR #33): BLOCKED on an installed kit that cannot import `kit`; ruled to fix the dispatcher in the same PR, fixer running
-- [ ] #34 w2-16 checker and judge roles: builder queued
+- [x] #22 (w2-02) GitHub adapter (merged in PR #31)
+- [ ] verified, waiting for the merge gate (one merge per run): #27 w2-06 sandbox profile (PR #32), #26 w2-05 init with the dispatcher fix (PR #33)
+- [ ] #23 w2-03 git state (PR #30): `export` now fails closed on a refused link; round 2 verifier launched
+- [ ] #25 w2-04 harness adapter (PR #35): verifier running
+- [ ] #34 w2-16 checker and judge roles: builder running
 - [ ] rule on Q2 to Q20 before group C; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
 
