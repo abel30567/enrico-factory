@@ -363,8 +363,11 @@ Built first (text and data):
   format's runtime. Every beat is covered by a scene in the outline and the script; every script line
   is in `lines.json`; every shot's duration, characters and set resolve; the edit list covers every beat ID.
 - **Roles, formats and pipeline** (`kit`). Every role and format file parses, every maker's `checked_by`
-  exists and is a checker or a judge, and every stage names roles and lints that exist.
-- **Markers** (`markers`). A comment's first line is a marker that role may post.
+  exists and is a checker or a judge, and every stage names roles and lints that exist. The kit checked
+  is the one in the tree: `.factory/` in a production, `kit/` in the factory's own repository. A tree
+  with neither passes. The check never falls back to the kit that is running it.
+- **Markers** (`markers`). A comment's first line is a marker that role may post. Role kinds come from
+  the kit in the tree; recorded comments with no kit to judge them by is ERROR.
 - **Canon contradictions** (`canon`). The canon ledger is `bible/canon/ledger.tsv`: `subject`, `attribute`,
   `value`, `tag`, `source`, one row per permanent fact (a height, a lineage, who is dead). State that
   changes during a story is not canon; it lives in the continuity ledger. An episode asserts its facts
