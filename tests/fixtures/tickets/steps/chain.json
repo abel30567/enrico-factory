@@ -1,0 +1,216 @@
+[
+ {
+  "name": "merge-upstream",
+  "pull": {
+   "base_ref": "trunk",
+   "body": "Ticket: #1\n",
+   "created_at": "2026-11-02T09:00:00Z",
+   "head_ref": "feat/PM-1-ep01",
+   "labels": [],
+   "merged_at": "2026-11-03T09:00:00Z",
+   "number": 2,
+   "state": "merged",
+   "ticket": 1,
+   "title": "Work for #1"
+  }
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] LAUNCH writer BT-1-a\n",
+   "created_at": "2026-11-11T10:01:00Z",
+   "id": 101,
+   "number": 3,
+   "role": "chief"
+  },
+  "name": "launch-maker"
+ },
+ {
+  "name": "open-pull",
+  "pull": {
+   "base_ref": "trunk",
+   "body": "Ticket: #3\n",
+   "created_at": "2026-11-02T09:00:00Z",
+   "head_ref": "feat/BT-1-ep01",
+   "labels": [],
+   "merged_at": null,
+   "number": 5,
+   "state": "open",
+   "ticket": 3,
+   "title": "Work for #3"
+  }
+ },
+ {
+  "comment": {
+   "body": "[WRITER] READY\nhead {head:5}\n",
+   "created_at": "2026-11-11T10:03:00Z",
+   "id": 102,
+   "number": 5,
+   "role": "writer"
+  },
+  "name": "ready"
+ },
+ {
+  "comment": {
+   "body": "[LINT] ERROR\nstructure: could not run\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:04:00Z",
+   "id": 103,
+   "number": 5,
+   "role": "program:lint"
+  },
+  "name": "lint-error"
+ },
+ {
+  "comment": {
+   "body": "[LINT] FAIL\nB1 structure: beat out of order\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:05:00Z",
+   "id": 104,
+   "number": 5,
+   "role": "program:lint"
+  },
+  "name": "lint-fail"
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] LAUNCH writer BT-1-b\n",
+   "created_at": "2026-11-11T10:06:00Z",
+   "id": 105,
+   "number": 5,
+   "role": "chief"
+  },
+  "name": "relaunch-maker"
+ },
+ {
+  "comment": {
+   "body": "[WRITER] BLOCKED\nMissing: the format\n",
+   "created_at": "2026-11-11T10:07:00Z",
+   "id": 106,
+   "number": 5,
+   "role": "writer"
+  },
+  "name": "maker-blocked"
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] LAUNCH writer BT-1-c\n",
+   "created_at": "2026-11-11T10:08:00Z",
+   "id": 107,
+   "number": 5,
+   "role": "chief"
+  },
+  "name": "relaunch-again"
+ },
+ {
+  "comment": {
+   "body": "[WRITER] ADDRESSED\nhead {head:5}\n",
+   "created_at": "2026-11-11T10:09:00Z",
+   "id": 108,
+   "number": 5,
+   "role": "writer"
+  },
+  "name": "addressed"
+ },
+ {
+  "comment": {
+   "body": "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:10:00Z",
+   "id": 109,
+   "number": 5,
+   "role": "program:lint"
+  },
+  "name": "lint-pass"
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] LAUNCH editor BT-1-d\n",
+   "created_at": "2026-11-11T10:11:00Z",
+   "id": 110,
+   "number": 5,
+   "role": "chief"
+  },
+  "name": "launch-checker"
+ },
+ {
+  "comment": {
+   "body": "[EDITOR] NOTES\nB1 the sting is early\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:12:00Z",
+   "id": 111,
+   "number": 5,
+   "role": "editor"
+  },
+  "name": "notes-1"
+ },
+ {
+  "comment": {
+   "body": "[EDITOR] NOTES\nB1 the sting is still early\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:13:00Z",
+   "id": 112,
+   "number": 5,
+   "role": "editor"
+  },
+  "name": "notes-2"
+ },
+ {
+  "comment": {
+   "body": "[EDITOR] NOTES\nB1 the sting is early again\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:14:00Z",
+   "id": 113,
+   "number": 5,
+   "role": "editor"
+  },
+  "name": "notes-3"
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] RULING\nThe sting stays where it is.\n",
+   "created_at": "2026-11-11T10:15:00Z",
+   "id": 114,
+   "number": 5,
+   "role": "chief"
+  },
+  "name": "ruling"
+ },
+ {
+  "comment": {
+   "body": "[EDITOR] APPROVED\nall criteria met\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:16:00Z",
+   "id": 115,
+   "number": 5,
+   "role": "editor"
+  },
+  "name": "approved"
+ },
+ {
+  "comment": {
+   "body": "[CHIEF] LAUNCH critic BT-1-e\n",
+   "created_at": "2026-11-11T10:17:00Z",
+   "id": 116,
+   "number": 5,
+   "role": "chief"
+  },
+  "name": "launch-judge"
+ },
+ {
+  "comment": {
+   "body": "[CRITIC] PREFERS A\npanel 2\nreviewed head {head:5} manifest none\n",
+   "created_at": "2026-11-11T10:18:00Z",
+   "id": 117,
+   "number": 5,
+   "role": "critic"
+  },
+  "name": "judged"
+ },
+ {
+  "label": {
+   "add": "hold",
+   "number": 3
+  },
+  "name": "hold"
+ },
+ {
+  "label": {
+   "add": "factory:freeze",
+   "number": 4
+  },
+  "name": "freeze"
+ }
+]

@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #8\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "feat/SC-3-ep03",
+ "labels": [],
+ "merged_at": "2026-11-03T09:00:00Z",
+ "number": 34,
+ "state": "merged",
+ "ticket": 8,
+ "title": "Work for #8"
+}
