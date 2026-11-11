@@ -9,7 +9,7 @@ from kit.lib.frontmatter import as_list
 
 ROLE_REQUIRED = ("role", "room", "kind", "analog", "stage", "reads", "model", "family", "tools",
                  "knowledge", "secrets", "gated")
-ROLE_OPTIONAL = ("writes", "checked_by", "may_not")
+ROLE_OPTIONAL = ("writes", "checked_by", "may_not", "actor")
 ROOMS = ("story", "production", "post", "distribution", "lab", "studio")
 KINDS = ("orchestrator", "maker", "checker", "judge", "operator", "analyst")
 MODELS = ("maker", "checker")
@@ -21,6 +21,10 @@ PLACEHOLDERS = ("REPO", "TICKET", "WORKTREE", "TASK", "RULES")
 PLACEHOLDERS_BY_KIND = {"maker": ("BRANCH",), "operator": ("BRANCH",),
                         "checker": ("PR",), "judge": ("PR",)}
 
+# Actors only a program posts as (brief section 8): no role may take one.
+PROGRAM_ACTORS = ("AUTORESEARCH", "LINT", "PLATFORM-GATE", "PRODUCER")
+CHANNEL = "CHANNEL:"
+
 FORMAT_REQUIRED = ("format", "runtime", "beats", "shots", "skips")
 
 PIPELINE_KEYS = ("room", "stage", "unit", "after", "maker", "lint", "checker", "judge", "blind",
@@ -30,6 +34,7 @@ STAGE_ROLE_KINDS = (("maker", ("maker", "operator")), ("checker", ("checker",)),
 
 _PLACEHOLDER = re.compile(r"\{\{([^{}]*)\}\}")
 _RANGE = re.compile(r"(\d+)-(\d+)")
+_ACTOR = re.compile(r"(?:CHANNEL:)?[A-Z][A-Z0-9-]*")
 
 
 def _load_dir(directory, label):
@@ -85,6 +90,23 @@ def _names(value):
     return None
 
 
+def actor(meta):
+    """The actor a role posts its markers as: its ``actor`` key, else its role id in upper case."""
+    return meta["actor"] if "actor" in meta else meta.get("role", "").upper()
+
+
+def _check_actor(problems, where, meta, kind):
+    if "actor" not in meta:
+        return
+    value = meta["actor"]
+    if not _ACTOR.fullmatch(value):
+        problems.append(f"{where}: actor {value!r} is not [A-Z][A-Z0-9-]* or CHANNEL:[A-Z][A-Z0-9-]*")
+    elif value in PROGRAM_ACTORS:
+        problems.append(f"{where}: actor {value!r} is a program's, not a role's")
+    elif value.startswith(CHANNEL) and kind != "operator":
+        problems.append(f"{where}: actor {value!r} is a channel, allowed only for kind operator")
+
+
 def _check_choice(problems, where, meta, key, choices):
     if key in meta and meta[key] not in choices:
         problems.append(f"{where}: {key} {meta[key]!r} is not one of {', '.join(choices)}")
@@ -106,6 +128,7 @@ def _validate_role(problems, role_id, doc, roles):
             problems.append(f"{where}: missing key {key!r}")
     for key in sorted(set(meta) - set(ROLE_REQUIRED) - set(ROLE_OPTIONAL)):
         problems.append(f"{where}: unknown key {key!r}")
+    _check_actor(problems, where, meta, kind)
     # Rules 2 and 3
     _check_choice(problems, where, meta, "room", ROOMS)
     _check_choice(problems, where, meta, "kind", KINDS)

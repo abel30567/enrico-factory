@@ -55,6 +55,53 @@ class MayPostTest(unittest.TestCase):
                 self.assertFalse(markers.may_post(kind, verb), (kind, verb))
 
 
+class MayPostActorTest(unittest.TestCase):
+    """``may_post(kind, verb, actor)``: the kind's verbs plus the actor's own row, for its one kind."""
+
+    def test_no_actor_is_the_kind_alone(self):
+        for verb in ("VOTE", "POSTED", "VERIFIED"):
+            for kind in markers.MAY_POST:
+                self.assertFalse(markers.may_post(kind, verb), (kind, verb))
+
+    def test_actor_keeps_the_kinds_verbs(self):
+        for kind, verbs in markers.MAY_POST.items():
+            for verb in verbs:
+                for actor in ("WRITER", "ANALYST", "BRAINTRUST", "CHANNEL:TUBE"):
+                    self.assertTrue(markers.may_post(kind, verb, actor), (kind, verb, actor))
+
+    def test_analyst_symptoms(self):
+        self.assertTrue(markers.may_post("analyst", "SYMPTOMS", "ANALYST"))
+        for kind in ("maker", "operator", "checker", "judge", "orchestrator"):
+            self.assertFalse(markers.may_post(kind, "SYMPTOMS", "ANALYST"), kind)
+
+    def test_braintrust_vote(self):
+        self.assertTrue(markers.may_post("judge", "VOTE", "BRAINTRUST"))
+        for kind in ("maker", "operator", "checker", "analyst", "orchestrator"):
+            self.assertFalse(markers.may_post(kind, "VOTE", "BRAINTRUST"), kind)
+        for actor in ("PANEL", "ANALYST", "CHANNEL:TUBE"):
+            self.assertFalse(markers.may_post("judge", "VOTE", actor), actor)
+
+    def test_channel_posted_verified(self):
+        for verb in ("POSTED", "VERIFIED"):
+            for actor in ("CHANNEL:TUBE", "CHANNEL:CLIPS"):
+                self.assertTrue(markers.may_post("operator", verb, actor), (verb, actor))
+            for kind in ("maker", "checker", "judge", "analyst", "orchestrator"):
+                self.assertFalse(markers.may_post(kind, verb, "CHANNEL:TUBE"), (kind, verb))
+            for actor in ("UPLOADER", "BRAINTRUST", "ANALYST"):
+                self.assertFalse(markers.may_post("operator", verb, actor), (verb, actor))
+
+    def test_an_actors_row_is_only_its_own(self):
+        self.assertFalse(markers.may_post("operator", "VOTE", "CHANNEL:TUBE"))
+        self.assertFalse(markers.may_post("analyst", "VOTE", "ANALYST"))
+        self.assertFalse(markers.may_post("judge", "POSTED", "BRAINTRUST"))
+
+    def test_program_verbs_belong_to_no_actor(self):
+        for kind in markers.MAY_POST:
+            for actor in ("ANALYST", "BRAINTRUST", "CHANNEL:TUBE", "AUTORESEARCH", "LINT"):
+                for verb in ("KEEP", "NOISE", "DISCARD", "REBASELINE", "PASS", "GATE PASS", "LOCK"):
+                    self.assertFalse(markers.may_post(kind, verb, actor), (kind, actor, verb))
+
+
 class ManifestHashTest(unittest.TestCase):
     def setUp(self):
         self.base = rows("manifest_base.tsv")

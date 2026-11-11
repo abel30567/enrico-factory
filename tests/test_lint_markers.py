@@ -150,6 +150,102 @@ class Markers(LintCase):
         self.assertEqual({f.rule for f in found[:6]}, {"marker-actor"})
         self.assertEqual(found[6].message, "comment 7: '[LINT] PASS': a checker may not post PASS")
 
+    # The four markers whose actor is not the posting role's id in upper case (brief section 8).
+
+    def role(self, base, role_id, actor=None):
+        """The text of a role file made from the clean fixture's `base` role, as `role_id`."""
+        text = (FIX / "clean" / ".factory" / "roles" / f"{base}.md").read_text()
+        text = text.replace(f"role: {base}\n", f"role: {role_id}\n" + (f"actor: {actor}\n" if actor else ""))
+        return {f".factory/roles/{role_id}.md": text}
+
+    def assertClean(self, root):
+        results = lint.run(root, only=self.CHECKS)
+        self.assertEqual({k: (r.status, r.findings) for k, r in results.items()},
+                         {"kit": (lint.PASS, []), "markers": (lint.PASS, [])})
+
+    def findings(self, root):
+        return [(f.rule, f.message) for f in self.markers(root).findings]
+
+    def test_actor_analyst_symptoms_from_an_analyst(self):
+        self.assertClean(self.with_comments(
+            comments((1, "scout", "[ANALYST] SYMPTOMS\n\nB2 drags")), self.role("watcher", "scout", "ANALYST")))
+
+    def test_actor_analyst_symptoms_from_another_kind(self):
+        root = self.with_comments(comments((1, "critic", "[ANALYST] SYMPTOMS\n\nB2 drags")),
+                                  self.role("editor", "critic", "ANALYST"))
+        self.assertEqual(self.findings(root), [
+            ("marker-verb", "comment 1: '[ANALYST] SYMPTOMS': a checker may not post SYMPTOMS")])
+
+    def test_actor_analyst_symptoms_with_another_actor(self):
+        root = self.with_comments(comments((1, "watcher", "[ANALYST] SYMPTOMS\n\nB2 drags")))
+        self.assertEqual(self.findings(root), [
+            ("marker-actor", "comment 1: '[ANALYST] SYMPTOMS': actor ANALYST does not match role watcher (WATCHER)")])
+
+    def test_actor_braintrust_vote_from_a_judge(self):
+        self.assertClean(self.with_comments(
+            comments((1, "braintrust", "[BRAINTRUST] VOTE 5-2\n\ntally")), self.role("panel", "braintrust")))
+
+    def test_actor_braintrust_vote_from_another_kind(self):
+        root = self.with_comments(comments((1, "jury", "[BRAINTRUST] VOTE 5-2\n\ntally")),
+                                  self.role("editor", "jury", "BRAINTRUST"))
+        self.assertEqual(self.findings(root), [
+            ("marker-verb", "comment 1: '[BRAINTRUST] VOTE 5-2': a checker may not post VOTE")])
+
+    def test_actor_braintrust_vote_with_another_actor(self):
+        root = self.with_comments(comments((1, "panel", "[BRAINTRUST] VOTE 5-2\n\ntally")))
+        self.assertEqual(self.findings(root), [
+            ("marker-actor", "comment 1: '[BRAINTRUST] VOTE 5-2': actor BRAINTRUST does not match role panel (PANEL)")])
+
+    def test_actor_channel_posted_verified_from_an_operator(self):
+        self.assertClean(self.with_comments(comments(
+            (1, "tube", "[CHANNEL:TUBE] POSTED\n\npost id"),
+            (2, "tube", "[CHANNEL:TUBE] VERIFIED\n\npost id"),
+        ), self.role("uploader", "tube", "CHANNEL:TUBE")))
+
+    def test_actor_channel_posted_verified_from_another_kind(self):
+        root = self.with_comments(comments(
+            (1, "tube", "[CHANNEL:TUBE] POSTED\n\npost id"),
+            (2, "tube", "[CHANNEL:TUBE] VERIFIED\n\npost id"),
+        ), self.role("writer", "tube", "CHANNEL:TUBE"))
+        self.assertEqual(self.findings(root), [
+            ("marker-verb", "comment 1: '[CHANNEL:TUBE] POSTED': a maker may not post POSTED"),
+            ("marker-verb", "comment 2: '[CHANNEL:TUBE] VERIFIED': a maker may not post VERIFIED")])
+
+    def test_actor_channel_posted_verified_with_another_actor(self):
+        root = self.with_comments(comments(
+            (1, "uploader", "[CHANNEL:TUBE] POSTED\n\npost id"),
+            (2, "clips", "[CHANNEL:TUBE] VERIFIED\n\npost id"),
+        ), self.role("uploader", "clips", "CHANNEL:CLIPS"))
+        self.assertEqual(self.findings(root), [
+            ("marker-actor", "comment 1: '[CHANNEL:TUBE] POSTED': actor CHANNEL:TUBE does not match role "
+                             "uploader (UPLOADER)"),
+            ("marker-actor", "comment 2: '[CHANNEL:TUBE] VERIFIED': actor CHANNEL:TUBE does not match role "
+                             "clips (CHANNEL:CLIPS)")])
+
+    def test_actor_autoresearch_from_the_lab(self):
+        self.assertClean(self.with_comments(comments(
+            *((n, "program:lab", f"[AUTORESEARCH] {verb}\n\nmetric")
+              for n, verb in enumerate(("KEEP", "NOISE", "DISCARD", "REBASELINE"), 1)))))
+
+    def test_actor_autoresearch_from_a_role(self):
+        root = self.with_comments(comments(
+            (1, "chief", "[AUTORESEARCH] KEEP\n\nmetric"),
+            (2, "lab", "[AUTORESEARCH] KEEP\n\nmetric"),
+        ), self.role("watcher", "lab", "AUTORESEARCH"))
+        self.assertEqual(self.findings(root), [
+            ("marker-actor", "comment 1: '[AUTORESEARCH] KEEP': actor AUTORESEARCH does not match role chief (CHIEF)"),
+            ("marker-verb", "comment 2: '[AUTORESEARCH] KEEP': a analyst may not post KEEP")])
+
+    def test_actor_autoresearch_with_another_program_or_actor(self):
+        root = self.with_comments(comments(
+            (1, "program:lint", "[AUTORESEARCH] KEEP\n\nmetric"),
+            (2, "program:lab", "[LINT] PASS\n\n" + HEAD),
+        ))
+        self.assertEqual(self.findings(root), [
+            ("marker-actor", "comment 1: '[AUTORESEARCH] KEEP': actor AUTORESEARCH is not one program:lint "
+                             "posts as (LINT, PLATFORM-GATE)"),
+            ("marker-actor", "comment 2: '[LINT] PASS': actor LINT is not one program:lab posts as (AUTORESEARCH)")])
+
     def test_output_is_deterministic(self):
         root = self.with_comments((FIX / "r3_verb.json").read_text())
         self.assertEqual(lint.text(lint.run(root, only=["markers"])),
