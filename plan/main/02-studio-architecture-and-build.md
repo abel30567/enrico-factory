@@ -14,7 +14,7 @@ build wave is in flight through `orch`.
 - [x] `docs/system-brief.md` v1: rules of power, five rooms with their own orchestrators, the producer
       gate in place of owner greenlights, role kinds, stores, markers, lock, loops, pivots, the lab.
 - [x] `docs/harness.md`: hbar as a primitive, how a role is launched, the fork rule.
-- [ ] `docs/resources.md` and `kit/resources.json`: the register of everything a run needs
+- [x] `docs/resources.md` and `kit/resources.json`: the register of everything a run needs
       (inference logins, tool keys, Fermi, local tools, engine and render nodes, platform approvals).
 - [x] `docs/architecture.md` redrawn to v1.
 - [x] `CLAUDE.md`, `README.md`, project rules updated.
@@ -24,4 +24,16 @@ build wave is in flight through `orch`.
 
 ## Review
 
-(filled in when done)
+2026-11-11. Done: the proposal is in the tree; brief v1, `harness.md`, `resources.md`, the register and
+the redrawn architecture are on `main`; wave 1 is filed as #1 to #7 with four builders launched.
+
+Not done here, by design: nothing in `kit/` is built yet beyond the register (wave 1 is in flight), and
+no account, key or login was created or changed. The owner's steps and decisions are in
+`docs/resources.md`, sections 3 and 5.
+
+What the research changed in the design:
+- A third way to reach a resource. No platform offers an API key, so distribution uses OAuth grants
+  that a program must keep fresh.
+- TikTok may never allow unattended public posts, so the kit supports inbox and private posting.
+- Fermi has no reduced access today, so workers reach it only through a local gateway.
+- The subscription-login rule has an open terms question with each vendor (decision D1).
