@@ -38,7 +38,12 @@ def _load_dir(directory, label):
     for path in sorted(Path(directory).glob("*.md")):
         name = f"{label}/{path.name}"
         try:
-            meta, body = frontmatter.parse(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            problems.append(f"{name}: cannot read: {getattr(error, 'strerror', None) or error}")
+            continue
+        try:
+            meta, body = frontmatter.parse(text)
         except frontmatter.FrontMatterError as error:
             problems.append(f"{name}: {error}")
             continue
@@ -164,20 +169,28 @@ def _validate_format(problems, format_id, doc, stages):
             problems.append(f"{where}: skips {stage!r} is not a stage in the pipeline")
 
 
-def _validate_entry(problems, entry, seen, roles, lint_names):
-    where = f"pipeline.json: {entry.get('room')}/{entry.get('stage')}"
+def _validate_entry(problems, number, entry, seen, roles, lint_names):
+    room, stage, after = entry.get("room"), entry.get("stage"), entry.get("after")
+    named = isinstance(room, str) and isinstance(stage, str)
+    where = f"pipeline.json: {room}/{stage}" if named else f"pipeline.json: entry {number}"
     # Rule 9
     for key in PIPELINE_KEYS:
         if key not in entry:
             problems.append(f"{where}: missing key {key!r}")
-    room_stages = seen.setdefault(entry.get("room"), [])
-    stage, after = entry.get("stage"), entry.get("after")
-    if "stage" in entry and stage in room_stages:
-        problems.append(f"{where}: stage {stage!r} is not unique in room {entry.get('room')}")
-    if "after" in entry and after != "" and after not in room_stages:
-        problems.append(f"{where}: after {after!r} is not an earlier stage of room "
-                        f"{entry.get('room')}")
-    room_stages.append(stage)
+    for key in ("room", "stage", "unit", "after"):
+        if key in entry and not isinstance(entry[key], str):
+            problems.append(f"{where}: {key} must be a string")
+    if "blind" in entry and not isinstance(entry["blind"], bool):
+        problems.append(f"{where}: blind must be true or false")
+    if not isinstance(room, str):
+        room = None
+    room_stages = seen.setdefault(room, [])
+    if isinstance(stage, str) and stage in room_stages:
+        problems.append(f"{where}: stage {stage!r} is not unique in room {room}")
+    if isinstance(after, str) and after != "" and after not in room_stages:
+        problems.append(f"{where}: after {after!r} is not an earlier stage of room {room}")
+    if isinstance(stage, str):
+        room_stages.append(stage)
     pitches = entry.get("pitches")
     if "pitches" in entry and (isinstance(pitches, bool) or not isinstance(pitches, int)
                                or pitches < 1):
@@ -223,20 +236,30 @@ def validate(kit_dir, lint_names=None):
     formats, found = _load_dir(kit / "formats", "formats")
     problems += found
     try:
-        pipeline = load_pipeline(kit / "pipeline.json")
+        with open(kit / "pipeline.json", encoding="utf-8") as handle:
+            pipeline = json.load(handle)
     except OSError as error:
         problems.append(f"pipeline.json: cannot read: {error.strerror}")
         pipeline = []
     except ValueError as error:
         problems.append(f"pipeline.json: {error}")
         pipeline = []
+    if not isinstance(pipeline, list):
+        problems.append("pipeline.json: must be a JSON list of objects")
+        pipeline = []
+    entries = []
+    for number, entry in enumerate(pipeline, 1):
+        if isinstance(entry, dict):
+            entries.append((number, entry))
+        else:
+            problems.append(f"pipeline.json: entry {number}: must be an object, not {entry!r}")
 
     for role_id, doc in roles.items():
         _validate_role(problems, role_id, doc, roles)
-    stages = {entry.get("stage") for entry in pipeline}
+    stages = {entry.get("stage") for _, entry in entries if isinstance(entry.get("stage"), str)}
     for format_id, doc in formats.items():
         _validate_format(problems, format_id, doc, stages)
     seen = {}
-    for entry in pipeline:
-        _validate_entry(problems, entry, seen, roles, set(lint_names))
+    for number, entry in entries:
+        _validate_entry(problems, number, entry, seen, roles, set(lint_names))
     return sorted(problems)

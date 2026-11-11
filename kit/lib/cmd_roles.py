@@ -19,6 +19,9 @@ def main(argv):
                         help="validate every role file, format and the pipeline")
     args = parser.parse_args(argv)
 
+    if not os.path.isdir(args.kit):
+        print(f"--kit {args.kit}: not a directory", file=sys.stderr)
+        return 2
     if args.check:
         problems = roles.validate(args.kit)
         for problem in problems:

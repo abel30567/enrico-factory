@@ -219,7 +219,7 @@ class ValidateTest(unittest.TestCase):
             (setter(1, "maker", ["writer", "ghost"]), "story/polish", "maker 'ghost' is not a role"),
             (setter(0, "checker", "panel"), "story/draft", "checker 'panel' has kind judge, not checker"),
             (setter(0, "judge", ["editor"]), "story/draft", "judge 'editor' has kind checker, not judge"),
-            (setter(0, "judge", 7), "story/draft", "judge must be a string or a list"),
+            (setter(0, "judge", 7), "story/draft", "judge must be a string or a list of strings"),
         ]
         for change, stage, subject in cases:
             with self.subTest(subject):
@@ -238,6 +238,76 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(KitCopy(self).validate(["wordcount", "spelling"]), [])
         self.assertOnly(KitCopy(self).validate(["wordcount"]), "pipeline.json: story/polish",
                         "lint 'spelling' is not a lint")
+
+    def test_pipeline_values_of_any_json_type_are_problems(self):
+        def setter(index, key, value):
+            return lambda e: e[index].__setitem__(key, value)
+
+        cases = [
+            (setter(0, "stage", ["x"]), "entry 1: stage must be a string"),
+            (setter(0, "room", {"a": 1}), "entry 1: room must be a string"),
+            (setter(0, "stage", None), "entry 1: stage must be a string"),
+            (setter(0, "room", 3), "entry 1: room must be a string"),
+            (setter(1, "after", ["draft"]), "story/polish: after must be a string"),
+            (setter(1, "after", {"a": 1}), "story/polish: after must be a string"),
+            (setter(1, "after", None), "story/polish: after must be a string"),
+            (setter(0, "unit", 1), "story/draft: unit must be a string"),
+            (setter(0, "blind", "no"), "story/draft: blind must be true or false"),
+            (setter(0, "maker", None), "story/draft: maker must be a string or a list of strings"),
+            (setter(0, "maker", {"a": 1}), "story/draft: maker must be a string or a list of strings"),
+            (setter(0, "checker", [1]), "story/draft: checker must be a string or a list of strings"),
+            (setter(0, "judge", 2.5), "story/draft: judge must be a string or a list of strings"),
+            (setter(0, "lint", None), "story/draft: lint must be a list of lint ids"),
+            (setter(0, "lint", "wordcount"), "story/draft: lint must be a list of lint ids"),
+            (setter(0, "lint", {"a": 1}), "story/draft: lint must be a list of lint ids"),
+            (setter(1, "lint", [["wordcount"]]), "story/polish: lint must be a list of lint ids"),
+            (lambda e: e.__setitem__(1, "polish"), "entry 2: must be an object, not 'polish'"),
+            (lambda e: e.__setitem__(1, None), "entry 2: must be an object, not None"),
+            (lambda e: e.__setitem__(1, [1]), "entry 2: must be an object, not [1]"),
+        ]
+        for change, subject in cases:
+            with self.subTest(subject):
+                kit = KitCopy(self)
+                kit.edit_pipeline(change)
+                self.assertIn(f"pipeline.json: {subject}", kit.validate())
+
+    def test_pipeline_top_level_must_be_a_list(self):
+        for value in ({"room": "story"}, "story", 3, None):
+            with self.subTest(value):
+                kit = KitCopy(self)
+                (kit.dir / "pipeline.json").write_text(json.dumps(value))
+                self.assertIn("pipeline.json: must be a JSON list of objects", kit.validate())
+
+    def test_odd_front_matter_values_are_problems(self):
+        cases = [
+            ("roles/writer.md", "room", "[story, post]", "room '[story, post]' is not one of"),
+            ("roles/writer.md", "checked_by", "{}", "checked_by '{}' is not a role"),
+            ("roles/writer.md", "tools", "null", "tools 'null' is not one of"),
+            ("roles/writer.md", "gated", "", "gated '' is not one of"),
+            ("formats/tiny-two-beat.md", "runtime", "[10, 15]", "runtime '[10, 15]' is not min-max"),
+            ("formats/tiny-two-beat.md", "shots", "", "shots '' is not min-max"),
+            ("formats/tiny-two-beat.md", "skips", "{polish}", "skips '{polish}' is not a stage"),
+        ]
+        for file, key, value, subject in cases:
+            with self.subTest(subject):
+                self.check(lambda k: k.set_key(file, key, value), file, subject)
+
+    def test_unreadable_role_and_format_files_are_problems(self):
+        kit = KitCopy(self)
+        (kit.dir / "roles" / "writer.md").write_bytes(b"---\nrole: \xff\n---\n")
+        (kit.dir / "formats" / "odd.md").mkdir()
+        problems = kit.validate()
+        self.assertTrue(any(p.startswith("roles/writer.md: cannot read: ") for p in problems),
+                        problems)
+        self.assertIn("formats/odd.md: cannot read: Is a directory", problems)
+
+    def test_roles_check_on_malformed_pipeline_exits_1(self):
+        kit = KitCopy(self)
+        kit.edit_pipeline(lambda e: e[0].__setitem__("room", {"a": 1}))
+        result = run(FACTORY, "roles", "--check", "--kit", kit.dir)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("pipeline.json: entry 1: room must be a string\n", result.stdout)
+        self.assertEqual(result.stderr, "")
 
     def test_problems_are_sorted(self):
         kit = KitCopy(self)
@@ -341,6 +411,15 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(result.stdout,
                          "roles/editor.md: tools 'Telnet' is not one of "
                          "Read, Edit, Write, Grep, Glob, Bash, WebSearch, WebFetch\n")
+
+    def test_missing_kit_directory_exits_2(self):
+        missing = Path(tempfile.mkdtemp()) / "nope"
+        self.addCleanup(shutil.rmtree, missing.parent)
+        for args in ([], ["--check"]):
+            with self.subTest(args):
+                result = run(FACTORY, "roles", *args, "--kit", missing)
+                self.assertEqual((result.returncode, result.stdout), (2, ""))
+                self.assertEqual(result.stderr, f"--kit {missing}: not a directory\n")
 
     def test_roles_lists_by_room(self):
         result = run(FACTORY, "roles", "--kit", CLEAN)
