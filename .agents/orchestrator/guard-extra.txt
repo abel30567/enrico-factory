@@ -1,0 +1,7 @@
+# guard-extra.txt — extra commands workers may never run. One rule per line:
+#   <regex><TAB><reason>
+# Lines starting with # are ignored. Uncomment or add what fits your project.
+#\b(docker|docker-compose)\b[^\n]*\b(stop|rm|kill|restart|run|up|down)\b	Docker belongs to the orchestrator
+#\bterraform\s+(apply|destroy)\b	infrastructure changes are human-only
+#\bkubectl\b	clusters belong to the orchestrator
+#\b(npm|yarn|pnpm)\s+publish\b	publishing is human-only
