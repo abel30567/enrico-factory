@@ -62,10 +62,15 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #22 (w2-02) GitHub adapter (merged in PR #31)
 - [x] #23 (w2-03) git state (merged in PR #30)
 - [x] #27 (w2-06) sandbox profile (merged in PR #32)
-- [ ] verified, waiting for the merge gate (one merge per run): #26 w2-05 init with the dispatcher fix (PR #33), #25 w2-04 harness adapter (PR #35), #34 w2-16 checker and judge roles (PR #38)
-- [ ] #36 w2-07 ticket state (PR #39): verifier launched
-- [ ] filed, waiting on a merge: #37 w2-18 eval runner (needs #25; also owns the one prompt renderer `kit/lib/prompt.py`, which w2-10 must use), #40 w2-17 orchestrator, maker and analyst roles (needs #34)
-- [ ] rule on the remaining questions (Q5 to Q14, Q16, Q18 to Q20) before group C; update `docs/harness.md` section 5 (Q14)
+- [x] #25 (w2-04) harness adapter (merged in PR #35)
+- [x] #36 (w2-07) ticket state (merged in PR #39)
+- [ ] verified, waiting for the merge gate (one merge per run): #34 w2-16 checker and judge roles (PR #38), then #26 w2-05 init (PR #33)
+- [ ] PR #33 carries `merge:hold` for merge order only (it unblocks nothing). Remove the label once #38 and #41 are merged
+- [ ] #37 w2-18 eval runner and the one prompt renderer (PR #41): verifier running
+- [ ] #40 w2-17 orchestrator, maker and analyst roles: filed, needs #34
+- [ ] group C builders launched: #42 w2-08 status and freeze, #43 w2-09 lint --post, #45 w2-12 blind, #46 w2-13 gate and ledger. #44 w2-10 launch prepare waits on #37. File sets are disjoint. Q3 to Q6, Q12, Q13, Q18, Q20 ruled as recommended, except Q12: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
+- [ ] rule on the remaining questions (Q7 to Q11, Q16, Q19) before group D; update `docs/harness.md` section 5 (Q14)
 - [ ] groups B to E: review, file and launch as their dependencies merge
 
 ## Review
