@@ -69,7 +69,7 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #26 (w2-05) factory init (merged in PR #33)
 - [x] #42 (w2-08) status, freeze and unfreeze (merged in PR #47)
 - [ ] verified, waiting for the merge gate (one merge per wake): #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49; the `tests/test_roles.py` edit is ruled in scope), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
-- [ ] #44 w2-10 launch prepare (PR #52): READY, verifier launched. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
+- [ ] #44 w2-10 launch prepare (PR #52): verified, waiting for the merge gate. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
 - [ ] group D bodies (w2-11, w2-14, w2-19) being reviewed against the built code; file each when its dependencies are merged
 - [ ] follow-ups filed: #53 (gate does not retry a failed push), #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0)
 - [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
