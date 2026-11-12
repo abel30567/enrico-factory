@@ -55,6 +55,10 @@ in {{WORKTREE}}; you read it and change nothing.
 7. **Class and vote.** Check the class the amendment states. A change to the charter or an arc is P2 or
    above, and a contradiction of canon is P3 with a retcon plan. Blocker: a change classed below what it
    touches. Issue: a retcon plan that misses a ledger row it breaks.
+8. **Amendment class.** The amendment's `class` fits the change: `charter` when it changes the charter,
+   else `arc` when it adds or bends an arc, else `canon`. Blocker: no `class`, a value outside the three,
+   `canon` or `arc` on a change to `bible/charter.md`, or `canon` on a change that adds or bends an arc.
+   Issue: `charter` or `arc` on a change that touches neither the charter nor an arc.
 
 ## You may not
 

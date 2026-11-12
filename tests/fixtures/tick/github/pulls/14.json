@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #13\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "draft/DR-4-writer-1",
+ "labels": [],
+ "merged_at": null,
+ "number": 14,
+ "state": "open",
+ "ticket": 13,
+ "title": "Work for #13"
+}

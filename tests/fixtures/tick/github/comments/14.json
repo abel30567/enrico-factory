@@ -1,0 +1,26 @@
+[
+ {
+  "body": "[WRITER] READY\n\nThe work is done.\n\nhead {head:14} manifest none\n",
+  "created_at": "2026-11-10T09:00:00Z",
+  "id": 11,
+  "role": "writer"
+ },
+ {
+  "body": "[EDITOR] APPROVED\n\nNothing blocks this.\n\nreviewed head {head:14} manifest none\n",
+  "created_at": "2026-11-10T09:01:00Z",
+  "id": 12,
+  "role": "editor"
+ },
+ {
+  "body": "[LINT] PASS\n\n| Check | Result | Reason |\n|---|---|---|\n| media | PASS |  |\n\nBlockers: none\nChecks required by stage draft: media\nreviewed head {head:14} manifest none\n",
+  "created_at": "2026-11-10T09:02:00Z",
+  "id": 13,
+  "role": "program:lint"
+ },
+ {
+  "body": "[WEIGHER] PREFERS A\n\nA reads better.\n\nreviewed head {head:14} manifest none\n",
+  "created_at": "2026-11-10T09:03:00Z",
+  "id": 14,
+  "role": "weigher"
+ }
+]
