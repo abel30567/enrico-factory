@@ -70,6 +70,11 @@ def _running(p, launch, role, pull, now):
     return _entry("running", "none", role, pull, f"{role} launched at {launch['created_at']}")
 
 
+def _answers(p, role, m):
+    """Whether marker ``m`` answers a ``LAUNCH <role>``: the role's actor, and not a ``LAUNCH`` itself."""
+    return m.actor == _actor(p, role) and m.verb != "LAUNCH"
+
+
 def _waiting_launch(p, comments):
     """The oldest role whose latest ``LAUNCH`` in ``comments`` no marker of that role follows."""
     marked = _marked(comments)
@@ -79,8 +84,7 @@ def _waiting_launch(p, comments):
             latest[m.args[0]] = i
     open_launches = []
     for role, i in latest.items():
-        actor = _actor(p, role)
-        if not any(m.actor == actor for _, m in marked[i + 1:]):
+        if not any(_answers(p, role, m) for _, m in marked[i + 1:]):
             open_launches.append((i, role))
     if not open_launches:
         return None
@@ -88,21 +92,35 @@ def _waiting_launch(p, comments):
     return marked[i][0], role
 
 
-def _third_notes(pull, entry, p):
-    """The comment that is the third round of notes on the pull, as ``markers.summary`` counts rounds."""
+def _latest_round(pull, entry, p):
+    """The comment that is the latest round of notes on the pull, as ``markers.summary`` counts rounds."""
     makers = production.stage_roles(entry, "maker")
     checkers = production.stage_roles(entry, "checker")
-    ready_seen, rounds = False, 0
+    ready_seen, latest = False, None
     for comment, m in _marked(pull["comments"]):
         role = m.actor.lower()
         if m.verb in markers.MAKER_VERBS and role in makers:
             ready_seen = ready_seen or m.verb == "READY"
             continue
         if ready_seen and m.verb == "NOTES" and role in checkers and p.kinds.get(role) == "checker":
-            rounds += 1
-            if rounds == 3:
-                return comment
-    return None
+            latest = comment
+    return latest
+
+
+def _launched(comments, role):
+    """The ``LAUNCH <role>`` comments in ``comments``, oldest first."""
+    return [c for c, m in _marked(comments) if m.verb == "LAUNCH" and m.args[0] == role]
+
+
+def _unanswered(p, comments, role):
+    """The newest ``LAUNCH <role>`` in ``comments`` when no later marker answers it, else None."""
+    launched = _launched(comments, role)
+    if not launched:
+        return None
+    last = launched[-1]
+    if any(_answers(p, role, m) for c, m in _marked(comments) if _order(c) > _order(last)):
+        return None
+    return last
 
 
 def _ruled_after(comments, comment):
@@ -127,8 +145,12 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key):
         return _wake(p, ticket, "blocked", n, f"the maker is BLOCKED on #{n}")
     if summary["needs_ruling"]:
         comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
-        if not _ruled_after(comments, _third_notes(pull, entry, p)):
-            return _wake(p, ticket, "ruling", n, f"three rounds of notes on #{n} and no ruling")
+        if not _ruled_after(comments, _latest_round(pull, entry, p)):
+            why = f"three rounds of notes on #{n} and no ruling"
+            role = production.orchestrator(p, ticket["room"])
+            if _launched(pull["comments"], role):
+                return _wake(p, ticket, "ruling", n, why)
+            return _entry("ruling", "launch", role, n, why)
     lint = summary["lint"]
     if entry.get("lint"):
         if lint is None:
@@ -208,6 +230,19 @@ def _always(pull):
     return True
 
 
+def _selection(p, state, ticket, now):
+    """Row 14 when no pitch is selected: the orchestrator's run on the ticket, its launch, or a wake."""
+    role = production.orchestrator(p, ticket["room"])
+    comments = state.ticket_comments.get(ticket["number"], [])
+    why = f"every pitch of #{ticket['number']} is lockable and none is selected"
+    running = _unanswered(p, comments, role)
+    if running is not None:
+        return _running(p, running, role, None, now)
+    if not _launched(comments, role):
+        return _entry("selection", "launch", role, None, why)
+    return _wake(p, ticket, "selection", None, why)
+
+
 def all_steps(p, state, ticket, root, now, has_key=_always) -> list:
     """Rows 1 to 5 as one entry; else one entry per open pull by number, then the pending launches."""
     first, per_pull, waiting = _steps(p, state, ticket, root, now, has_key)
@@ -231,7 +266,6 @@ def next_step(p, state, ticket, root, now, has_key=_always) -> dict:
         chosen = tickets.selected(state, ticket["number"])
         found = next((e for e in per_pull if e["pull"] == chosen), None)
         if found is None:
-            return _wake(p, ticket, "selection", None,
-                         f"every pitch of #{ticket['number']} is lockable and none is selected")
+            return _selection(p, state, ticket, now)
         return found
     return per_pull[0]

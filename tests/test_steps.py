@@ -39,7 +39,7 @@ BEATS = {
     "launch-checker": ("running", "none", "editor", 5),
     "notes-1": ("notes", "launch", "writer", 5),
     "notes-2": ("notes", "launch", "writer", 5),
-    "notes-3": ("ruling", "wake", "chief", 5),
+    "notes-3": ("ruling", "launch", "chief", 5),
     "ruling": ("notes", "launch", "writer", 5),
     "approved": ("judging", "launch", "critic", 5),
     "launch-judge": ("running", "none", "critic", 5),
@@ -58,7 +58,7 @@ PITCHES = {
     "approved-4": ("running", "none", "writer", None),
     "open-5": ("review", "launch", "editor", 5),
     "ready-5": ("review", "launch", "editor", 5),
-    "approved-5": ("selection", "wake", "chief", None),
+    "approved-5": ("selection", "launch", "chief", None),
     "selected": ("lockable", "lock", None, 5),
 }
 
@@ -167,7 +167,7 @@ class BeatsChainTest(ChainCase):
         self.w.apply({"comment": {"number": 5, "id": 900, "created_at": "2026-11-11T10:13:30Z", "role": "chief",
                                   "body": "[CHIEF] RULING\nToo early.\n"}})
         self.until("notes-3")
-        self.assertEqual(short(self.next()), ("ruling", "wake", "chief", 5))
+        self.assertEqual(short(self.next()), ("ruling", "launch", "chief", 5))
 
 
 class BlindTest(ChainCase):
@@ -250,6 +250,110 @@ class PitchesChainTest(ChainCase):
         self.assertEqual(short(self.next()), ("ready", "launch", "writer", None))
         self.until("launch-1")
         self.assertEqual(short(self.next()), ("ready", "launch", "scout", None))
+
+
+def comment(number, cid, minute, role, body):
+    return {"comment": {"number": number, "id": cid, "created_at": f"2026-11-11T10:{minute:02d}:00Z",
+                        "role": role, "body": body}}
+
+
+class RulingEntryTest(ChainCase):
+    """Behaviours 9 and 10: tick starts the ruling once per pull request, and every round from the third
+    on needs its own ruling."""
+    FIXTURE, TICKET = "steps", 3
+
+    def post(self, cid, minute, role, body, number=5):
+        self.w.apply(comment(number, cid, minute, role, body))
+
+    def test_no_launch_is_a_launch(self):
+        self.until("notes-3")
+        self.assertEqual(short(self.next()), ("ruling", "launch", "chief", 5))
+        self.assertEqual(self.next()["reason"], "three rounds of notes on #5 and no ruling")
+
+    def test_unanswered_launch_runs(self):
+        self.until("notes-3")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.assertEqual(short(self.next()), ("running", "none", "chief", 5))
+        # Seeded defect: a LAUNCH of another role in the orchestrator's name does not answer it.
+        self.post(901, 21, "chief", "[CHIEF] LAUNCH writer 5-9\n")
+        self.assertEqual(short(self.next(LATE)), ("running", "timeout", "chief", 5))
+
+    def test_launch_answered_by_blocked_wakes(self):
+        self.until("notes-3")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post(901, 21, "chief", "[CHIEF] BLOCKED\nMissing: the charter\n")
+        self.assertEqual(short(self.next()), ("ruling", "wake", "chief", 5))
+
+    def test_launch_answered_by_ruling(self):
+        self.until("notes-3")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post(901, 21, "chief", "[CHIEF] RULING\nThe sting stays.\n")
+        self.assertEqual(short(self.next()), ("notes", "launch", "writer", 5))
+
+    def fourth_round(self, launched):
+        self.until("notes-3")
+        if launched:
+            self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post(901, 21, "chief", "[CHIEF] RULING\nThe sting stays.\n")
+        self.post(902, 22, "writer", "[WRITER] ADDRESSED\nhead {head:5}\n")
+        self.post(903, 23, "program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
+        self.post(904, 24, "editor", "[EDITOR] NOTES\nB1 the sting is early a fourth time\n"
+                                     "reviewed head {head:5} manifest none\n")
+
+    def test_fourth_round_with_a_launch_wakes(self):
+        self.fourth_round(launched=True)
+        self.assertEqual(short(self.next()), ("ruling", "wake", "chief", 5))
+
+    def test_fourth_round_after_a_ruling_by_hand_launches(self):
+        self.fourth_round(launched=False)
+        self.assertEqual(short(self.next()), ("ruling", "launch", "chief", 5))
+
+    def test_ruling_newer_than_the_fourth_round(self):
+        self.fourth_round(launched=True)
+        self.post(905, 25, "chief", "[CHIEF] RULING\nThe sting stays, finally.\n")
+        self.assertEqual(short(self.next()), ("notes", "launch", "writer", 5))
+
+
+class SelectionEntryTest(ChainCase):
+    """Behaviour 11: tick starts the selection once per ticket; ``all_steps`` does not change."""
+    FIXTURE, TICKET = "pitches", 1
+    PER_PULL = [("lockable", "lock", None, 4), ("lockable", "lock", None, 5)]
+
+    def setUp(self):
+        super().setUp()
+        self.until("approved-5")
+
+    def post(self, cid, minute, role, body, number=1):
+        self.w.apply(comment(number, cid, minute, role, body))
+
+    def check(self, expected, now=NOW):
+        self.assertEqual(short(self.next(now)), expected)
+        self.assertEqual([short(e) for e in self.all(now)], self.PER_PULL)
+
+    def test_no_launch_is_a_launch(self):
+        self.check(("selection", "launch", "chief", None))
+        self.assertEqual(self.next()["reason"], "every pitch of #1 is lockable and none is selected")
+
+    def test_unanswered_launch_runs_then_times_out(self):
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 1-1\n")
+        self.check(("running", "none", "chief", None))
+        self.check(("running", "timeout", "chief", None), LATE)
+
+    def test_launch_answered_by_blocked_wakes(self):
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 1-1\n")
+        self.post(901, 21, "chief", "[CHIEF] BLOCKED\nMissing: the charter\n")
+        self.check(("selection", "wake", "chief", None))
+
+    def test_launch_answered_by_selected_locks(self):
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 1-1\n")
+        self.post(901, 21, "chief", "[CHIEF] SELECTED #4\nThe first hook.\n")
+        self.check(("lockable", "lock", None, 4))
+
+    def test_launch_on_a_pull_is_not_the_ticket_s(self):
+        # Seeded defect: a LAUNCH of the orchestrator on one of the ticket's pulls is a ruling's.
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 4-1\n", number=4)
+        self.post(901, 21, "chief", "[CHIEF] RULING\nNot a selection.\n", number=4)
+        self.check(("selection", "launch", "chief", None))
 
 
 if __name__ == "__main__":

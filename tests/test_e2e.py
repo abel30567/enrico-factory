@@ -713,7 +713,7 @@ class OwnWorldRules(Case):
                  "NEED #3 selection every pitch of #3 is lockable and none is selected"]
         for _ in range(4):
             self.ticked(w, apply=True)
-        self.assertEqual(self.ticked(w, apply=True), waits)
+        self.assertEqual(self.ticked(w, apply=True), waits[:2] + ["STEP #3 launch showrunner on #3"])
         selected = w.post(3, "[SHOWRUNNER] SELECTED #5\n\nThe second pitch makes Wren pay.\n", "showrunner")
         self.assertEqual(self.ticked(w, apply=True), [waits[0], "STEP #3 gate PR #5"])
         self.assertEqual(self.ticked(w, apply=True), [waits[0], "STEP #3 sync PR #5"])
@@ -814,6 +814,7 @@ class Refusals(Case):
                   "STEP #3 launch story-writer on PR #4", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
                   "STEP #3 launch story-writer on PR #4", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4"]
         self.assertEqual([self.ticked(w, apply=True) for _ in range(9)], [[line] for line in rounds])
+        self.assertEqual(self.ticked(w, apply=True), ["STEP #3 launch showrunner on PR #4"])
         for _ in range(2):
             self.assertEqual(self.ticked(w, apply=True), ["NEED #3 ruling three rounds of notes on #4 and no ruling"])
         launches = [first(c) for n in (3, 4) for c in w.comments(n)
@@ -824,6 +825,164 @@ class Refusals(Case):
         w.post(4, "[SHOWRUNNER] RULING\n\nOne more round: the find beat must cost Wren the boat.\n", "showrunner")
         self.assertEqual(self.ticked(w, apply=True), ["STEP #3 launch story-writer on PR #4"])
         self.assertNotIn(LABEL, w.record("issues", 3)["labels"])
+
+
+class Judgments(Case):
+    """ISSUE-89 behaviours 15 and 16: tick runs the showrunner for a selection and a ruling, and the
+    ticket goes on to its lock; no comment is posted by the test."""
+
+    @staticmethod
+    def versions():
+        """Four texts of the beats that pass the lint, each different."""
+        v1, v2 = fixture("beats-1.md"), fixture("beats-2.md")
+        v3 = v2.replace("Wren gives up the boat for it", "Wren gives up her father's boat for it")
+        v4 = v3.replace("She climbs the lamp stair soaked", "She climbs the lamp stair soaked and shaking")
+        return v1, v2, v3, v4
+
+    @staticmethod
+    def prompt(comment):
+        """The prompt inside a LAUNCH record's fence."""
+        lines = comment["body"].split("\n")
+        start = next(i for i, line in enumerate(lines) if line.startswith("````"))
+        end = len(lines) - 1 - lines[::-1].index(lines[start])
+        return "\n".join(lines[start + 1:end]) + "\n"
+
+    def labels_added(self, w):
+        return [(e["number"], e["label"]) for e in w.log() if e["op"] == "add_label"]
+
+    @staticmethod
+    def waits(*pulls):
+        return [f"WAIT #3 lockable PR #{n} is not the ticket's next step" for n in pulls]
+
+    @staticmethod
+    def launches(w):
+        """The first lines of every LAUNCH record on the issue and its pulls."""
+        return [first(c) for n in (3, 4, 5, 6) for c in w.comments(n) if " LAUNCH " in first(c)]
+
+    # -- behaviour 15: a pitch selection
+
+    def selection_world(self, selected):
+        entries = pipeline()
+        entries[1]["pitches"] = 3
+        w = self.world(entries)
+        v1, v2, v3, _ = self.versions()
+        w.script(writer_ready(v1), writer_ready(v2), writer_ready(v3), editor_approved(), editor_approved(),
+                 editor_approved(),
+                 step("You are the showrunner", "SELECTED", selected=selected,
+                      evidence=[{"criterion": f"PR #{n}", "result": "selected" if n == selected else "approved",
+                                 "command": "episodes/ep01/beats.md"} for n in (4, 5, 6)]))
+        return w
+
+    def test_selection_to_lock(self):
+        w = self.selection_world(5)
+        ticks = to_lock(self, w)
+        self.assertEqual(ticks, [
+            ["STEP #3 launch story-writer on #3"], ["STEP #3 launch story-writer on #3"],
+            ["STEP #3 launch story-writer on #3"],
+            ["STEP #3 lint PR #4", "STEP #3 lint PR #5", "STEP #3 lint PR #6"],
+            ["STEP #3 launch story-editor on PR #4", "STEP #3 launch story-editor on PR #5",
+             "STEP #3 launch story-editor on PR #6"],
+            self.waits(4, 5, 6) + ["STEP #3 launch showrunner on #3"],
+            [self.waits(4)[0], "STEP #3 gate PR #5", self.waits(6)[0]],
+            [self.waits(4)[0], "STEP #3 sync PR #5", self.waits(6)[0]],
+            [self.waits(4)[0], "STEP #3 lock PR #5", self.waits(6)[0]]])
+
+        found = [(c["role"], first(c)) for c in w.comments(3)]
+        self.assertEqual(found.count(("showrunner", "[SHOWRUNNER] LAUNCH showrunner 3-1")), 1)
+        self.assertEqual(found.count(("showrunner", "[SHOWRUNNER] SELECTED #5")), 1)
+        self.assertEqual([b for _, b in found if " LAUNCH showrunner " in b or " SELECTED " in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 3-1", "[SHOWRUNNER] SELECTED #5"])
+        [record] = [c for c in w.comments(3) if first(c) == "[SHOWRUNNER] LAUNCH showrunner 3-1"]
+        prompt = self.prompt(record)
+        self.assertIn("The pitches are the pull requests #4, #5, #6.", prompt)
+        for n in (4, 5, 6):
+            self.assertIn(f"Pull request #{n} at head ", prompt)
+            self.assertIn(f"Its files are in pr-{n}/.", prompt)
+
+        self.assertEqual([w.record("pulls", n)["state"] for n in (4, 5, 6)], ["open", "merged", "open"])
+        self.assertEqual(w.record("issues", 3)["state"], "closed")
+        self.assertEqual(self.labels_added(w), [])
+        self.assertNotIn(LABEL, w.record("issues", 3)["labels"])
+        meta = json.loads((w.state / "runs" / "showrunner-3-1" / "run.json").read_text())
+        self.assertEqual(Path(meta["worktree"]), w.state / "worktrees" / "showrunner-3-1")
+        self.assertFalse(Path(meta["worktree"]).exists())
+
+    def test_selection_outside_the_pitches(self):
+        w = self.selection_world(9)
+        ticks = [self.ticked(w, apply=True) for _ in range(6)]
+        self.assertEqual(ticks, [["STEP #3 launch story-writer on #3"]] * 3 + [
+            ["STEP #3 lint PR #4", "STEP #3 lint PR #5", "STEP #3 lint PR #6"],
+            ["STEP #3 launch story-editor on PR #4", "STEP #3 launch story-editor on PR #5",
+             "STEP #3 launch story-editor on PR #6"],
+            self.waits(4, 5, 6) + ["STEP #3 launch showrunner on #3"]])
+        [blocked] = [c for c in w.comments(3) if c["role"] == "showrunner" and first(c) == "[SHOWRUNNER] BLOCKED"]
+        body = blocked["body"].splitlines()
+        self.assertIn("Missing: a valid result (result.selected: #9 is not a pitch of this launch)", body)
+        self.assertIn("Resume from: ticket #3", body)
+
+        launches = self.launches(w)
+        need = "NEED #3 selection every pitch of #3 is lockable and none is selected"
+        for _ in range(3):
+            self.assertEqual(self.ticked(w, apply=True), self.waits(4, 5, 6) + [need])
+        self.assertEqual(self.launches(w), launches)
+        self.assertEqual(self.labels_added(w), [(3, LABEL)])
+        self.assertIn(LABEL, w.record("issues", 3)["labels"])
+        self.assertFalse([e for e in w.log() if e["op"] == "merge"])
+        self.assertEqual([w.record("pulls", n)["state"] for n in (4, 5, 6)], ["open", "open", "open"])
+        self.assertEqual(w.record("issues", 3)["state"], "open")
+
+    # -- behaviour 16: a ruling after three rounds of notes
+
+    def ruling_world(self, *rest):
+        w = self.world()
+        v1, v2, v3, v4 = self.versions()
+        w.script(writer_ready(v1), editor_notes(), writer_addressed(v2), editor_notes(), writer_addressed(v3),
+                 editor_notes(),
+                 step("You are the showrunner", "RULING",
+                      evidence=[{"criterion": "story-editor B1", "result": "acted on",
+                                 "command": "episodes/ep01/beats.md B5"}]),
+                 writer_addressed(v4), *rest)
+        return w
+
+    ROUNDS = ["STEP #3 launch story-writer on #3", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+              "STEP #3 launch story-writer on PR #4", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+              "STEP #3 launch story-writer on PR #4", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+              "STEP #3 launch showrunner on PR #4",
+              "STEP #3 launch story-writer on PR #4", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4"]
+
+    def test_ruling_to_lock(self):
+        w = self.ruling_world(editor_approved())
+        ticks = to_lock(self, w, ticks=20)
+        self.assertEqual(ticks, [[line] for line in self.ROUNDS + [
+            "STEP #3 gate PR #4", "STEP #3 sync PR #4", "STEP #3 lock PR #4"]])
+
+        found = [(c["role"], first(c)) for c in w.comments(4)]
+        self.assertEqual(found.count(("showrunner", "[SHOWRUNNER] LAUNCH showrunner 4-1")), 1)
+        self.assertEqual([b for _, b in found if " LAUNCH showrunner " in b or " RULING" in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 4-1", "[SHOWRUNNER] RULING"])
+        [ruling] = [c for c in w.comments(4) if first(c) == "[SHOWRUNNER] RULING"]
+        self.assertEqual(ruling["role"], "showrunner")
+        self.assertIn("| story-editor B1 | acted on | episodes/ep01/beats.md B5 |", ruling["body"].splitlines())
+        records = {first(c): c for n in (3, 4) for c in w.comments(n)}
+        for name in ("[SHOWRUNNER] LAUNCH story-writer 4-4", "[SHOWRUNNER] LAUNCH story-editor 4-4"):
+            self.assertIn(ruling["body"].rstrip("\n"), self.prompt(records[name]), name)
+
+        self.assertEqual(w.record("pulls", 4)["state"], "merged")
+        self.assertEqual(w.record("issues", 3)["state"], "closed")
+        self.assertEqual(self.labels_added(w), [])
+
+    def test_notes_after_the_ruling(self):
+        w = self.ruling_world(editor_notes())
+        ticks = [self.ticked(w, apply=True) for _ in range(len(self.ROUNDS))]
+        self.assertEqual(ticks, [[line] for line in self.ROUNDS])
+        for _ in range(2):
+            self.assertEqual(self.ticked(w, apply=True), ["NEED #3 ruling three rounds of notes on #4 and no ruling"])
+        self.assertIn(LABEL, w.record("issues", 3)["labels"])
+        self.assertEqual(self.labels_added(w), [(3, LABEL)])
+        records = [first(c) for n in (3, 4) for c in w.comments(n)]
+        self.assertEqual([r for r in records if " LAUNCH showrunner " in r], ["[SHOWRUNNER] LAUNCH showrunner 4-1"])
+        self.assertNotIn("[SHOWRUNNER] LAUNCH story-writer 4-5", records)
+        self.assertEqual(w.record("pulls", 4)["state"], "open")
 
 
 if __name__ == "__main__":
