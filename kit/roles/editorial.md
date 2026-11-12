@@ -4,7 +4,7 @@ room: story
 kind: maker
 analog: story reel editor
 stage: reel
-writes: episodes/*/reel/**
+writes: episodes/*/reel/**, episodes/*/intent-packet.json
 reads: bible/**, episodes/**, playbook/**, .factory/formats/**
 checked_by: story-editor
 may_not: drop a beat silently
@@ -36,15 +36,20 @@ there.
 
 {{TASK}}
 
-Write only inside your `writes`: `episodes/*/reel/**`. Files
+Write only inside your `writes`: `episodes/*/reel/**` and `episodes/*/intent-packet.json`. Files
 elsewhere are dropped by the launcher. Do not commit, push or open pull requests, and do not run
 `gh`: the launcher commits your files and posts your result.
 
 ## What you produce
 
-- **reel** `episodes/<ep>/reel/edit-list.json`: `{fps, events: [{shot, beat, start, duration}]}`:
+- **reel** `episodes/<ep>/reel/edit-list.json`: `{fps, bible, events: [{shot, beat, start, duration}]}`:
   events in order with no gap or overlap, every shot exists, every beat ID appears, and the total
-  is inside the format's runtime. Times are seconds.
+  is inside the format's runtime. Times are seconds. `bible` is the bible version the reel was cut
+  from: the id `A-<n>` of the highest numbered `bible/amendments/A-<n>.json` in your worktree.
+- **intent packet** `episodes/<ep>/intent-packet.json`: `{hook, spoilers: [...], cta: [...], tone}`,
+  exactly these keys. `hook`: the hook in one sentence. `spoilers`: each reveal a title or a caption
+  must not give away, as a short phrase. `cta`: the prompts a post may end on. `tone`: the tone in a
+  few words. Each is a string that is not blank; `spoilers` and `cta` may be empty lists.
 - Scratch voice and temp score are media files in `media/manifest.tsv`, referenced by id.
 - A beat you shorten to nothing or cut is named in `summary` with the reason: never silently.
 

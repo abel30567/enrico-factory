@@ -406,6 +406,39 @@ class MakerTest(unittest.TestCase):
                     graded = evals.grade(case, READY, run_dir=run_dir)
                     self.assertTrue(graded["pass"], f"{where}: {graded['detail']}")
 
+    def test_reel_output_without_its_package_fails_lint(self):
+        """Behaviour 8 of ISSUE-97: an editorial output needs its intent packet and a bible that exists."""
+        packet, reel = "episodes/ep01/intent-packet.json", "episodes/ep01/reel/edit-list.json"
+
+        def no_packet(run):
+            (run / packet).unlink()
+
+        def unknown_bible(run):
+            data = json.loads((run / reel).read_text(encoding="utf-8"))
+            (run / reel).write_text(json.dumps(dict(data, bible="A-9")), encoding="utf-8")
+
+        for case in cases("editorial"):
+            where = f"editorial/{case.id}"
+            self.assertIn(packet, case.spec["expect_files"], where)
+            self.assertIn(packet, case.task, where)
+            self.assertTrue((case.path / "tree" / "bible" / "amendments" / "A-1.json").is_file(), where)
+            output = FIX / "editorial" / case.id
+            self.assertEqual(json.loads((output / reel).read_text(encoding="utf-8"))["bible"], "A-1", where)
+            for seed in (no_packet, unknown_bible):
+                with self.subTest(case=case.id, defect=seed.__name__), tempfile.TemporaryDirectory() as tmp:
+                    run_dir = Path(tmp) / "run"
+                    shutil.copytree(case.path / "tree", run_dir)
+                    shutil.copytree(output, run_dir, dirs_exist_ok=True)
+                    self.assertTrue(evals.grade(case, READY, run_dir=run_dir)["pass"], where)
+                    seed(run_dir)
+                    graded = evals.grade(case, READY, run_dir=run_dir)
+                    self.assertFalse(graded["pass"], where)
+                    self.assertTrue(graded["detail"].startswith("lint FAIL"), graded["detail"])
+        tree = KIT / "evals" / "story-editor" / "07-bell-tower" / "tree"
+        self.assertTrue((tree / packet).is_file())
+        results = lint.run(tree, only=["structure", "media"])
+        self.assertEqual(lint.overall(results), lint.PASS, lint.text(results))
+
     def test_stages_covered(self):
         def stages(role):
             found = set()

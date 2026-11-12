@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/aya.md": "adds Aya, the bell-ringer",
+    "bible/canon/places/bell-tower.md": "adds the bell tower"
+  },
+  "why": "the bell-tower episode needs its ringer and its tower",
+  "evidence": {
+    "bible/canon/places/bell-tower.md": "the tower and its eight bells"
+  }
+}
