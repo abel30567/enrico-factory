@@ -169,8 +169,9 @@ class TreeTest(InitTest):
         local = (target / "production.local.env.example").read_text().splitlines()
         self.assertTrue(local[0].startswith("# ") and "production.local.env" in local[0])
         self.assertEqual(local[1:], ["HARNESS=", "STATE_DIR=", "SECRETS_DIR=", "ACCOUNTS_MAKER=",
-                                     "ACCOUNTS_CHECKER=", "ACCOUNTS_OTHER=", "PROXY_URL=", "FERMI_URL=",
+                                     "ACCOUNTS_CHECKER=", "PROXY_URL=", "FERMI_URL=",
                                      "SANDBOX=on", "GATEWAY=on"])
+        self.assertFalse([line for line in local if line.startswith("ACCOUNTS_OTHER")])
 
     def test_two_empty_directories_give_identical_trees_and_output(self):
         kit = self.source_kit()

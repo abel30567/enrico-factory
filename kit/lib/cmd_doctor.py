@@ -1,7 +1,8 @@
 """factory doctor [--root DIR] [--rooms a,b] [--wave N] [--json]: check every resource the rooms need.
 
-Prints a name and a state per resource, never a value. Exit 0 when nothing is missing, 1 when
-something is, 2 when the register is invalid.
+Prints a name and a state per resource, never a value. A resource held by the knowledge gateway is
+skipped, with the reason `GATEWAY=off` and without running its checks, when the setting GATEWAY is
+`off`. Exit 0 when nothing is missing, 1 when something is, 2 when the register is invalid.
 """
 
 import argparse
@@ -50,11 +51,14 @@ def main(argv):
     for resource in sorted(register["resources"], key=lambda r: r["id"]):
         rooms = set(resource["rooms"])
         if ("all" in rooms or rooms & needed) and resource["wave"] <= args.wave:
-            passed, reasons = resources.check(resource, values, register)
-            if passed:
-                state = "ok"
+            if resource["holder"] == "gateway" and values.get("GATEWAY") == "off":
+                state, reasons = "skipped", ["GATEWAY=off"]
             else:
-                state = "absent" if resource.get("optional") else "missing"
+                passed, reasons = resources.check(resource, values, register, args.root)
+                if passed:
+                    state = "ok"
+                else:
+                    state = "absent" if resource.get("optional") else "missing"
         else:
             state, reasons = "skipped", []
         results.append((resource, state, reasons))
