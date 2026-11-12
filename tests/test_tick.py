@@ -36,6 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from kit.lib import blind, cmd_tick, gitstate, github, launch, lint, production  # noqa: E402
+from kit.lib import cmd_lock  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "tick"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -565,6 +566,98 @@ class Frozen(Case):
         os.utime(held, (stale, stale))
         self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 lint PR #6"])
         self.assertFalse(held.exists())
+
+
+def failing_merge(w, fails):
+    """``github.connect`` giving a recorded GitHub whose merge of pull ``n`` fails the next ``fails[n]`` times
+    (every time when ``None``)."""
+
+    class Failing(github.Recorded):
+        def merge(self, root, number, head_sha):
+            left = fails.get(number, 0)
+            if left is None or left > 0:
+                if left is not None:
+                    fails[number] = left - 1
+                raise github.GitHubError(f"merge #{number}: refused (exit 1)")
+            return super().merge(root, number, head_sha)
+
+    return mock.patch.object(github, "connect", lambda settings, env=None: Failing(w.github))
+
+
+class VoidLock(Case):
+    """ISSUE-77: a head whose merge failed is a NEED for the orchestrator, not a lock tried on every tick."""
+
+    def void(self):
+        """``World((7, 8))`` after ticks 1 to 3 with a merge of pull 8 that always fails, and its NEED line."""
+        w = self.world((7, 8))
+        with failing_merge(w, {8: None}):
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #7 gate PR #8"])
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #7 sync PR #8"])
+            self.assertEqual(lines(self.ticked(w, "--apply", code=1)), ["FAIL #7 lock: merge failed"])
+        return w, f"NEED #7 lock refused: merge failed at {w.head(w.ref(8))[:12]}"
+
+    def lock_comment(self, w, number, role="program:lock"):
+        w.add(number, "2026-11-10T10:00:00Z", role,
+              f"[FOREMAN] LOCK\n\nlocked head {{head:{number}}} manifest none\nrelied on: none\n")
+
+    def test_a_failing_merge_is_tried_once_then_asks_the_orchestrator(self):
+        w, need = self.void()
+        with failing_merge(w, {8: None}):
+            for _ in range(2):
+                self.assertEqual(lines(self.ticked(w, "--apply")), [need])
+        found = [(c["role"], c["body"].split("\n")[0]) for c in w.comments(8)]
+        self.assertEqual(found, [("writer", "[WRITER] READY"), ("editor", "[EDITOR] APPROVED"),
+                                 ("program:gate", "[PRODUCER] GATE PASS"), ("program:lock", "[KEEPER] LOCK"),
+                                 ("program:lock", cmd_lock.VOID)])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(7, LABEL)])
+        self.assertEqual((w.record("pulls", 8)["state"], w.record("issues", 7)["state"]), ("open", "open"))
+
+    def test_without_apply_the_need_is_printed_and_nothing_is_written(self):
+        w, need = self.void()
+        before = w.snapshot()
+        self.assertEqual(lines(self.ticked(w)), [need])
+        self.assertEqual(w.snapshot(), before)
+
+    def test_a_void_note_for_an_earlier_head_voids_nothing(self):
+        w = self.world((9, 10, 11, 12))
+        with failing_merge(w, {10: 1}):
+            self.assertEqual(lines(self.ticked(w, "--apply", code=1)),
+                             ["FAIL #9 lock: merge failed", "STEP #11 lock PR #12"])
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 sync PR #10"])
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10"])
+        self.assertEqual(w.record("pulls", 10)["state"], "merged")
+
+    def test_the_void_text_by_another_role_voids_nothing(self):
+        for with_lock in (True, False):
+            with self.subTest(with_lock=with_lock):
+                w = self.world((9, 10))
+                if with_lock:
+                    self.lock_comment(w, 10)
+                w.add(10, "2026-11-10T10:01:00Z", "foreman", cmd_lock.VOID + "\n")
+                self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10"])
+                self.assertEqual(w.record("pulls", 10)["state"], "merged")
+
+    def test_a_void_pull_leaves_the_room_s_lock_to_the_next(self):
+        w = self.world((9, 10, 11, 12))
+        self.lock_comment(w, 10)
+        w.add(10, "2026-11-10T10:01:00Z", "program:lock", cmd_lock.VOID + "\n")
+        need = f"NEED #9 lock refused: merge failed at {w.head(w.ref(10))[:12]}"
+        self.assertEqual(lines(self.ticked(w, "--apply")), [need, "STEP #11 lock PR #12"])
+        self.assertEqual([w.record("pulls", n)["state"] for n in (10, 12)], ["open", "merged"])
+
+    def test_the_orchestrator_s_retry_locks_the_void_head(self):
+        w, _ = self.void()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            code = cmd_lock.main(["--apply", "--root", str(w.root)])
+        self.assertEqual(code, 0)
+        self.assertEqual((w.record("pulls", 8)["state"], w.record("issues", 7)["state"]), ("merged", "closed"))
+
+    def test_the_markers_lint_passes_on_the_void_lock(self):
+        w, need = self.void()
+        with failing_merge(w, {8: None}):
+            for _ in range(2):
+                self.assertEqual(lines(self.ticked(w, "--apply")), [need])
+        self.assertEqual(w.markers_lint(w.comments(8)).status, lint.PASS)
 
 
 if __name__ == "__main__":
