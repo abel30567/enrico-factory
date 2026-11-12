@@ -2,8 +2,10 @@
 accounts for every earlier one (brief sections 10 and 16).
 
 Rule ids: premise (1), beats (2), durations (3), scene-beats (4), script-scenes (5), lines (6),
-sequences (7), shots (8), edit-list (9), depends (10). Findings in JSON files are on line 1. Times in
-`reel/edit-list.json` are seconds, like every other duration in an episode.
+sequences (7), shots (8), edit-list (9), depends (10), intent-packet (11). Findings in JSON files are on
+line 1. Times in `reel/edit-list.json` are seconds, like every other duration in an episode. The edit
+list's `bible` is the id `A-<n>` of the amendment the reel was cut from; from the reel on, an episode
+has its `intent-packet.json`.
 """
 
 from __future__ import annotations
@@ -25,8 +27,10 @@ DURATION = re.compile(r"^duration:\s*(\d+(?:\.\d+)?)$")
 BEATS_LINE = re.compile(r"^beats:(.*)$")
 SPOKEN = re.compile(r"^L(\d+) ([^:]+):(.*)$")
 RANGE = re.compile(r"(\d+)-(\d+)")
+AMENDMENT_ID = re.compile(r"A-[0-9]+")
 SHOT_KEYS = ("id", "scene", "beat", "duration", "characters", "set", "camera", "action")
 LINE_KEYS = ("id", "scene", "speaker", "text")
+PACKET_KEYS = {"hook", "spoilers", "cta", "tone"}
 
 
 def _number(value) -> bool:
@@ -35,6 +39,10 @@ def _number(value) -> bool:
 
 def _positive(value) -> bool:
     return _number(value) and value > 0
+
+
+def _text(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 class _Formats:
@@ -214,10 +222,15 @@ def _shot(rel: str, data, scenes, scene_beats, files):
     return data.get("id") if isinstance(data.get("id"), str) else None, found
 
 
-def _edit_list(rel: str, data, shot_ids, beat_ids, fmt):
+def _edit_list(rel: str, data, shot_ids, beat_ids, fmt, files):
     if not isinstance(data, dict) or not _positive(data.get("fps")) or not isinstance(data.get("events"), list):
         return [Finding(rel, 1, "edit-list", "not {fps, events: [...]} with fps above zero")]
     found, end, total, seen, complete = [], 0.0, 0.0, set(), True
+    bible = data.get("bible")
+    if not isinstance(bible, str) or not AMENDMENT_ID.fullmatch(bible):
+        found.append(Finding(rel, 1, "edit-list", "bible is not the id A-<n> of an amendment"))
+    elif f"bible/amendments/{bible}.json" not in files:
+        found.append(Finding(rel, 1, "edit-list", f"bible {bible}: bible/amendments/{bible}.json is missing"))
     for i, e in enumerate(data["events"], 1):
         if not isinstance(e, dict) or not isinstance(e.get("shot"), str) or not isinstance(e.get("beat"), str) \
                 or not _number(e.get("start")) or not _positive(e.get("duration")):
@@ -241,6 +254,13 @@ def _edit_list(rel: str, data, shot_ids, beat_ids, fmt):
         if not lo <= total <= hi:
             found.append(Finding(rel, 1, "edit-list", f"total {total:g} s is outside the runtime {lo}-{hi} s"))
     return found
+
+
+def _packet(rel: str, data):
+    if not isinstance(data, dict) or set(data) != PACKET_KEYS or not (_text(data["hook"]) and _text(data["tone"])) \
+            or not all(isinstance(data[k], list) and all(_text(s) for s in data[k]) for k in ("spoilers", "cta")):
+        return [Finding(rel, 1, "intent-packet", "not {hook, spoilers: [...], cta: [...], tone}")]
+    return []
 
 
 def _episode(root: Path, ep: str, have: set[str], files: set[str], formats: _Formats) -> list[Finding]:
@@ -340,11 +360,15 @@ def _episode(root: Path, ep: str, have: set[str], files: set[str], formats: _For
         if sid:
             shot_ids.add(sid)
 
+    if "intent-packet.json" in have:
+        _, data = read_json(root, p("intent-packet.json"))
+        found += _packet(p("intent-packet.json"), data)
     if "reel/edit-list.json" in have:
+        needs("reel/edit-list.json", "intent-packet.json")
         if not shots:
             found.append(Finding(p("reel/edit-list.json"), 1, "depends", f"{p('sequences')}/*/shots/ has no shot"))
         _, data = read_json(root, p("reel/edit-list.json"))
-        found += _edit_list(p("reel/edit-list.json"), data, shot_ids, beat_ids, fmt)
+        found += _edit_list(p("reel/edit-list.json"), data, shot_ids, beat_ids, fmt, files)
     return found
 
 

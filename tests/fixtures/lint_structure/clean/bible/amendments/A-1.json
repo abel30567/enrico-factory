@@ -1,0 +1,13 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/ama.md": "adds Ama, the lamp keeper",
+    "bible/canon/characters/tobi.md": "adds Tobi, her brother",
+    "bible/canon/places/harbour.md": "adds the harbour",
+    "bible/canon/places/lighthouse.md": "adds the lighthouse"
+  },
+  "why": "the first episodes need the keepers and their light",
+  "evidence": {
+    "bible/canon/places/lighthouse.md": "the lamp and the bay it lights"
+  }
+}

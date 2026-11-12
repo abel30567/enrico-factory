@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/tam.md": "adds Tam",
+    "bible/canon/characters/hilde.md": "adds Hilde",
+    "bible/canon/places/fox-lane.md": "adds the lane"
+  },
+  "why": "the fox lane episode needs its boy, his grandmother and the lane",
+  "evidence": {
+    "bible/canon/places/fox-lane.md": "the lane and the den at its end"
+  }
+}

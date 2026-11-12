@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/nell.md": "adds Nell",
+    "bible/canon/characters/orrin.md": "adds Orrin",
+    "bible/canon/places/kiln-yard.md": "adds the kiln yard"
+  },
+  "why": "the kiln serial needs the potter, her neighbour and the yard",
+  "evidence": {
+    "bible/canon/places/kiln-yard.md": "the kiln that is lit each night"
+  }
+}
