@@ -1,0 +1,20 @@
+[
+ {
+  "body": "[DRAFTER] READY\nMaker report: kelp-lantern-report, the beats are in episodes/ep02/beats.md.\n",
+  "created_at": "2026-11-10T09:00:00Z",
+  "id": 2,
+  "role": "drafter"
+ },
+ {
+  "body": "[LINT] FAIL\nshape: episodes/ep02/beats.md:3 brine-gull-lint a beat has no turn\nreviewed head {head:7} manifest none\n",
+  "created_at": "2026-11-10T09:05:00Z",
+  "id": 3,
+  "role": "program:lint"
+ },
+ {
+  "body": "[REVIEWER] NOTES\nB1 driftwood-note the flood has no cause\nreviewed head {head:7} manifest none\n",
+  "created_at": "2026-11-10T09:10:00Z",
+  "id": 4,
+  "role": "reviewer"
+ }
+]
