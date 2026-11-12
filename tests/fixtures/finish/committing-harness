@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""A worker that commits its own files, for tests: it runs the `fake-harness` beside it with the same
+arguments, standard streams and descriptors, then commits everything in its working directory as
+`worker` and exits with the fake's status. `--version` is passed through and commits nothing.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main():
+    fake = Path(sys.argv[0]).resolve().parent / "fake-harness"
+    status = subprocess.run([str(fake), *sys.argv[1:]], close_fds=False).returncode
+    if "--version" not in sys.argv[1:]:
+        identity = ["-c", "user.name=worker", "-c", "user.email=worker@example.invalid"]
+        subprocess.run(["git", "add", "-A"], stdin=subprocess.DEVNULL, check=True)
+        subprocess.run(["git", *identity, "commit", "-q", "-m", "the worker's own commit"],
+                       stdin=subprocess.DEVNULL, check=True)
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,20 @@
+[
+ {
+  "body": "[CHIEF] LAUNCH writer 1\nprompt sha256 recorded.\n",
+  "created_at": "2026-11-06T09:00:00Z",
+  "id": 1501,
+  "role": "chief"
+ },
+ {
+  "body": "[CHIEF] LAUNCH writer 2\nprompt sha256 recorded.\n",
+  "created_at": "2026-11-06T09:01:00Z",
+  "id": 1502,
+  "role": "chief"
+ },
+ {
+  "body": "[CHIEF] SELECTED #16\nThe roof landing gives the episode its question.\n",
+  "created_at": "2026-11-06T12:00:00Z",
+  "id": 1503,
+  "role": "chief"
+ }
+]

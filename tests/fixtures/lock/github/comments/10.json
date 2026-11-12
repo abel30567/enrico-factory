@@ -1,0 +1,44 @@
+[
+ {
+  "body": "[KEEPER] READY\nThe work is on the branch.\n",
+  "created_at": "2026-11-06T10:00:00Z",
+  "id": 1001,
+  "role": "keeper"
+ },
+ {
+  "body": "[CANON-REVIEWER] NOTES\nB1 (Blocker): the amendment does not say which rule it adds.\nreviewed head {head:10} manifest none\n",
+  "created_at": "2026-11-06T10:10:00Z",
+  "id": 1002,
+  "role": "canon-reviewer"
+ },
+ {
+  "body": "[KEEPER] ADDRESSED\n- B1 by canon-reviewer: changed. It names rule 2.\n",
+  "created_at": "2026-11-06T10:20:00Z",
+  "id": 1003,
+  "role": "keeper"
+ },
+ {
+  "body": "[LINT] PASS\n\n| Check | Result | Reason |\n|---|---|---|\n| canon | PASS |  |\n\nBlockers: none\nChecks required by stage bible: canon\nreviewed head {head:10} manifest none\n",
+  "created_at": "2026-11-06T10:30:00Z",
+  "id": 1004,
+  "role": "program:lint"
+ },
+ {
+  "body": "[CANON-REVIEWER] APPROVED\nEvery criterion holds.\nreviewed head {head:10} manifest none\n",
+  "created_at": "2026-11-06T10:40:00Z",
+  "id": 1005,
+  "role": "canon-reviewer"
+ },
+ {
+  "body": "[BRAINTRUST] NO PREFERENCE\nNo earlier version to compare.\nreviewed head {head:10} manifest none\n",
+  "created_at": "2026-11-06T10:50:00Z",
+  "id": 1006,
+  "role": "braintrust"
+ },
+ {
+  "body": "[BRAINTRUST] VOTE 5-2\nFive seats for, two against.\n",
+  "created_at": "2026-11-06T11:00:00Z",
+  "id": 1007,
+  "role": "braintrust"
+ }
+]

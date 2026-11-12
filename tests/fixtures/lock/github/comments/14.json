@@ -1,0 +1,20 @@
+[
+ {
+  "body": "[DESIGNER] READY\nThe work is on the branch.\n",
+  "created_at": "2026-11-06T10:00:00Z",
+  "id": 1401,
+  "role": "designer"
+ },
+ {
+  "body": "[LINT] PASS\n\n| Check | Result | Reason |\n|---|---|---|\n| media | PASS |  |\n\nBlockers: none\nChecks required by stage style: media\nreviewed head {head:14} manifest none\n",
+  "created_at": "2026-11-06T10:10:00Z",
+  "id": 1402,
+  "role": "program:lint"
+ },
+ {
+  "body": "[EDITOR] APPROVED\nEvery criterion holds.\nreviewed head {head:14} manifest none\n",
+  "created_at": "2026-11-06T10:20:00Z",
+  "id": 1403,
+  "role": "editor"
+ }
+]
