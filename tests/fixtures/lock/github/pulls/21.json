@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #20\n",
+ "created_at": "2026-11-05T10:00:00Z",
+ "head_ref": "feat/CU-1-cut",
+ "labels": [],
+ "merged_at": null,
+ "number": 21,
+ "state": "open",
+ "ticket": 20,
+ "title": "Work for #20"
+}

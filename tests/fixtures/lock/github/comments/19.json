@@ -1,0 +1,38 @@
+[
+ {
+  "body": "[ARTIST] READY\nThe work is on the branch.\n",
+  "created_at": "2026-11-06T10:00:00Z",
+  "id": 1901,
+  "role": "artist"
+ },
+ {
+  "body": "[LINT] PASS\n\n| Check | Result | Reason |\n|---|---|---|\n| structure | PASS |  |\n\nBlockers: none\nChecks required by stage board: structure\nreviewed head {head:19} manifest none\n",
+  "created_at": "2026-11-06T10:10:00Z",
+  "id": 1902,
+  "role": "program:lint"
+ },
+ {
+  "body": "[EDITOR] APPROVED\nEvery criterion holds.\nreviewed head {head:19} manifest none\n",
+  "created_at": "2026-11-06T10:20:00Z",
+  "id": 1903,
+  "role": "editor"
+ },
+ {
+  "body": "[CRITIC] PREFERS A\nPanel 2 earns the slack string.\nreviewed head {head:19} manifest none\n",
+  "created_at": "2026-11-06T10:30:00Z",
+  "id": 1904,
+  "role": "critic"
+ },
+ {
+  "body": "[ELDER] PREFERS A\nPanel 1 reads at a glance.\nreviewed head {head:19} manifest none\n",
+  "created_at": "2026-11-06T10:40:00Z",
+  "id": 1905,
+  "role": "elder"
+ },
+ {
+  "body": "[VIEWER] PREFERS B\nThe single panel is calmer.\nreviewed head {head:19} manifest none\n",
+  "created_at": "2026-11-06T10:50:00Z",
+  "id": 1906,
+  "role": "viewer"
+ }
+]
