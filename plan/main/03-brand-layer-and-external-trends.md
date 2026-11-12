@@ -43,6 +43,24 @@ does not own; every part is a registered item on GitHub.
    and the "chasing metrics" monitor apply.
 5. Posting accounts are never used to read other people's videos.
 
-- [ ] #262 (w6-31) `docs/research/07-external-trends-and-ingestion.md` (drafter launched 2026-11-12)
-- [ ] register the kit items and owner steps that follow from it (tools per platform, ranking, analysis
-      of a temporary copy, role file changes, whether analyst launches move ahead of #168)
+- [x] #262 (w6-31) `docs/research/07-external-trends-and-ingestion.md` on main (48c14ff), with the register
+      rows, rulings R7 to R10, decisions D5 and D6 and owner step 8 in `docs/resources.md`
+- [ ] #266 (w6-32) the brief: topics, reads by a program, expiry, what git keeps (orchestrator)
+- [ ] #267 (w6-33) YouTube read tool (builder; after #266, #205)
+- [ ] #268 (w6-34) ranking per platform and the trend card (builder; after #266; needs no key)
+- [ ] #269 (w6-35) snapshot at launch and the two role files (builder; after #268; trend-scout after #168)
+- [ ] #270 (w6-36) Instagram watch list (builder; after #266, #206 on Facebook Login)
+- [ ] #271 (w6-37) TikTok Discovery (builder; after #266, #265)
+- [ ] #272 (w6-38) analysis of a temporary copy (held by the owner's decision #263)
+- [ ] owner: #263 D5 fetch files or not, #264 D6 a paid provider, #265 TikTok For Business
+
+What the research changed (2026-11-12):
+
+- Direction 1 was wrong in one point. YouTube allows counts of other people's videos to be kept 30
+  days, and git cannot forget. Reads live in the state directory; git keeps the link, the rank at read
+  time and our notes (R8).
+- No official route delivers a video file or its captions (Instagram excepted, when the video's owner
+  allows it). So "ingestion" is links, counts and comments until the owner rules on #263 (R9).
+- YouTube is complete and free with #205: every ranking works. TikTok gives a commercial user rising
+  hashtags and an ordered top 20 with no counts. Instagram gives views only for accounts named in
+  advance, and only if the Meta app is on Facebook Login (R10, noted on #206 before the app exists).
