@@ -1,6 +1,8 @@
 import copy
+import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -24,8 +26,8 @@ TOKEN_TEXT = "token-text-u5x8-never-copied"
 
 # macOS sets this in every process it starts; it does not come from the environment the adapter built.
 OS_ADDED = {"__CF_USER_TEXT_ENCODING"}
-ALLOWLIST = ["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CONFIG_DIR", "HOME", "LANG",
-             "LC_ALL", "PATH", "TERM", "TMPDIR"]
+ALLOWLIST = ["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+             "CLAUDE_CONFIG_DIR", "HOME", "LANG", "LC_ALL", "PATH", "TERM", "TMPDIR"]
 
 SETTINGS = {"HARNESS": "/opt/invented/harness", "MODEL_MAKER": "maker-model-1",
             "MODEL_CHECKER": "checker-model-1", "MODEL_OTHER": "other-model-1",
@@ -317,7 +319,8 @@ class EnvironmentTest(unittest.TestCase):
 
     def test_absent_parent_keys_are_not_invented(self):
         env = harness.environment({"PATH": "/bin", "AWS_SECRET": "x"}, SETTINGS, "any", "/c", 3)
-        self.assertEqual(sorted(env), ["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+        self.assertEqual(sorted(env), ["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS",
+                                       "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
                                        "CLAUDE_CONFIG_DIR", "PATH"])
 
     def test_tmp_dir_is_the_workers_tmpdir(self):
@@ -328,6 +331,21 @@ class EnvironmentTest(unittest.TestCase):
         self.assertEqual(env["TMPDIR"], "/tmp/invented")
         env = harness.environment({"PATH": "/bin"}, SETTINGS, "any", "/run/cfg", 3)
         self.assertNotIn("TMPDIR", env)
+
+    def test_background_tasks_are_off_for_every_family(self):
+        for family in ("any", "same", "other"):
+            with self.subTest(family=family):
+                env = harness.environment(invented_parent(), SETTINGS, family, "/run/cfg", 3)
+                self.assertEqual(env.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"), "1")
+
+    def test_parent_cannot_turn_background_tasks_on(self):
+        parent = invented_parent(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS="0")
+        env = harness.environment(parent, SETTINGS, "any", "/run/cfg", 3)
+        self.assertEqual(env.get("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"), "1")
+        env = harness.environment({"PATH": "/bin"}, SETTINGS, "any", "/c", 3)
+        self.assertEqual(sorted(env), ["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS",
+                                       "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
+                                       "CLAUDE_CONFIG_DIR", "PATH"])
 
 
 class AccountsTest(unittest.TestCase):
@@ -648,6 +666,60 @@ class ReadTest(unittest.TestCase):
         for path in ENVELOPES.iterdir():
             if path.name != "README.md":
                 self.assertIn(f"`{path.name}`", readme)
+
+
+RECORDED = {
+    "recorded-ok-approved.stdout":
+        "72abf0cf705d6c6ceeeeb0a3065633fac941474e75e53ef7fc1efcc225aafd55",
+    "recorded-ok-blocked.stdout":
+        "db759bdb9b231419b4f4dd82c5489ef2254cc5f1f4c359510aba250f6bb9c81f",
+    "recorded-background-turn.stdout":
+        "5fd1f1c6ca24d23fe5b868da4a86345dca9ba18eda2a064469bb8fab67740e97",
+}
+
+
+class RecordedEnvelopeTest(unittest.TestCase):
+    def test_ok_approved(self):
+        outcome = harness.read(envelope("recorded-ok-approved.stdout"), 0)
+        self.assertEqual((outcome.status, outcome.reason), ("ok", "result read (exit 0)"))
+        self.assertEqual(outcome.result["marker"], "APPROVED")
+        self.assertEqual(harness.validate_result("checker", "FACT-CHECKER", outcome.result), [])
+
+    def test_ok_approved_with_a_non_zero_exit(self):
+        self.assertEqual(harness.read(envelope("recorded-ok-approved.stdout"), 2),
+                         harness.Outcome("failed", None, "run failed (exit 2)"))
+
+    def test_ok_blocked(self):
+        outcome = harness.read(envelope("recorded-ok-blocked.stdout"), 0)
+        self.assertEqual((outcome.status, outcome.reason), ("ok", "result read (exit 0)"))
+        self.assertEqual(outcome.result["marker"], "BLOCKED")
+        self.assertEqual(harness.validate_result("checker", "FACT-CHECKER", outcome.result), [])
+        blocked = outcome.result["blocked"]
+        self.assertEqual(sorted(blocked), ["missing", "resume_from", "tried"])
+        for key, value in blocked.items():
+            with self.subTest(key=key):
+                self.assertTrue(value.strip())
+
+    def test_background_turn_is_not_a_verdict(self):
+        self.assertEqual(harness.read(envelope("recorded-background-turn.stdout"), 0),
+                         harness.Outcome("failed", None, "no result object (exit 0)"))
+
+    def test_one_result_line_with_the_recorded_hash(self):
+        for name, digest in sorted(RECORDED.items()):
+            with self.subTest(name=name):
+                data = (ENVELOPES / name).read_bytes()
+                self.assertEqual(hashlib.sha256(data).hexdigest(), digest)
+                lines = data.decode("utf-8").splitlines()
+                self.assertEqual(len(lines), 1)
+                envelope_object = json.loads(lines[0])
+                self.assertIsInstance(envelope_object, dict)
+                self.assertEqual(envelope_object["type"], "result")
+
+    def test_readme_names_the_recorded_files(self):
+        readme = (ENVELOPES / "README.md").read_text()
+        sentences = re.split(r"(?<=\.)\s+", readme)
+        self.assertTrue(any("recorded" in s and all(f"`{n}`" in s for n in RECORDED)
+                            for s in sentences))
 
 
 class OnlyTheAdapterNamesHarnessFlags(unittest.TestCase):
