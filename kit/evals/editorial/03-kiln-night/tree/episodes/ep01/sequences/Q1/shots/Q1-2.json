@@ -1,0 +1,13 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 40,
+  "characters": [
+    "nell",
+    "orrin"
+  ],
+  "set": "kiln-yard",
+  "camera": "medium",
+  "action": "Orrin lights the kiln; Nell watches from the woodpile."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "ari",
+    "noor"
+  ],
+  "set": "dunes",
+  "camera": "wide, from behind both, far",
+  "action": "Ari and Noor in the distance; something happens with the kite."
+}

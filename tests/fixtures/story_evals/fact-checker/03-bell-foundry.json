@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F3 cites the guild roll for tin from the Morrow islands; the guild roll says nothing of tin.",
+      "evidence": "research/bell-foundry.md F3; sources/guild-roll.md"
+    }
+  ]
+}

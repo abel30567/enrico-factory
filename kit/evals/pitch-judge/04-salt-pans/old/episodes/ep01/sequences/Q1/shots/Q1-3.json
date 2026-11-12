@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "yara",
+    "tomas"
+  ],
+  "set": "salt-pans",
+  "camera": "high, looking down on the pan",
+  "action": "Tomas drags the rake handle through the pan; the water runs off down the new channel."
+}

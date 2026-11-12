@@ -1,0 +1,8 @@
+[
+ {"id": "L1", "scene": "S1", "speaker": "OTI", "text": "Mine's faster."},
+ {"id": "L2", "scene": "S1", "speaker": "SEM", "text": "Mine's folded better."},
+ {"id": "L3", "scene": "S2", "speaker": "SEM", "text": "Mine wins."},
+ {"id": "L4", "scene": "S2", "speaker": "OTI", "text": "Again, then."},
+ {"id": "L5", "scene": "S3", "speaker": "OTI", "text": "Gran's writing."},
+ {"id": "L6", "scene": "S3", "speaker": "SEM", "text": "We'll keep them."}
+]

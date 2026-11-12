@@ -1,0 +1,13 @@
+{
+  "id": "Q2-2",
+  "scene": "S2",
+  "beat": "B4",
+  "duration": 12,
+  "characters": [
+    "tam",
+    "hilde"
+  ],
+  "set": "fox-lane",
+  "camera": "medium",
+  "action": "Hilde opens the door to Tam."
+}

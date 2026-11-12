@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 12,
+  "characters": [
+    "nils"
+  ],
+  "set": "tram-depot",
+  "camera": "wide",
+  "action": "Nils, in his red work coat, sweeps the depot floor."
+}

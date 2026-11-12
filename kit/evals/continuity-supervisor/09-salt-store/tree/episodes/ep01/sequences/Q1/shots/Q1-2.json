@@ -1,0 +1,13 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "bram",
+    "tilda"
+  ],
+  "set": "jetty",
+  "camera": "medium",
+  "action": "Bram rows away; Tilda watches from the jetty."
+}

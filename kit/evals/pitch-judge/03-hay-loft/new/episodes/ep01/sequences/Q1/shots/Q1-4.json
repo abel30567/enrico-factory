@@ -1,0 +1,13 @@
+{
+  "id": "Q1-4",
+  "scene": "S2",
+  "beat": "B4",
+  "duration": 12,
+  "characters": [
+    "bea",
+    "lars"
+  ],
+  "set": "hay-loft",
+  "camera": "wide",
+  "action": "Bea comes down the ladder with the kittens to Lars."
+}

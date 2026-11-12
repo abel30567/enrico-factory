@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F1 dates the charter 1712; the charter says 1721.",
+      "evidence": "research/wool-fair.md F1; sources/fair-charter.md"
+    }
+  ]
+}

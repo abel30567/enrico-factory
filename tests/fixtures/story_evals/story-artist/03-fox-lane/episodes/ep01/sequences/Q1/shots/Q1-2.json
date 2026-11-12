@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "tam"
+  ],
+  "set": "fox-lane",
+  "camera": "low, tracking",
+  "action": "Tam follows the fox down the lane."
+}

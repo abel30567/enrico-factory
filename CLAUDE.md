@@ -77,6 +77,7 @@ orchestrator decides; low-severity nits become `follow-up` issues instead of blo
 - Orchestrator-owned files: `.agents/`, `scripts/gates.sh`, `CLAUDE.md`, `README.md`, `docs/*.md`, `docs/design/`, `kit/resources.json`, `plan/`. Workers propose changes to them in a comment, not in a diff.
 - The orchestrator directs and does not build: anything under `kit/` or `tests/` is a ticket for a builder.
 - GitHub is the state. Work to do is an issue with the label `tracked` (`orch task`); what is in flight is `orch status`. A reversible decision is taken and posted as an `[ORCHESTRATOR]` ruling, not asked.
+- The kanban is the GitHub Project "enrico factory" (`BOARD_TITLE` in `orch.env`): Backlog, Ready, In Progress, In Review, Changes Requested, Verified, Done, Blocked. Status is derived from labels and markers by `orch board sync --apply`, which the orchestrator runs at the end of every wake. Never drag cards by hand.
 - The harness is a primitive. Nothing in `kit/` may depend on harness internals; all harness-specific code is `kit/lib/harness.py` (`docs/harness.md`).
 - Inference is by subscription login only. No file, test or command may read or require an inference API key.
 - This repository is public. Production material (lore, art, canon rulings, media) belongs in the production's own repository, never here. No machine paths, account names or credentials in any file.
