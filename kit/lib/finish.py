@@ -176,9 +176,17 @@ def post(p, gh, root, run, outcome):
 
 # -- running the worker
 
-def _secrets_dir(p) -> str:
-    value = production.setting(p, "SECRETS_DIR")
+def _home_path(value: str) -> str:
+    """``value`` with a leading ``~/`` expanded; nothing else is expanded."""
     return os.path.expanduser(value) if value.startswith("~/") else value
+
+
+def _secrets_dir(p) -> str:
+    return _home_path(production.setting(p, "SECRETS_DIR"))
+
+
+def _sandbox_deny(settings) -> tuple:
+    return tuple(_home_path(entry) for entry in frontmatter.as_list(settings.get("SANDBOX_DENY")))
 
 
 def _endpoints(settings, family) -> tuple:
@@ -254,10 +262,13 @@ def _outcome(p, root, run) -> Outcome:
         account = _pick(settings, slot, state_dir, now)
         if account is None:
             return Outcome("out_of_usage", None, "every account is out of usage")
-    env = harness.environment(os.environ, settings, meta["family"], run.dir / "config", TOKEN_FD)
+    (run.dir / "tmp").mkdir(mode=0o700)
+    env = harness.environment(os.environ, settings, meta["family"], run.dir / "config", TOKEN_FD,
+                              tmp_dir=run.dir / "tmp")
     argv = harness.command(settings, role_meta, run.dir / "mcp.json")
     profile = sandbox.profile(root, run.worktree, run.dir, state_dir, _secrets_dir(p), str(Path.home()),
-                              web=sandbox.web(role_meta), endpoints=_endpoints(settings, meta["family"]))
+                              web=sandbox.web(role_meta), endpoints=_endpoints(settings, meta["family"]),
+                              deny=_sandbox_deny(settings), path=env.get("PATH", ""))
     sandbox.write(run.dir / "sandbox.sb", profile)
     argv = sandbox.apply(settings, argv, run.dir / "sandbox.sb")
     for attempt in range(steps.RUN_ATTEMPTS):
