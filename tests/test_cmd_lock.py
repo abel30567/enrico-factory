@@ -33,6 +33,26 @@ class FailingMerge(github.Recorded):
         raise GitHubError(f"merge #{number}: refused")
 
 
+class CountingSync(github.Recorded):
+    """A recorded GitHub whose ``sync_base`` records each base it is called with, and fails from call
+    ``fail_from`` on (never when ``None``)."""
+
+    def __init__(self, directory, fail_from=None):
+        super().__init__(directory)
+        self.fail_from = fail_from
+        self.synced = []
+
+    def sync_base(self, root, base_ref):
+        self.synced.append(base_ref)
+        if self.fail_from is not None and len(self.synced) >= self.fail_from:
+            raise GitHubError(f"sync_base {base_ref}: git fetch failed (exit 128)")
+        return super().sync_base(root, base_ref)
+
+
+class FailingMergeCountingSync(FailingMerge, CountingSync):
+    pass
+
+
 class ApplyTest(unittest.TestCase):
     def apply(self, w, number, *argv):
         """Run --apply; return the stdout, the comments it posted on ``number`` and the merge commit."""
@@ -165,6 +185,60 @@ class ApplyTest(unittest.TestCase):
         self.assertEqual(result.status, "FAIL")
         self.assertEqual([f.rule for f in result.findings], ["marker-verb"])
         self.assertIn(f"comment {lock_id}:", result.findings[0].message)
+
+
+class SyncTest(unittest.TestCase):
+    """ISSUE-227: ``--apply`` brings the local base up to GitHub's before it reads and after it merges."""
+
+    def run_with(self, w, gh, *argv):
+        with mock.patch.object(github, "connect", return_value=gh):
+            return w.lock(*argv)
+
+    def test_a_sync_that_fails_after_the_merge_is_not_a_void_lock(self):
+        w = World(self, (8,))
+        gh = CountingSync(w.dir, fail_from=2)
+        code, out, err = self.run_with(w, gh, "--apply")
+        trunk = w.git("rev-parse", "trunk").strip()[:12]
+        self.assertEqual((code, err), (4, f"lock: PR #8 is merged at {trunk}, base not synced: "
+                                          "sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertTrue(out.endswith(f"locked PR #8 at {trunk}\n"), out)
+        self.assertEqual((w.record("pulls", 8)["state"], w.record("issues", 7)["state"]), ("merged", "closed"))
+        locks = [c for c in w.comments(8) if c["role"] == cmd_lock.ROLE]
+        self.assertEqual([c["body"].splitlines()[0] for c in locks], ["[CHIEF] LOCK"])
+        self.assertFalse([c for c in w.comments(8) if c["body"].rstrip() == cmd_lock.VOID])
+        self.assertEqual(gh.synced, ["trunk", "trunk"])
+
+    def test_a_sync_that_succeeds_syncs_before_and_after(self):
+        w = World(self, (8,))
+        gh = CountingSync(w.dir)
+        code, out, err = self.run_with(w, gh, "--apply")
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(out.endswith(f"locked PR #8 at {w.git('rev-parse', 'trunk').strip()[:12]}\n"), out)
+        self.assertEqual(gh.synced, ["trunk", "trunk"])
+
+    def test_a_sync_that_fails_before_the_read_writes_nothing(self):
+        w = World(self, (8,))
+        gh = CountingSync(w.dir, fail_from=1)
+        before = snapshot(w)
+        self.assertEqual(self.run_with(w, gh, "--apply"),
+                         (2, "", "lock: sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertEqual(snapshot(w), before)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_without_apply_nothing_is_synced(self):
+        w = World(self, (8,))
+        gh = CountingSync(w.dir, fail_from=1)
+        self.assertEqual(self.run_with(w, gh), (0, "PR #8 #7 story/script ep01: LOCKABLE\n", ""))
+        self.assertEqual(gh.synced, [])
+
+    def test_a_merge_github_refuses_stays_void_and_is_not_synced(self):
+        w = World(self, (8,))
+        gh = FailingMergeCountingSync(w.dir)
+        code, out, err = self.run_with(w, gh, "--apply")
+        self.assertEqual((code, err), (3, "lock: merge failed\n"))
+        self.assertEqual(w.comments(8)[-1]["body"].rstrip(), cmd_lock.VOID)
+        self.assertEqual((w.record("pulls", 8)["state"], w.record("issues", 7)["state"]), ("open", "open"))
+        self.assertEqual(gh.synced, ["trunk"])
 
 
 class FrozenTest(unittest.TestCase):

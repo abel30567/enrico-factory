@@ -514,14 +514,13 @@ class GhTest(unittest.TestCase):
         self.assertEqual(self.fake.argvs(), [["git", "-C", "/work/repo", "push", "origin", "feat/1-opening"]])
 
     def test_merge(self):
-        sha = self.gh(ok(gh_fixture("pr_view.json")), ok(gh_fixture("merge.json")), ok()).merge(
+        sha = self.gh(ok(gh_fixture("pr_view.json")), ok(gh_fixture("merge.json"))).merge(
             "/work/repo", 3, "a" * 40)
         self.assertEqual(sha, "9" * 40)
         self.assertEqual(self.fake.argvs(), [
             ["gh", "pr", "view", "3", "-R", REPO, "--json",
              "number,title,body,state,labels,headRefName,baseRefName,createdAt,mergedAt"],
-            ["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/3/merge", "--input", "-"],
-            ["git", "-C", "/work/repo", "fetch", "origin", "main"]])
+            ["gh", "api", "-X", "PUT", f"repos/{REPO}/pulls/3/merge", "--input", "-"]])
         self.assertEqual(self.fake.stdin(1), {"sha": "a" * 40, "merge_method": "merge"})
 
     def test_merge_refused_by_server(self):
@@ -558,6 +557,206 @@ class GhTest(unittest.TestCase):
     def test_environment_passes_through_unchanged(self):
         self.gh(ok("[]")).issues()
         self.assertNotIn("env", self.fake.calls[0][1])
+
+
+class GhMergeNotOpenTest(unittest.TestCase):
+    """ISSUE-227 behaviour 2: a pull that is not open is refused before GitHub is asked to merge it."""
+
+    def test_closed_and_merged_pulls_are_refused_after_one_read(self):
+        for state in ("closed", "merged"):
+            with self.subTest(state=state):
+                fake = FakeRun(ok(gh_fixture("pr_view.json").replace('"OPEN"', f'"{state.upper()}"')))
+                with self.assertRaises(GitHubError) as e:
+                    Gh(REPO, run=fake).merge("/work/repo", 3, "a" * 40)
+                self.assertEqual(str(e.exception), f"merge #3: pull is {state}, not open")
+                self.assertEqual([argv[:3] for argv in fake.argvs()], [["gh", "pr", "view"]])
+
+
+class SyncCase(TmpCase):
+    """A bare ``origin`` for GitHub, ``seed`` for GitHub's side of a merge, ``prod`` for the production's clone."""
+
+    def git(self, where, *args, check=True):
+        done = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t.invalid", "-C", str(where), *args],
+                              capture_output=True, text=True)
+        if check and done.returncode != 0:
+            raise AssertionError(done.stderr)
+        return done.stdout.strip()
+
+    def setUp(self):
+        super().setUp()
+        self.origin, self.seed, self.prod = self.tmp / "origin.git", self.tmp / "seed", self.tmp / "prod"
+        self.git(self.tmp, "init", "-q", "--bare", "-b", "main", str(self.origin))
+        self.git(self.tmp, "clone", "-q", str(self.origin), str(self.seed))
+        self.git(self.seed, "symbolic-ref", "HEAD", "refs/heads/main")
+        (self.seed / "scene.md").write_text("one\n")
+        self.git(self.seed, "add", "scene.md")
+        self.git(self.seed, "commit", "-q", "-m", "base")
+        self.git(self.seed, "push", "-q", "origin", "main")
+        self.git(self.seed, "checkout", "-q", "-b", "feat/1-opening")
+        (self.seed / "scene.md").write_text("one\ntwo\n")
+        (self.seed / "merged.md").write_text("from the pull\n")
+        self.git(self.seed, "add", "scene.md", "merged.md")
+        self.git(self.seed, "commit", "-q", "-m", "change")
+        self.git(self.seed, "push", "-q", "origin", "feat/1-opening")
+        self.pull_head = self.git(self.seed, "rev-parse", "HEAD")
+        self.git(self.seed, "checkout", "-q", "main")
+        self.git(self.tmp, "clone", "-q", str(self.origin), str(self.prod))
+        self.base = self.git(self.prod, "rev-parse", "refs/heads/main")
+
+    def github_merges(self) -> str:
+        """GitHub merges pull 3 into main with a merge commit; its sha."""
+        self.git(self.seed, "merge", "-q", "--no-ff", "-m", "Merge pull request #3", "feat/1-opening")
+        self.git(self.seed, "push", "-q", "origin", "main")
+        return self.git(self.seed, "rev-parse", "main")
+
+    def local_commit(self) -> str:
+        (self.prod / "ledger.md").write_text("a row GitHub lacks\n")
+        self.git(self.prod, "add", "ledger.md")
+        self.git(self.prod, "commit", "-q", "-m", "ledger")
+        return self.git(self.prod, "rev-parse", "HEAD")
+
+    def branches(self):
+        return self.git(self.prod, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads")
+
+    def status(self):
+        return self.git(self.prod, "status", "--porcelain")
+
+    def sync(self, base="main"):
+        return Gh(REPO).sync_base(self.prod, base)
+
+
+class GhSyncBaseTest(SyncCase):
+    """ISSUE-227 behaviours 3 to 7: ``Gh.sync_base`` on real git."""
+
+    def test_base_checked_out(self):
+        merge = self.github_merges()
+        self.assertEqual(self.sync(), merge)
+        self.assertEqual(self.git(self.prod, "rev-parse", "refs/heads/main", "HEAD").split(), [merge, merge])
+        self.assertEqual((self.prod / "merged.md").read_text(), "from the pull\n")
+        self.assertEqual(self.status(), "")
+        self.assertEqual(self.git(self.prod, "symbolic-ref", "--short", "HEAD"), "main")
+
+    def assert_moved_base_only(self, checkout):
+        self.git(self.prod, "checkout", "-q", *checkout)
+        head = self.git(self.prod, "rev-parse", "HEAD")
+        merge = self.github_merges()
+        self.assertEqual(self.sync(), merge)
+        self.assertEqual(self.git(self.prod, "rev-parse", "refs/heads/main"), merge)
+        self.assertEqual(self.git(self.prod, "rev-parse", "HEAD"), head)
+        self.assertEqual(self.status(), "")
+
+    def test_another_branch_checked_out(self):
+        self.assert_moved_base_only(["-b", "work"])
+        self.assertEqual(self.git(self.prod, "symbolic-ref", "--short", "HEAD"), "work")
+
+    def test_detached_head(self):
+        self.assert_moved_base_only(["--detach"])
+        self.assertEqual(self.git(self.prod, "symbolic-ref", "-q", "HEAD", check=False), "")
+
+    def test_nothing_new_on_github(self):
+        before = self.branches()
+        self.assertEqual(self.sync(), self.base)
+        self.assertEqual(self.branches(), before)
+
+    def test_local_base_only_ahead(self):
+        ahead = self.local_commit()
+        before = self.branches()
+        self.assertEqual(self.sync(), ahead)
+        self.assertEqual(self.git(self.prod, "rev-parse", "refs/heads/main"), ahead)
+        self.assertEqual(self.branches(), before)
+
+    def test_untracked_file_is_kept(self):
+        (self.prod / "notes.txt").write_text("mine\n")
+        merge = self.github_merges()
+        self.assertEqual(self.sync(), merge)
+        self.assertEqual(self.git(self.prod, "rev-parse", "HEAD"), merge)
+        self.assertEqual((self.prod / "notes.txt").read_text(), "mine\n")
+        self.assertEqual(self.status(), "?? notes.txt")
+
+    def assert_refused(self, message):
+        before = (self.branches(), self.status())
+        with self.assertRaises(GitHubError) as e:
+            self.sync()
+        self.assertEqual(str(e.exception), message)
+        for path in {str(self.tmp), os.path.realpath(self.tmp)}:
+            self.assertNotIn(path, str(e.exception))
+        self.assertEqual((self.branches(), self.status()), before)
+
+    def test_diverged_with_the_base_checked_out(self):
+        self.local_commit()
+        self.github_merges()
+        self.assert_refused("sync_base main: the local branch holds 1 commit(s) GitHub does not have")
+
+    def test_diverged_with_another_branch_checked_out(self):
+        self.local_commit()
+        self.git(self.prod, "checkout", "-q", "-b", "work")
+        self.github_merges()
+        self.assert_refused("sync_base main: the local branch holds 1 commit(s) GitHub does not have")
+
+    def test_modified_file_the_merge_changes(self):
+        self.github_merges()
+        (self.prod / "scene.md").write_text("local text\n")
+        self.assert_refused("sync_base main: git merge failed (exit 1)")
+        self.assertEqual((self.prod / "scene.md").read_text(), "local text\n")
+
+    def test_no_remote_origin(self):
+        self.github_merges()
+        self.git(self.prod, "remote", "remove", "origin")
+        self.assert_refused("sync_base main: git fetch failed (exit 128)")
+
+
+class RecordedSyncBaseTest(SyncCase):
+    """ISSUE-227 behaviour 8."""
+
+    def test_returns_the_local_tip_and_logs_nothing(self):
+        d = self.copy_clean()
+        before = tree(d)
+        r = Recorded(d)
+        self.assertEqual(r.sync_base(self.prod, "main"), self.base)
+        self.assertEqual(log_lines(d), [])
+        with self.assertRaises(GitHubError) as e:
+            r.sync_base(self.prod, "trunk")
+        self.assertEqual(str(e.exception), "sync_base trunk: git rev-parse failed (exit 1)")
+        self.assertEqual(tree(d), before)
+
+
+class SameOnBothFormsTest(SyncCase):
+    """ISSUE-227 behaviour 9: ``merge`` then ``sync_base`` leave the same base on ``Gh`` and on ``Recorded``."""
+
+    def test_merge_then_sync(self):
+        twin = self.tmp / "twin"
+        self.git(self.tmp, "clone", "-q", str(self.origin), str(twin))
+        self.git(twin, "branch", "-q", "feat/1-opening", "origin/feat/1-opening")
+        started = []
+
+        def run(argv, **kwargs):
+            started.append(argv[:3])
+            if argv[0] != "gh":
+                return subprocess.run(argv, **kwargs)
+            if argv[1:3] == ["pr", "view"]:
+                return subprocess.CompletedProcess(argv, 0, gh_fixture("pr_view.json"), "")
+            self.assertEqual(json.loads(kwargs["input"])["sha"], self.pull_head)
+            answer = {"sha": self.github_merges(), "merged": True, "message": "Pull Request successfully merged"}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(answer), "")
+
+        g = Gh(REPO, run=run)
+        sha = g.merge(self.prod, 3, self.pull_head)
+        self.assertEqual([argv[0] for argv in started], ["gh", "gh"])
+        self.assertEqual(self.git(self.prod, "rev-parse", "refs/heads/main"), self.base)
+        self.assertEqual(g.sync_base(self.prod, "main"), sha)
+        self.assertEqual(self.git(self.prod, "rev-parse", "refs/heads/main", "HEAD").split(), [sha, sha])
+        self.assertEqual(self.git(self.prod, "rev-parse", f"{sha}^1", f"{sha}^2").split(),
+                         [self.base, self.pull_head])
+        self.assertEqual(self.status(), "")
+
+        r = Recorded(self.copy_clean())
+        recorded = r.merge(twin, 3, self.pull_head)
+        self.assertEqual(r.sync_base(twin, "main"), recorded)
+        self.assertEqual(self.git(twin, "rev-parse", "refs/heads/main", "HEAD").split(), [recorded, recorded])
+        self.assertEqual(self.git(twin, "rev-parse", f"{recorded}^1", f"{recorded}^2").split(),
+                         [self.base, self.pull_head])
+        self.assertEqual(self.git(twin, "rev-parse", f"{recorded}^{{tree}}"),
+                         self.git(self.prod, "rev-parse", f"{sha}^{{tree}}"))
 
 
 class ConnectTest(unittest.TestCase):

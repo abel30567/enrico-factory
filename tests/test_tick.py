@@ -806,5 +806,75 @@ class DeadRun(Case):
         self.assertFalse(self.listed(w, run.worktree))
 
 
+
+class CountingSync(github.Recorded):
+    """A recorded GitHub whose ``sync_base`` records each base it is called with, and fails from call
+    ``fail_from`` on (never when ``None``)."""
+
+    def __init__(self, directory, fail_from=None):
+        super().__init__(directory)
+        self.fail_from = fail_from
+        self.synced = []
+
+    def sync_base(self, root, base_ref):
+        self.synced.append(base_ref)
+        if self.fail_from is not None and len(self.synced) >= self.fail_from:
+            raise github.GitHubError(f"sync_base {base_ref}: git fetch failed (exit 128)")
+        return super().sync_base(root, base_ref)
+
+
+class SyncBase(Case):
+    """ISSUE-227: a tick with ``--apply`` syncs the local base first; a sync that fails after a merge ends it."""
+
+    KEEP = (9, 10, 11, 12, 13, 14)
+
+    def tick_with(self, w, gh, *args):
+        with mock.patch.object(github, "connect", lambda settings, env=None: gh):
+            return w.tick(*args)
+
+    def test_a_sync_that_fails_after_a_lock_ends_the_tick(self):
+        w = self.world(self.KEEP)
+        gh = CountingSync(w.github, fail_from=2)
+        code, out, err = self.tick_with(w, gh, "--apply")
+        trunk = w.head("trunk")[:12]
+        self.assertEqual((code, err), (1, ""))
+        self.assertEqual(out, f"FAIL - PR #10 is merged at {trunk}, base not synced: "
+                              "sync_base trunk: git fetch failed (exit 128)\n"
+                              "tick: 0 steps, 0 need, 0 wait, 1 failed\n")
+        self.assertEqual([w.record("pulls", n)["state"] for n in (10, 12, 14)], ["merged", "open", "open"])
+        self.assertEqual(w.record("issues", 9)["state"], "closed")
+        self.assertFalse([c for c in w.comments(10) if c["body"].rstrip() == cmd_lock.VOID])
+        self.assertEqual(gh.synced, ["trunk", "trunk"])
+
+    def test_a_tick_whose_syncs_succeed(self):
+        w = self.world(self.KEEP)
+        gh = CountingSync(w.github)
+        found, out, err = self.tick_with(w, gh, "--apply")
+        self.assertEqual((found, err), (0, ""))
+        self.assertRegex(out, LAST)
+        self.assertEqual(lines(out), ["STEP #9 lock PR #10", "STEP #11 sync PR #12", "STEP #13 sync PR #14"])
+        self.assertEqual(gh.synced, ["trunk", "trunk"])
+
+    def test_a_first_sync_that_fails_writes_nothing(self):
+        w = self.world(self.KEEP)
+        gh = CountingSync(w.github, fail_from=1)
+        before = w.snapshot()
+        self.assertEqual(self.tick_with(w, gh, "--apply"),
+                         (2, "", "tick: sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_without_apply_nothing_is_synced(self):
+        w = self.world(self.KEEP)
+        gh = CountingSync(w.github, fail_from=1)
+        before = w.snapshot()
+        found, out, err = self.tick_with(w, gh)
+        self.assertEqual((found, err), (0, ""))
+        self.assertEqual(lines(out), ["STEP #9 lock PR #10", "WAIT #11 lockable (one lock per room per tick)",
+                                      "STEP #13 lock PR #14"])
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(gh.synced, [])
+
+
 if __name__ == "__main__":
     unittest.main()
