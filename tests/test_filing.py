@@ -259,8 +259,8 @@ class EpisodeAfterSequence(Case):
         return make_state(found + list(extra), locked + list(pulls), errors)
 
     def test_filed_once_every_board_is_locked(self):
+        self.assertEqual(self.filed(self.with_boards()), REEL)
         [found] = self.due(self.with_boards())
-        self.assertEqual((found["from"], found["pull"], found["room"], found["stage"], found["unit"]), REEL[0])
         self.assertEqual(found["title"], "[REEL-EP01] reel for ep01")
         self.assertEqual(found["labels"], ["tracked", "room:story", "stage:reel", "unit:ep01"])
         self.assertEqual(found["body"], "Do the stage reel for unit ep01.\n\n"
