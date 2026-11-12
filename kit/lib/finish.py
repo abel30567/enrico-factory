@@ -104,7 +104,7 @@ def render(p, run, result, missing, dropped, head, manifest) -> str:
     if dropped is not None:
         lines.append("Dropped (outside writes): " + (", ".join(_line(d) for d in dropped) or "none"))
     lines.append(f"Launch: {meta['id']}")
-    reviewed = "reviewed " if verb in markers.ROLE_VERDICTS else ""
+    reviewed = "reviewed " if markers.is_verdict(markers.parse(first)) else ""
     lines.append(f"{reviewed}head {head} manifest {manifest}")
     return "\n".join(lines) + "\n"
 
