@@ -1,0 +1,4 @@
+[
+ {"room": "story", "stage": "draft", "unit": "episode", "after": "", "maker": "writer", "lint": ["structure", "media"], "checker": ["editor", "keeper"], "judge": "", "blind": false, "pitches": 1, "paths": ["drafts/*/draft.md"]},
+ {"room": "distribution", "stage": "publish", "unit": "post", "after": "", "maker": "uploader", "lint": ["media"], "checker": "keeper", "judge": "", "blind": false, "pitches": 1, "paths": ["jobs/*.json"]}
+]
