@@ -1027,6 +1027,54 @@ class Filing(Case):
         self.ticked(w, apply=True)
         self.assertEqual(len(self.created(w)), 3)
 
+    def test_the_whole_line_to_the_reel(self):
+        w = self.world(pipeline() + json.loads(fixture("sequences-board.json")) + json.loads(fixture("reel.json")))
+        boards = [step(rf"Do the stage board for unit ep01/{q}\.", "READY",
+                       {f"episodes/ep01/sequences/{q}/shots/{q}-1.json": '{"id": "%s-1"}\n' % q},
+                       evidence=EVIDENCE) for q in ("Q1", "Q2")]
+        w.script(*happy_script(), step("You are the head of story", "READY", self.SEQUENCES, evidence=EVIDENCE),
+                 step("You are the continuity supervisor", "APPROVED", evidence=EVIDENCE),
+                 boards[0], step("You are the continuity supervisor", "APPROVED", evidence=EVIDENCE),
+                 boards[1], step("You are the continuity supervisor", "APPROVED", evidence=EVIDENCE))
+        ticks = []
+        for _ in range(30):
+            ticks.append(self.ticked(w, apply=True))
+            if len(self.created(w)) == 3 and all(w.record("issues", b)["state"] == "closed"
+                                                 for b in self.created(w)[1:]):
+                break
+        b, c = self.created(w)[1:]
+        self.assertEqual(w.record("issues", c)["state"], "closed")
+        self.assertEqual([t for t in ticks if any(re.fullmatch(rf"STEP #({b}|{c}) lock PR #\d+", x) for x in t)],
+                         ticks[-2:])
+        self.assertTrue(re.fullmatch(rf"STEP #{b} lock PR #\d+", ticks[-2][0]), ticks[-2])
+        self.assertTrue(re.fullmatch(rf"STEP #{c} lock PR #\d+", ticks[-1][-1]), ticks[-1])
+        self.assertFalse([x for t in ticks for x in t if " file reel " in x])
+
+        self.assertEqual(self.ticked(w, apply=True), [f"STEP #{b} file reel ep01"])
+        r = self.created(w)[-1]
+        issue = w.record("issues", r)
+        self.assertEqual((issue["state"], issue["labels"]),
+                         ("open", ["room:story", "stage:reel", "tracked", "unit:ep01"]))
+        pulls = [json.loads(path.read_text()) for path in (w.github / "pulls").glob("*.json")]
+        merged = {x["ticket"]: x["number"] for x in pulls if x["state"] == "merged"}
+        self.assertEqual([x for x in issue["body"].splitlines() if x.startswith("Upstream: ")],
+                         [f"Upstream: #{b} board ep01/Q1, locked by PR #{merged[b]}.",
+                          f"Upstream: #{c} board ep01/Q2, locked by PR #{merged[c]}."])
+        self.assertEqual(self.ticked(w, apply=True), [f"STEP #{r} launch editorial on #{r}"])
+        self.assertEqual(len(self.created(w)), 4)
+
+        old = w.head("main")
+        with w.detached(old) as where:
+            target = where / "episodes/ep01/sequences/Q3/sequence.json"
+            target.parent.mkdir(parents=True)
+            target.write_text('{"id": "Q3"}\n')
+            w.commit("a third sequence", cwd=where)
+            new = w.git("rev-parse", "HEAD", cwd=where).strip()
+        w.move_branch("main", new, old)
+        self.assertEqual(self.ticked(w, apply=True),
+                         [f"STEP #{self.created(w)[0]} file board ep01/Q3",
+                          f"WAIT #{r} waiting upstream stage board is not locked for ep01/Q3"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -149,8 +149,25 @@ def skips(p, root, unit: str) -> list:
     return frontmatter.as_list(p.formats[format_id]["meta"].get("skips")) if format_id in p.formats else []
 
 
+def sequences(p, root, episode: str) -> list:
+    """The directory names ``<Q>`` of ``episodes/<episode>/sequences/<Q>/sequence.json`` on the base, sorted."""
+    prefix = f"episodes/{episode}/sequences/"
+    sha = gitstate.head(root, production.base(p))
+    out = gitstate.git(root, "--literal-pathspecs", "ls-tree", "-r", "-z", "--name-only", sha, "--", prefix)
+    found = []
+    for path in out.split("\0"):
+        parts = path[len(prefix):].split("/") if path.startswith(prefix) else []
+        if len(parts) == 2 and parts[0] and parts[1] == "sequence.json":
+            found.append(parts[0])
+    return sorted(found)
+
+
 def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
-    """Brief section 9 rule 4: the upstream stage of the same unit is locked, or the format skips it."""
+    """Brief section 9 rule 4: the upstream stage of the same unit is locked, or the format skips it.
+
+    An ``episode`` stage after a ``sequence`` stage needs it locked for every sequence of the episode on
+    the base; a ``sequence`` stage after an ``episode`` stage needs it locked for the sequence's episode.
+    """
     room, unit = ticket["room"], ticket["unit"]
     entry = production.stage(p, room, ticket["stage"])
     after = entry["after"]
@@ -161,7 +178,16 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     note = f"skipped by format {skipped_by}: " if skipped_by else ""
     if not after:
         return True, note + "no upstream stage"
-    unrelated = production.stage(p, room, after)["unit"] != entry["unit"]
+    theirs_type, ours_type = production.stage(p, room, after)["unit"], entry["unit"]
+    if ours_type == "episode" and theirs_type == "sequence":
+        found = sequences(p, root, unit)
+        if not found:
+            return False, note + f"upstream stage {after} is not locked for {unit}: no sequence on the base"
+        for q in found:
+            if not is_locked(state, room, after, f"{unit}/{q}"):
+                return False, note + f"upstream stage {after} is not locked for {unit}/{q}"
+        return True, note + f"upstream stage {after} is locked for {unit}"
+    unrelated = theirs_type != ours_type and not (ours_type == "sequence" and theirs_type == "episode")
     for number, other in state.tickets.items():
         if other["room"] != room or other["stage"] != after or locked_pull(state, number) is None:
             continue
