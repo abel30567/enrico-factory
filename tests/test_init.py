@@ -17,14 +17,15 @@ sys.path.insert(0, str(ROOT))
 
 from kit.lib import frontmatter  # noqa: E402
 from kit.lib import cmd_init, finish, resources  # noqa: E402
+from kit.lib.lints import canon, provenance  # noqa: E402
 
 ROLE_ROOMS = {"chief": "story", "writer": "story", "editor": "story", "keeper": "studio",
               "uploader": "distribution", "watcher": "distribution"}
-LAYOUT = [".gitignore", "bible/amendments/.gitkeep", "bible/canon/.gitkeep", "bible/style/.gitkeep",
-          "calibration/.gitkeep", "episodes/.gitkeep", "lab/.gitkeep", "ledger/.gitkeep",
-          "media/manifest.tsv", "playbook/.gitkeep", "production.env", "production.local.env.example",
-          "registry/.gitkeep", "research/.gitkeep", "rulebook/.gitkeep", "rules/production-rules.md",
-          "sources/.gitkeep"]
+LAYOUT = [".gitignore", "bible/amendments/.gitkeep", "bible/canon/.gitkeep", "bible/canon/ledger.tsv",
+          "bible/charter.md", "bible/style/.gitkeep", "calibration/.gitkeep", "episodes/.gitkeep",
+          "lab/.gitkeep", "ledger/.gitkeep", "media/manifest.tsv", "playbook/.gitkeep", "production.env",
+          "production.local.env.example", "registry/.gitkeep", "research/.gitkeep", "rulebook/.gitkeep",
+          "rules/production-rules.md", "sources/.gitkeep"]
 ROOM_LAYOUT = {"production": "production/.gitkeep", "post": "post/.gitkeep",
                "distribution": "distribution/.gitkeep"}
 
@@ -368,6 +369,43 @@ class ExistingFilesTest(InitTest):
         for _ in range(2):
             self.assertEqual(self.init(kit, target, "--upgrade").returncode, 0)
             self.assertEqual((target / ".gitignore").read_text(), expected)
+
+
+class BibleTest(InitTest):
+    """The charter and the canon ledger every role reads first exist from the first init."""
+
+    CHARTER = "bible/charter.md"
+    LEDGER = "bible/canon/ledger.tsv"
+
+    def test_empty_directory_gets_a_charter_and_a_header_only_ledger(self):
+        target, result = self.production(self.source_kit())
+        self.assertIn(f"created {self.CHARTER}\n", result.stdout)
+        self.assertIn(f"created {self.LEDGER}\n", result.stdout)
+        self.assertEqual((target / self.CHARTER).read_text(), "# Charter\n")
+        self.assertEqual((target / self.LEDGER).read_text(), "subject\tattribute\tvalue\ttag\tsource\n")
+
+    def test_existing_charter_and_ledger_are_kept_byte_for_byte(self):
+        target = self.tempdir()
+        charter = b"# Charter\n\nA show about invented lighthouse keepers.\n"
+        ledger = b"subject\tattribute\tvalue\ttag\tsource\nKeeper Ilo\teyes\tgrey\tinvented\t\n"
+        (target / "bible/canon").mkdir(parents=True)
+        (target / self.CHARTER).write_bytes(charter)
+        (target / self.LEDGER).write_bytes(ledger)
+        result = self.init(self.source_kit(), target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((target / self.CHARTER).read_bytes(), charter)
+        self.assertEqual((target / self.LEDGER).read_bytes(), ledger)
+        self.assertNotIn(f"created {self.CHARTER}\n", result.stdout)
+        self.assertNotIn(f"created {self.LEDGER}\n", result.stdout)
+
+    def test_created_ledger_passes_the_canon_and_provenance_lints(self):
+        target, _ = self.production(self.source_kit())
+        self.assertTrue((target / self.LEDGER).is_file())
+        for lint in (canon, provenance):
+            self.assertEqual([f for f in lint.check(target) if f.path == self.LEDGER], [], lint.__name__)
+        (target / self.LEDGER).write_bytes(b"")
+        self.assertIn("ledger has no header row",
+                      [f.message for f in provenance.check(target) if f.path == self.LEDGER])
 
 
 class SandboxDenyTest(InitTest):
