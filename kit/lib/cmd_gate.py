@@ -181,7 +181,9 @@ def _gate(p, gh, state, now, rows, target, apply):
     if apply:
         mine = [r for r in rows if r["kind"] == request["kind"] and r["hash"] == request["hash"]]
         if mine and mine[-1]["verdict"] == verdict and mine[-1]["cap"] == cap:
-            row_line = ledger.line(mine[-1])  # an earlier run appended it and failed before posting
+            # An earlier run appended it and failed before posting, perhaps at its push: push again.
+            row_line = ledger.line(mine[-1])
+            gh.push(p.root, production.base(p))
         else:
             row_line = ledger.append(p, gh, p.root, {
                 "time": now, "kind": request["kind"], "hash": request["hash"], "ticket": ticket["number"],
