@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT))
 
 from kit.lib import production  # noqa: E402
 from kit.lib.production import ProductionError  # noqa: E402
+from kit.lib import resources  # noqa: E402
 
 CLEAN = ROOT / "tests" / "fixtures" / "production" / "clean"
 SEED = "SEEDED-VALUE-7Q4Z"
@@ -49,7 +50,7 @@ class CleanTest(unittest.TestCase):
         self.assertEqual(p.kit, CLEAN.resolve() / ".factory")
         self.assertEqual(p.settings, {
             "REPO": "example/demo-show", "BASE": "trunk", "ROOMS": "",
-            "STATE_DIR": "~/.factory-state/demo-show", "CAP_EPISODE_USD": "12.5",
+            "STATE_DIR": os.path.expanduser("~/.factory-state/demo-show"), "CAP_EPISODE_USD": "12.5",
             "CAP_SEASON_USD": "200", "CAP_EPISODE_COMPUTE_MIN": "", "CAP_TICKET_ITERATIONS": "3"})
         self.assertEqual(sorted(p.roles), ["chief", "editor", "writer"])
         self.assertEqual(p.roles["writer"]["file"], "roles/writer.md")
@@ -324,6 +325,17 @@ class ImportsTest(unittest.TestCase):
         source = (ROOT / "kit" / "lib" / "production.py").read_text()
         for name in ("subprocess", "socket", "urllib"):
             self.assertNotIn(name, source)
+
+
+
+class SettingsTest(unittest.TestCase):
+    def test_load_reads_the_values_doctor_checks(self):
+        root = copy(self)
+        set_setting(root, "HARNESS", "~/bin/h # pinned")
+        p = production.load(root)
+        self.assertEqual(p.settings["HARNESS"], os.path.expanduser("~/bin/h"))
+        self.assertEqual(p.settings["STATE_DIR"], os.path.expanduser("~/.factory-state/demo-show"))
+        self.assertEqual(p.settings, resources.settings(root))
 
 
 if __name__ == "__main__":
