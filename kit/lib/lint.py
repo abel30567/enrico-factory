@@ -121,12 +121,18 @@ def marker(results: dict[str, Result]) -> str:
 
 # Helpers shared by checks.
 
+KIT_DIR = ".factory"
+
+
 def walk(root: Path, suffix: str | None = None) -> list[str]:
-    """Every file under root as a sorted posix path relative to root, skipping `.git/`."""
+    """Every file under root as a sorted posix path relative to root.
+
+    Skips `.git/` and the top-level `.factory/` (the installed kit, read only by the `kit` check).
+    """
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d != ".git")
         rel = Path(dirpath).relative_to(root)
+        dirnames[:] = sorted(d for d in dirnames if d != ".git" and not (rel == Path(".") and d == KIT_DIR))
         for name in filenames:
             if suffix is None or name.endswith(suffix):
                 out.append((rel / name).as_posix())
@@ -137,7 +143,8 @@ def files(root: Path) -> list[Path]:
     """The files a check reads, as sorted paths relative to root: the ones git would commit.
 
     Inside a git work tree: tracked files and untracked files no ignore rule excludes, less any path
-    that is gone from disk or is a directory. Otherwise, or when git cannot run: `walk(root)`.
+    that is gone from disk or is a directory or is under the top-level `.factory/`. Otherwise, or when
+    git cannot run: `walk(root)`.
     """
     root = Path(root)
     try:
@@ -148,7 +155,8 @@ def files(root: Path) -> list[Path]:
     if p is None or p.returncode != 0:
         return [Path(rel) for rel in walk(root)]
     rels = {Path(os.fsdecode(raw)) for raw in p.stdout.split(b"\0") if raw}
-    return sorted(rel for rel in rels if os.path.lexists(root / rel) and not (root / rel).is_dir())
+    return sorted(rel for rel in rels if not (len(rel.parts) > 1 and rel.parts[0] == KIT_DIR)
+                  and os.path.lexists(root / rel) and not (root / rel).is_dir())
 
 
 def read_text(root: Path, rel: str) -> str:
