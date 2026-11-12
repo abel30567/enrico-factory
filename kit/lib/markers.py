@@ -194,7 +194,7 @@ def _role_reason(marker, stage, roles):
     kind = roles.get(role)
     if kind not in ("checker", "judge") or role not in _names(stage, kind):
         return "role: %s is not a checker or judge the stage names" % role
-    if not may_post(kind, marker.verb):
+    if not may_post(kind, marker.verb, marker.actor):
         return "role: a %s may not post %s" % (kind, marker.verb)
     return None
 
@@ -204,7 +204,8 @@ def _is_verdict(marker):
         return False
     if marker.actor == "LINT":
         return marker.verb in LINT_VERDICTS
-    return marker.verb in ROLE_VERDICTS
+    # ``parse`` gives ``VOTE`` only to ``BRAINTRUST``: a vote is its verdict on an amendment.
+    return marker.verb in ROLE_VERDICTS or marker.verb == "VOTE"
 
 
 def counts(verdict, pr, stage, roles):

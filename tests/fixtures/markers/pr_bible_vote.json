@@ -1,0 +1,81 @@
+{
+  "pr": {
+    "base_shas": [
+      "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+      "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+    ],
+    "comments": [
+      {
+        "body": "[CANON-KEEPER] READY\nhead 2222222222222222222222222222222222222222\n| check | result |\n| lint | PASS |",
+        "created_at": "2026-11-11T10:00:00Z",
+        "id": 301
+      },
+      {
+        "body": "[LINT] PASS\n| provenance | PASS |\n| references | PASS |\n| canon | PASS |\n| media | PASS |\n\nreviewed head 3333333333333333333333333333333333333333 manifest 7c0a1f3e9b2d4c6a8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+        "created_at": "2026-11-11T10:05:00Z",
+        "id": 302
+      },
+      {
+        "body": "[CANON-REVIEWER] APPROVED\ncriterion 1: no contradiction with the canon\n\nreviewed head 3333333333333333333333333333333333333333 manifest 7c0a1f3e9b2d4c6a8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+        "created_at": "2026-11-11T10:10:00Z",
+        "id": 303
+      },
+      {
+        "body": "[BRAINTRUST] VOTE 5-2\n| seat | vote | reason |\n| 1 | for | the arc stays inside the charter |\n| 2 | against | the turn comes too early |\n\nreviewed head 3333333333333333333333333333333333333333 manifest 7c0a1f3e9b2d4c6a8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+        "created_at": "2026-11-11T10:15:00Z",
+        "id": 304
+      }
+    ],
+    "commits": [
+      {
+        "parents": [
+          "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+        ],
+        "sha": "1111111111111111111111111111111111111111"
+      },
+      {
+        "parents": [
+          "1111111111111111111111111111111111111111"
+        ],
+        "sha": "2222222222222222222222222222222222222222"
+      },
+      {
+        "parents": [
+          "2222222222222222222222222222222222222222",
+          "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1"
+        ],
+        "sha": "3333333333333333333333333333333333333333"
+      }
+    ],
+    "head": "3333333333333333333333333333333333333333",
+    "manifest": "7c0a1f3e9b2d4c6a8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d"
+  },
+  "roles": {
+    "braintrust": "judge",
+    "canon-keeper": "maker",
+    "canon-reviewer": "checker",
+    "showrunner": "orchestrator"
+  },
+  "stage": {
+    "after": "research",
+    "blind": false,
+    "checker": "canon-reviewer",
+    "judge": "braintrust",
+    "lint": [
+      "provenance",
+      "references",
+      "canon",
+      "media"
+    ],
+    "maker": "canon-keeper",
+    "paths": [
+      "bible/charter.md",
+      "bible/canon/**",
+      "bible/amendments/**"
+    ],
+    "pitches": 1,
+    "room": "story",
+    "stage": "bible",
+    "unit": "amendment"
+  }
+}

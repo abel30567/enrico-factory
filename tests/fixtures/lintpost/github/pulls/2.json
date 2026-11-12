@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #1\n",
+ "created_at": "2026-11-11T09:00:00Z",
+ "head_ref": "feat/RS-1-research",
+ "labels": [],
+ "merged_at": null,
+ "number": 2,
+ "state": "open",
+ "ticket": 1,
+ "title": "[RS-1] Work the research stage"
+}
