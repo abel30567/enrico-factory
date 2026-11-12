@@ -37,6 +37,8 @@ MANIFEST = "media/manifest.tsv"
 BRANCH = "feat/BD-2-redo"
 NEW_SHOT1 = '{\n "id": "Q1-1",\n "duration": 2.5,\n "action": "The lantern dips and catches the reeds."\n}\n'
 NEW_SHOT2 = '{\n "id": "Q1-2",\n "duration": 1.5,\n "action": "A heron looks up."\n}\n'
+SHOT3 = "episodes/ep01/sequences/Q1/shots/Q1-3.json"
+ORIGIN_SHOT3 = '{\n "id": "Q1-3",\n "duration": 2,\n "action": "The reeds part."\n}\n'
 
 
 def blinding(salt, pull, head):
@@ -128,6 +130,24 @@ class World:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = cmd_blind.main([*argv, "--root", str(self.root)])
         return code, out.getvalue(), err.getvalue()
+
+    def origin(self, behind):
+        """A bare `origin` whose `trunk` has one more commit, adding ``SHOT3``, which the pull's maker merged
+        into ``BRANCH``; with ``behind`` the local `trunk` stays at the commit before it. Origin's tip."""
+        remote = self.root.parent / "origin.git"
+        gitstate.git(self.root.parent, "init", "-q", "--bare", str(remote))
+        self.git("remote", "add", "origin", str(remote))
+        start = gitstate.head(self.root, "trunk")
+        self.write(SHOT3, ORIGIN_SHOT3)
+        self.commit("a shot merged on GitHub from another clone")
+        self.git("push", "-q", "origin", "trunk")
+        self.git("checkout", "-q", BRANCH)
+        self.git("merge", "-q", "--no-ff", "--no-edit", "trunk")
+        self.git("checkout", "-q", "trunk")
+        if behind:
+            self.git("reset", "-q", "--hard", start)
+        self.load()
+        return gitstate.head(remote, "trunk")
 
 
 def salt_for(a_side, pull, head):
@@ -437,6 +457,81 @@ class CommandTest(unittest.TestCase):
         self.assertEqual((proc.returncode, proc.stderr), (0, ""))
         self.assertEqual(proc.stdout, f"blind 4: id {blind.prepare(w.p, w.load(), w.root, w.state.pulls[4])['id']} "
                                       f"pair {blind.pair_dir(w.p, 4, w.head())}\n")
+
+
+class CountingSync(github.Recorded):
+    """A recorded GitHub that records each base ``sync_base`` is called with; with ``fail`` it raises."""
+
+    def __init__(self, directory, fail=False):
+        super().__init__(directory)
+        self.fail = fail
+        self.synced = []
+
+    def sync_base(self, root, base_ref):
+        self.synced.append(base_ref)
+        if self.fail:
+            raise github.GitHubError(f"sync_base {base_ref}: git fetch failed (exit 128)")
+        return super().sync_base(root, base_ref)
+
+
+class GitSync(github.Recorded):
+    """A recorded GitHub whose ``sync_base`` is ``Gh.sync_base``: it starts only `git`, on the clone's `origin`."""
+
+    def sync_base(self, root, base_ref):
+        return github.Gh("example/show").sync_base(root, base_ref)
+
+
+class SyncBaseTest(unittest.TestCase):
+    """ISSUE-228: ``factory blind`` first brings the local base up to GitHub's."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def run_with(self, gh, *argv):
+        with mock.patch.object(github, "connect", return_value=gh):
+            return self.w.run(*argv)
+
+    def snapshot(self):
+        """The recorded GitHub's bytes, the production's refs and the file names under the state directory."""
+        w = self.w
+        return ({str(path.relative_to(w.dir)): path.read_bytes()
+                 for path in sorted(w.dir.rglob("*")) if path.is_file()},
+                w.git("for-each-ref", "--format=%(refname) %(objectname)"),
+                sorted(str(path.relative_to(w.state_dir)) for path in w.state_dir.rglob("*")))
+
+    def old_side(self):
+        key = json.loads(blind.key_path(self.w.p, 4, self.w.head()).read_text())
+        old = "A" if key["A"] == "old" else "B"
+        return files(blind.pair_dir(self.w.p, 4, self.w.head()) / old)
+
+    def test_blind_syncs_once(self):
+        gh = CountingSync(self.w.dir)
+        self.assertEqual(self.run_with(gh, "4")[0], 0)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_a_failed_sync_writes_nothing(self):
+        gh = CountingSync(self.w.dir, fail=True)
+        before = self.snapshot()
+        self.assertEqual(self.run_with(gh, "4"), (2, "", "blind: sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_stale_clone_pairs_against_the_synced_base(self):
+        remote = self.w.origin(behind=True)
+        self.assertNotEqual(self.w.head("trunk"), remote)
+        self.assertIsNone(gitstate.show(self.w.root, "trunk", SHOT3))
+        code, out, err = self.run_with(GitSync(self.w.dir), "4")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.old_side().get(SHOT3), ORIGIN_SHOT3.encode())
+        self.assertEqual(self.w.head("trunk"), remote)
+
+    def test_clean_twin_pairs_against_the_local_base(self):
+        remote = self.w.origin(behind=False)
+        self.assertEqual(self.w.head("trunk"), remote)
+        code, out, err = self.run_with(GitSync(self.w.dir), "4")
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(self.old_side().get(SHOT3), gitstate.show(self.w.root, remote, SHOT3).encode())
+        self.assertEqual(self.w.head("trunk"), remote)
 
 
 if __name__ == "__main__":

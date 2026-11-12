@@ -131,6 +131,23 @@ class World:
         lines = [l for l in path.read_text().splitlines() if not l.startswith(name + "=")]
         path.write_text("\n".join(lines + [f"{name}={value}"]) + "\n")
 
+    def origin(self, behind):
+        """A bare `origin` whose `trunk` has one more commit, adding a ledger row; with ``behind`` the local
+        `trunk` stays at the commit before it. ``(origin's row line, the local trunk's tip)``."""
+        remote = self.root.parent / "origin.git"
+        gitstate.git(self.root.parent, "init", "-q", "--bare", str(remote))
+        self.git("remote", "add", "origin", str(remote))
+        start = gitstate.head(self.root, "trunk")
+        row = ledger.line({"time": "2026-11-02T08:00:00Z", "kind": "job", "hash": "e" * 64, "ticket": JOB_TICKET,
+                           "episode": "ep01", "tool": "renderbox", "usd": "1", "compute_min": "5",
+                           "caller": "renderer", "verdict": "PASS", "cap": "-"})
+        self.write(ledger.PATH, ledger.HEADER + "\n" + row + "\n")
+        self.commit("ledger: a row from another clone")
+        self.git("push", "-q", "origin", "trunk")
+        if behind:
+            self.git("reset", "-q", "--hard", start)
+        return row, gitstate.head(self.root, "trunk")
+
 
 class LockGateTest(unittest.TestCase):
     def setUp(self):
@@ -519,6 +536,90 @@ class LintAcceptsGateCommentsTest(unittest.TestCase):
         (tree / ".factory-state" / "comments.json").write_text(json.dumps(comments, indent=1) + "\n")
         result = lint.run(tree, only=["markers"])["markers"]
         self.assertEqual((result.status, result.findings, result.reason), ("PASS", [], ""))
+
+
+class CountingSync(github.Recorded):
+    """A recorded GitHub that records each base ``sync_base`` is called with; with ``fail`` it raises."""
+
+    def __init__(self, directory, fail=False):
+        super().__init__(directory)
+        self.fail = fail
+        self.synced = []
+
+    def sync_base(self, root, base_ref):
+        self.synced.append(base_ref)
+        if self.fail:
+            raise github.GitHubError(f"sync_base {base_ref}: git fetch failed (exit 128)")
+        return super().sync_base(root, base_ref)
+
+
+class GitSync(github.Recorded):
+    """A recorded GitHub whose ``sync_base`` is ``Gh.sync_base``: it starts only `git`, on the clone's `origin`."""
+
+    def sync_base(self, root, base_ref):
+        return github.Gh("example/lantern-show").sync_base(root, base_ref)
+
+
+class SyncBaseTest(unittest.TestCase):
+    """ISSUE-228: with ``--apply`` the gate first brings the local base up to GitHub's."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.target = str(self.w.root / CLEAN_JOB)
+
+    def run_gate(self, gh, apply=True):
+        with mock.patch.object(github, "connect", return_value=gh):
+            return self.w.gate(self.target, apply)
+
+    def snapshot(self):
+        """The recorded GitHub's bytes, the production's refs and every file name of the world."""
+        tmp = self.w.root.parent
+        return ({str(path.relative_to(self.w.dir)): path.read_bytes()
+                 for path in sorted(self.w.dir.rglob("*")) if path.is_file()},
+                self.w.git("for-each-ref", "--format=%(refname) %(objectname)"),
+                sorted(str(path.relative_to(tmp)) for path in tmp.rglob("*")))
+
+    def test_apply_syncs_once(self):
+        gh = CountingSync(self.w.dir)
+        self.assertEqual(self.run_gate(gh)[0], 0)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_without_apply_does_not_sync(self):
+        gh = CountingSync(self.w.dir, fail=True)
+        code, out, err = self.run_gate(gh, apply=False)
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(gh.synced, [])
+
+    def test_a_failed_sync_writes_nothing(self):
+        gh = CountingSync(self.w.dir, fail=True)
+        before = self.snapshot()
+        self.assertEqual(self.run_gate(gh), (2, "", "gate: sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_stale_clone_appends_on_the_synced_ledger(self):
+        row, start = self.w.origin(behind=True)
+        remote = gitstate.head(self.w.root.parent / "origin.git", "trunk")
+        self.assertNotEqual(start, remote)
+        self.assertEqual(self.w.ledger_rows(), [])
+        code, out, err = self.run_gate(GitSync(self.w.dir))
+        self.assertEqual((code, err), (0, ""))
+        digest = LINE.match(out.rstrip("\n")).group(2)
+        rows = self.w.ledger_rows()
+        self.assertEqual([ledger.line(r) for r in rows[:1]], [row])
+        self.assertEqual([r["hash"] for r in rows], ["e" * 64, digest])
+        self.w.git("merge-base", "--is-ancestor", remote, "trunk")
+        self.assertEqual(self.w.git("log", "-1", "--format=%P", "trunk").split(), [remote])
+
+    def test_clean_twin_appends_one_row_on_the_local_tip(self):
+        row, start = self.w.origin(behind=False)
+        self.assertEqual(start, gitstate.head(self.w.root.parent / "origin.git", "trunk"))
+        self.assertEqual([ledger.line(r) for r in self.w.ledger_rows()], [row])
+        code, out, err = self.run_gate(GitSync(self.w.dir))
+        self.assertEqual((code, err), (0, ""))
+        digest = LINE.match(out.rstrip("\n")).group(2)
+        self.assertEqual([r["hash"] for r in self.w.ledger_rows()], ["e" * 64, digest])
+        self.assertEqual(self.w.git("log", "-1", "--format=%P", "trunk").split(), [start])
 
 
 class EntryPointTest(unittest.TestCase):

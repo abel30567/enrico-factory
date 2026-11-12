@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import blind, lint, markers  # noqa: E402
+from kit.lib import gitstate, github, launch  # noqa: E402
 from test_finish import CRITIC, WEIGHER, WRITER, World, approved, last_line, notes, ready, result_step  # noqa: E402
 
 FACTORY = ROOT / "kit" / "factory"
@@ -221,6 +222,109 @@ class MarkersLint(unittest.TestCase):
         result = self.lint(seeded)
         self.assertEqual(result.status, lint.FAIL)
         self.assertEqual([f.rule for f in result.findings], ["marker-reviewed"])
+
+
+class CountingSync(github.Recorded):
+    """A recorded GitHub that records each base ``sync_base`` is called with; with ``fail`` it raises."""
+
+    def __init__(self, directory, fail=False):
+        super().__init__(directory)
+        self.fail = fail
+        self.synced = []
+
+    def sync_base(self, root, base_ref):
+        self.synced.append(base_ref)
+        if self.fail:
+            raise github.GitHubError(f"sync_base {base_ref}: git fetch failed (exit 128)")
+        return super().sync_base(root, base_ref)
+
+
+class GitSync(github.Recorded):
+    """A recorded GitHub whose ``sync_base`` is ``Gh.sync_base``: it starts only `git`, on the clone's `origin`."""
+
+    def sync_base(self, root, base_ref):
+        return github.Gh("example/show").sync_base(root, base_ref)
+
+
+def origin(w, behind):
+    """A bare `origin` whose `trunk` has one more commit; with ``behind`` the local `trunk` stays at the commit
+    before it. ``(origin's tip, the local trunk's tip)``."""
+    remote = w.tmp / "origin.git"
+    gitstate.git(w.tmp, "init", "-q", "--bare", str(remote))
+    w.git("remote", "add", "origin", str(remote))
+    start = w.head("trunk")
+    path = w.root / "episodes" / "ep01" / "from-origin.md"
+    path.write_text("Merged on GitHub from another clone.\n")
+    w.commit("a commit from another clone")
+    w.git("push", "-q", "origin", "trunk")
+    if behind:
+        w.git("reset", "-q", "--hard", start)
+    return gitstate.head(remote, "trunk"), w.head("trunk")
+
+
+class SyncBase(unittest.TestCase):
+    """ISSUE-228: ``factory launch`` first brings the local base up to GitHub's; ``--supervise`` does not."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.w.steps(ready())
+
+    def launch_with(self, gh, *argv):
+        with mock.patch.object(github, "connect", return_value=gh):
+            return self.w.launch(*argv)
+
+    def snapshot(self):
+        """The recorded GitHub's bytes, the production's refs and the file names under the state directory."""
+        w = self.w
+        return ({str(path.relative_to(w.github)): path.read_bytes()
+                 for path in sorted(w.github.rglob("*")) if path.is_file()},
+                w.git("for-each-ref", "--format=%(refname) %(objectname)"),
+                sorted(str(path.relative_to(w.state)) for path in w.state.rglob("*")))
+
+    def base_line(self):
+        [record] = [c for c in self.w.comments(3) if c["body"].split("\n", 1)[0].endswith(" LAUNCH writer 3-1")]
+        return [line for line in record["body"].split("\n") if line.startswith("base: ")]
+
+    def test_launch_syncs_once(self):
+        gh = CountingSync(self.w.github)
+        code, out, err = self.launch_with(gh, "writer", "3")
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_supervise_does_not_sync(self):
+        w = self.w
+        run = launch.prepare(w.p, w.gh, w.root, "writer", 3)
+        gh = CountingSync(w.github, fail=True)
+        with mock.patch.object(github, "connect", return_value=gh):
+            code, out, err = w.main(["--supervise", str(run.dir), "--root", str(w.root)])
+        self.assertEqual((code, out, err), (0, "posted [WRITER] READY for launch 3-1\n", ""))
+        self.assertEqual(gh.synced, [])
+
+    def test_a_failed_sync_writes_nothing(self):
+        gh = CountingSync(self.w.github, fail=True)
+        before = self.snapshot()
+        self.assertEqual(self.launch_with(gh, "writer", "3"),
+                         (2, "", "launch: sync_base trunk: git fetch failed (exit 128)\n"))
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(self.w.calls(), [])
+        self.assertEqual(gh.synced, ["trunk"])
+
+    def test_stale_clone_launches_from_the_synced_base(self):
+        remote, start = origin(self.w, behind=True)
+        self.assertNotEqual(start, remote)
+        code, out, err = self.launch_with(GitSync(self.w.github), "writer", "3")
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual(self.base_line(), [f"base: {remote}"])
+        worktree = self.w.state / "worktrees" / "writer-3-1"
+        gitstate.git(worktree, "merge-base", "--is-ancestor", remote, "HEAD")
+
+    def test_clean_twin_launches_from_the_local_base(self):
+        remote, start = origin(self.w, behind=False)
+        self.assertEqual(start, remote)
+        code, out, err = self.launch_with(GitSync(self.w.github), "writer", "3")
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual(self.base_line(), [f"base: {start}"])
+        self.assertEqual(self.w.head("trunk"), start)
 
 
 if __name__ == "__main__":

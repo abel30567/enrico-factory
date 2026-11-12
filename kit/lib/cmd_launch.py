@@ -1,5 +1,6 @@
 """factory launch <role> <ticket-or-pr> [task-file] [--root DIR] [--wait]: launch one role and post its marker.
 
+It first brings the local base up to GitHub's.
 ``launch.prepare`` runs the checks, makes the worktree and posts ``LAUNCH``; a supervisor then runs the
 worker and posts its marker (``finish.supervise``). The supervisor runs detached unless ``--wait`` is given
 or the environment has ``FACTORY_LAUNCH_WAIT=1``. ``factory launch --supervise <run-dir> [--root DIR]`` is
@@ -80,6 +81,7 @@ def main(argv):
     try:
         p = production.load(production.find_root(args.root))
         gh = github.connect(p.settings)
+        gh.sync_base(p.root, production.base(p))
         pair, refused = _pair_dir(p, gh, args.role, args.number)
         if refused:
             return 1
