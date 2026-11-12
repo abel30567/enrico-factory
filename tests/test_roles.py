@@ -399,12 +399,8 @@ class ShippedKitTest(unittest.TestCase):
         self.assertEqual([e["stage"] for e in entries if e["blind"]], ["board"])
         self.assertEqual([e["stage"] for e in entries if e["pitches"] != 1], ["premise"])
 
-    def test_shipped_kit_lacks_only_roles_and_lints(self):
-        problems = roles.validate(KIT)
-        self.assertTrue(problems)
-        for problem in problems:
-            self.assertRegex(problem, r"^pipeline\.json: story/[a-z]+: "
-                                      r"(maker|checker|judge|lint) '[a-z-]+' is not a (role|lint)$")
+    def test_shipped_kit_validates(self):
+        self.assertEqual(roles.validate(KIT), [])
 
 
 class CommandLineTest(unittest.TestCase):
@@ -470,7 +466,7 @@ class CommandLineTest(unittest.TestCase):
     def test_output_is_deterministic(self):
         first = run(FACTORY, "roles", "--check")
         second = run(FACTORY, "roles", "--check")
-        self.assertEqual(first.returncode, 1)
+        self.assertEqual(first.returncode, 0)
         self.assertEqual(first.stdout, second.stdout)
 
 

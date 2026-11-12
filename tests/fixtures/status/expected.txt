@@ -1,0 +1,6 @@
+#3 post rough ep01 lockable next=lock #5 has every counting verdict
+  PR #5 lockable next=lock head={head:5} lint=- rounds=1 blockers=0
+#1 story premise ep01 ready next=launch:writer 0 of 1 pitch(es) in use
+#2 story premise ep02 review next=launch:editor editor has no counting verdict on #4
+  PR #4 review next=launch:editor head={head:4} lint=PASS rounds=0 blockers=0
+errors: 0
