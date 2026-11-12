@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #5\n",
+ "created_at": "2026-11-11T09:00:00Z",
+ "head_ref": "feat/RS-3-digest",
+ "labels": [],
+ "merged_at": null,
+ "number": 6,
+ "state": "open",
+ "ticket": 5,
+ "title": "[RS-3] Work the digest stage"
+}
