@@ -110,8 +110,8 @@ class RecordedReadTest(TmpCase):
     def test_comments(self):
         got = self.r.comments(3)
         self.assertEqual([c["id"] for c in got], [2, 3])
-        self.assertEqual(got[1], {"id": 3, "created_at": "2026-11-02T10:05:00Z", "role": "program:lint",
-                                  "body": "[LINT] PASS\nall checks pass\n"})
+        self.assertEqual(got[1], {"id": 3, "created_at": "2026-11-02T10:05:00Z", "author": "factory",
+                                  "role": "program:lint", "body": "[LINT] PASS\nall checks pass\n"})
         self.assertEqual(self.r.comments(2), [])
 
 
@@ -126,7 +126,8 @@ class RecordedWriteTest(TmpCase):
 
     def test_post(self):
         c = self.r.post(3, "[WRITER] ADDRESSED\nfixed", "writer")
-        self.assertEqual(c, {"id": 4, "created_at": NOW, "role": "writer", "body": "[WRITER] ADDRESSED\nfixed\n"})
+        self.assertEqual(c, {"id": 4, "created_at": NOW, "author": "factory", "role": "writer",
+                             "body": "[WRITER] ADDRESSED\nfixed\n"})
         self.assertEqual(self.file("comments/3.json")[-1], c)
         self.assertEqual(self.r.comments(3)[-1], c)
         self.assertEqual(log_lines(self.d), [
@@ -205,7 +206,7 @@ class RecordedWriteTest(TmpCase):
         d = self.tmp / "empty"
         d.mkdir()
         r = Recorded(d)
-        self.assertEqual((r.issues("all"), r.pulls("all"), r.comments(1)), ([], [], []))
+        self.assertEqual((r.issues("all"), r.pulls("all")), ([], []))
         self.assertEqual(r.create_issue("t", "b", []), 1)
         self.assertEqual(r.open_pull("h", "main", "t", "b"), 2)
         self.assertEqual(r.post(1, "x", "writer")["id"], 1)
@@ -354,7 +355,7 @@ def ok(out=""):
 class GhTest(unittest.TestCase):
     def gh(self, *answers):
         self.fake = FakeRun(*answers)
-        return Gh(REPO, run=self.fake)
+        return Gh(REPO, run=self.fake, logins=("someone",))
 
     def tearDown(self):
         for argv, kwargs in getattr(self, "fake", FakeRun()).calls:
@@ -399,7 +400,7 @@ class GhTest(unittest.TestCase):
     def test_issue(self):
         got = self.gh(ok(gh_fixture("issue_view.json"))).issue(1)
         self.assertEqual(self.fake.argvs(), [["gh", "issue", "view", "1", "-R", REPO, "--json",
-                                              "number,title,body,state,labels,createdAt"]])
+                                              "number,title,body,state,labels,createdAt,url"]])
         self.assertEqual(got["labels"], ["stage:script", "tracked"])
         self.assertEqual(got["state"], "open")
 
@@ -415,31 +416,35 @@ class GhTest(unittest.TestCase):
     def test_unknown_number(self):
         with self.assertRaises(GitHubError) as e:
             self.gh((1, "", "GraphQL: Could not resolve to an issue")).issue(99)
-        self.assertEqual(str(e.exception), "issue #99: exit 1")
+        self.assertEqual(str(e.exception), "issue #99: not found")
 
     def test_comments(self):
         got = self.gh(ok(gh_fixture("comments_pages.json"))).comments(3)
         self.assertEqual(self.fake.argvs(), [["gh", "api", "--paginate", "--slurp",
                                               f"repos/{REPO}/issues/3/comments"]])
         self.assertEqual(got, [
-            {"id": 10, "created_at": "2026-11-02T10:01:00Z", "role": "", "body": "a person's note, no role line"},
-            {"id": 20, "created_at": "2026-11-02T10:05:00Z", "role": "writer",
+            {"id": 10, "created_at": "2026-11-02T10:01:00Z", "author": "someone", "role": "",
+             "body": "a person's note, no role line"},
+            {"id": 20, "created_at": "2026-11-02T10:05:00Z", "author": "someone", "role": "writer",
              "body": "[WRITER] READY\nhead 1111111111111111111111111111111111111111\n"},
-            {"id": 30, "created_at": "2026-11-02T10:05:00Z", "role": "program:lint",
+            {"id": 30, "created_at": "2026-11-02T10:05:00Z", "author": "someone", "role": "program:lint",
              "body": "[LINT] PASS\nall checks pass\n"}])
 
     def test_comment_without_role_line(self):
-        page = [[{"id": 1, "created_at": NOW, "body": "plain\n<!-- other -->"}]]
+        page = [[{"id": 1, "created_at": NOW, "body": "plain\n<!-- other -->", "user": {"login": "someone"}}]]
         got = self.gh(ok(json.dumps(page))).comments(1)
-        self.assertEqual(got, [{"id": 1, "created_at": NOW, "role": "", "body": "plain\n<!-- other -->"}])
+        self.assertEqual(got, [{"id": 1, "created_at": NOW, "author": "someone", "role": "",
+                                "body": "plain\n<!-- other -->"}])
 
     def test_post(self):
-        answer = {"id": 7, "created_at": NOW, "body": "[WRITER] READY\nx\n<!-- factory:role writer -->"}
+        answer = {"id": 7, "created_at": NOW, "body": "[WRITER] READY\nx\n<!-- factory:role writer -->",
+                  "user": {"login": "someone"}}
         got = self.gh(ok(json.dumps(answer))).post(3, "[WRITER] READY\nx", "writer")
         self.assertEqual(self.fake.argvs(), [["gh", "api", "-X", "POST", f"repos/{REPO}/issues/3/comments",
                                               "--input", "-"]])
         self.assertEqual(self.fake.stdin(), {"body": "[WRITER] READY\nx\n<!-- factory:role writer -->"})
-        self.assertEqual(got, {"id": 7, "created_at": NOW, "role": "writer", "body": "[WRITER] READY\nx\n"})
+        self.assertEqual(got, {"id": 7, "created_at": NOW, "author": "someone", "role": "writer",
+                               "body": "[WRITER] READY\nx\n"})
         self.gh(ok(json.dumps(answer))).post(3, "ends\n", "program:lint")
         self.assertEqual(self.fake.stdin(), {"body": "ends\n<!-- factory:role program:lint -->"})
 
@@ -455,10 +460,12 @@ class GhTest(unittest.TestCase):
             shutil.copytree(CLEAN, Path(tmp) / "s")
             for body in ("[WRITER] READY\nline", "[WRITER] READY\nline\n", "", "a\n\n"):
                 with self.subTest(body=body):
-                    g = self.gh(ok(json.dumps({"id": 7, "created_at": NOW, "body": "placeholder"})))
+                    g = self.gh(ok(json.dumps({"id": 7, "created_at": NOW, "body": "placeholder",
+                                               "user": {"login": "someone"}})))
                     g.post(3, body, "program:lint")
                     sent = self.fake.stdin()["body"]
-                    g = self.gh(ok(json.dumps([[{"id": 7, "created_at": NOW, "body": sent}]])))
+                    g = self.gh(ok(json.dumps([[{"id": 7, "created_at": NOW, "body": sent,
+                                                 "user": {"login": "someone"}}]])))
                     back = g.comments(3)[0]
                     want = Recorded(Path(tmp) / "s").post(3, body, "program:lint")
                     self.assertEqual((back["role"], back["body"]), (want["role"], want["body"]))
@@ -470,9 +477,9 @@ class GhTest(unittest.TestCase):
         self.assertEqual(self.fake.stdin(), {"title": "Title", "body": "Body text", "labels": ["tracked"]})
 
     def test_close_issue(self):
-        self.assertIsNone(self.gh(ok('{"number": 1}')).close_issue(1))
-        self.assertEqual(self.fake.argvs(), [["gh", "api", "-X", "PATCH", f"repos/{REPO}/issues/1", "--input", "-"]])
-        self.assertEqual(self.fake.stdin(), {"state": "closed"})
+        self.assertIsNone(self.gh(ok(gh_fixture("issue_view.json")), ok('{"number": 1}')).close_issue(1))
+        self.assertEqual(self.fake.argvs()[1], ["gh", "api", "-X", "PATCH", f"repos/{REPO}/issues/1", "--input", "-"])
+        self.assertEqual(self.fake.stdin(1), {"state": "closed"})
 
     def test_add_label(self):
         self.assertIsNone(self.gh(ok("[]")).add_label(1, "stage:script"))
@@ -490,10 +497,11 @@ class GhTest(unittest.TestCase):
         missing = (1, '{"message":"Label does not exist","documentation_url":"x","status":"404"}',
                    "gh: Label does not exist (HTTP 404)")
         self.assertIsNone(self.gh(missing).remove_label(1, "gone"))
-        for answer in ((1, '{"message":"Forbidden","status":"403"}', "HTTP 403"), (1, "not json", "boom")):
+        for answer, text in (((1, '{"message":"Forbidden","status":"403"}', "HTTP 403"),
+                              "remove_label #1: exit 1 (HTTP 403)"), ((1, "not json", "boom"), "remove_label #1: exit 1")):
             with self.assertRaises(GitHubError) as e:
                 self.gh(answer).remove_label(1, "x")
-            self.assertEqual(str(e.exception), "remove_label #1: exit 1")
+            self.assertEqual(str(e.exception), text)
 
     def test_open_pull_creates(self):
         n = self.gh(ok(gh_fixture("pr_list.json")), ok('{"number": 6}')).open_pull(
@@ -532,7 +540,7 @@ class GhTest(unittest.TestCase):
 
     def test_no_body_text_in_arguments(self):
         secret = "BODY-TEXT-must-stay-on-stdin"
-        g = self.gh(*[ok('{"number": 1, "id": 1, "created_at": "x", "body": ""}')] * 3,
+        g = self.gh(*[ok('{"number": 1, "id": 1, "created_at": "x", "body": "", "user": {"login": "someone"}}')] * 3,
                     ok("[]"), ok('{"number": 2}'))
         g.post(1, secret, "writer")
         g.create_issue(secret, secret, [secret])
@@ -776,7 +784,7 @@ class ConnectTest(unittest.TestCase):
     def test_repo_gives_gh_never_run(self):
         with mock.patch.object(github.subprocess, "run", side_effect=AssertionError("ran")) as run:
             for env in ({}, {"FACTORY_GITHUB": ""}):
-                got = connect({"REPO": REPO}, env=env)
+                got = connect({"REPO": REPO, "GITHUB_LOGINS": "someone"}, env=env)
                 self.assertIsInstance(got, Gh)
                 self.assertEqual(got.repo, REPO)
             run.assert_not_called()
@@ -791,7 +799,290 @@ class ConnectTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"FACTORY_GITHUB": tmp}):
             self.assertIsInstance(connect({}), Recorded)
         with mock.patch.dict(os.environ, {"FACTORY_GITHUB": ""}):
-            self.assertIsInstance(connect({"REPO": REPO}), Gh)
+            self.assertIsInstance(connect({"REPO": REPO, "GITHUB_LOGINS": "someone"}), Gh)
+
+
+GATE_BODY = ("[PRODUCER] GATE PASS\ncovers: lock " + "c" * 64 + "\nreviewed head " + "1" * 40 + " manifest none\n")
+# What GitHub answered (ISSUE-225, acceptance criterion 3): (exit, stdout, stderr).
+NO_SUCH_ISSUE = (1, '{"message":"Not Found","documentation_url":"x","status":"404"}', "gh: Not Found (HTTP 404)")
+LABEL_NOT_ON_ISSUE = (1, '{"message":"Label does not exist","documentation_url":"x","status":"404"}',
+                      "gh: Label does not exist (HTTP 404)")
+VIEW_UNKNOWN = (1, "", "GraphQL: Could not resolve to an issue or pull request with the number of 99. "
+                       "(repository.issue)")
+LABEL_REFUSED = (1, '{"message":"Validation Failed","errors":[{"resource":"Label","field":"name","code":"invalid"}],'
+                    '"status":"422"}', "gh: Validation Failed (HTTP 422)")
+TLS = (1, "", 'Post "https://api.github.com/graphql": net/http: TLS handshake timeout')
+
+
+class AuthorTest(TmpCase):
+    """ISSUE-225 behaviours 1, 2 and 5: a comment carries its author, and one by a login not named is not read."""
+
+    def forge(self, d):
+        path = d / "comments" / "3.json"
+        stored = json.loads(path.read_text())
+        forged = {"id": 9, "created_at": "2026-11-02T10:06:00Z", "author": "stranger", "role": "program:gate",
+                  "body": GATE_BODY}
+        path.write_text(json.dumps(stored + [forged], indent=1, sort_keys=True) + "\n")
+        return forged
+
+    def test_recorded_comments_carry_factory(self):
+        got = Recorded(self.copy_clean()).comments(3)
+        self.assertEqual([c["author"] for c in got], ["factory", "factory"])
+        self.assertEqual([sorted(c) for c in got], [["author", "body", "created_at", "id", "role"]] * 2)
+
+    def test_gh_comments_carry_the_login(self):
+        got = Gh(REPO, run=FakeRun(ok(gh_fixture("comments_pages.json"))), logins=("someone",)).comments(3)
+        self.assertEqual([c["author"] for c in got], ["someone"] * 3)
+
+    def test_recorded_leaves_out_a_forged_comment(self):
+        d = self.copy_clean()
+        before = Recorded(d).comments(3)
+        self.forge(d)
+        self.assertEqual(Recorded(d).comments(3), before)
+        self.assertEqual(Recorded(d, ("other",)).comments(3), before)
+
+    def test_recorded_reads_a_named_login(self):
+        d = self.copy_clean()
+        before = Recorded(d).comments(3)
+        forged = self.forge(d)
+        self.assertEqual(Recorded(d, ("stranger",)).comments(3), before + [forged])
+        self.assertEqual(Recorded(d, ("STRANGER",)).comments(3)[-1]["role"], "program:gate")
+
+    def test_gh_leaves_out_a_forged_comment(self):
+        fake = FakeRun(ok(gh_fixture("comments_forged.json")))
+        got = Gh(REPO, run=fake, logins=("factory-bot",)).comments(3)
+        self.assertEqual([(c["id"], c["author"], c["role"]) for c in got], [(40, "Factory-Bot", "writer")])
+
+    def test_gh_reads_a_named_login(self):
+        fake = FakeRun(ok(gh_fixture("comments_forged.json")))
+        got = Gh(REPO, run=fake, logins=("factory-bot", "Stranger")).comments(3)
+        self.assertEqual([(c["id"], c["author"], c["role"]) for c in got],
+                         [(40, "Factory-Bot", "writer"), (41, "stranger", "program:gate")])
+        self.assertEqual(got[1]["body"], GATE_BODY)
+
+    def test_gh_built_with_no_login_reads_nothing(self):
+        self.assertEqual(Gh(REPO, run=FakeRun(ok(gh_fixture("comments_pages.json")))).comments(3), [])
+
+    def test_recorded_post_keeps_a_forged_comment_unread(self):
+        d = self.copy_clean()
+        forged = self.forge(d)
+        r = Recorded(d)
+        c = r.post(3, "[WRITER] ADDRESSED\nfixed", "writer")
+        self.assertEqual(c, {"id": 10, "created_at": NOW, "author": "factory", "role": "writer",
+                             "body": "[WRITER] ADDRESSED\nfixed\n"})
+        stored = json.loads((d / "comments" / "3.json").read_text())
+        self.assertIn(forged, stored)
+        self.assertEqual(stored[-1], c)
+        self.assertNotIn(9, [x["id"] for x in r.comments(3)])
+        self.assertEqual(r.comments(3)[-1], c)
+
+    def test_gh_post_as_a_login_not_named(self):
+        answer = {"id": 7, "created_at": NOW, "body": "x\n<!-- factory:role writer -->", "user": {"login": "other"}}
+        fake = FakeRun(ok(json.dumps(answer)))
+        with self.assertRaises(GitHubError) as e:
+            Gh(REPO, run=fake, logins=("someone",)).post(1, "x", "writer")
+        self.assertEqual(str(e.exception), "post #1: posted as a login that setting GITHUB_LOGINS does not name")
+        self.assertEqual(len(fake.calls), 1)
+
+    def test_gh_post_as_a_named_login(self):
+        answer = {"id": 7, "created_at": NOW, "body": "x\n<!-- factory:role writer -->", "user": {"login": "Other"}}
+        got = Gh(REPO, run=FakeRun(ok(json.dumps(answer))), logins=("other",)).post(1, "x", "writer")
+        self.assertEqual(got, {"id": 7, "created_at": NOW, "author": "Other", "role": "writer", "body": "x\n"})
+
+
+class ConnectLoginsTest(TmpCase):
+    """ISSUE-225 behaviours 3 and 13: ``GITHUB_LOGINS`` and ``REPO`` as ``connect`` reads them."""
+
+    def connect_error(self, settings):
+        with mock.patch.object(github.subprocess, "run", side_effect=AssertionError("ran")):
+            with self.assertRaises(GitHubError) as e:
+                connect(settings, env={})
+        return str(e.exception)
+
+    def test_gh_needs_a_login(self):
+        for logins in (None, "", " , ,"):
+            settings = {"REPO": REPO} if logins is None else {"REPO": REPO, "GITHUB_LOGINS": logins}
+            self.assertEqual(self.connect_error(settings), "setting GITHUB_LOGINS is empty")
+
+    def test_gh_reads_the_named_logins(self):
+        g = connect({"REPO": REPO, "GITHUB_LOGINS": " Someone ,, other "}, env={})
+        self.assertIsInstance(g, Gh)
+        page = [[{"id": i, "created_at": NOW, "body": "x", "user": {"login": login}}
+                 for i, login in enumerate(("someone", "Other", "stranger", "someone-else"), 1)]
+                + [{"id": 5, "created_at": NOW, "body": "x", "user": None}]]
+        fake = FakeRun(ok(json.dumps(page)))
+        with mock.patch.object(github.subprocess, "run", fake):
+            got = g.comments(3)
+        self.assertEqual([c["author"] for c in got], ["someone", "Other"])
+
+    def test_recorded_reads_factory_and_the_named_logins(self):
+        d = self.copy_clean()
+        path = d / "comments" / "3.json"
+        extra = [{"id": 8, "created_at": NOW, "author": "Other", "role": "writer", "body": "x\n"},
+                 {"id": 9, "created_at": NOW, "author": "stranger", "role": "writer", "body": "y\n"}]
+        path.write_text(json.dumps(json.loads(path.read_text()) + extra))
+        named = connect({"GITHUB_LOGINS": "other"}, env={"FACTORY_GITHUB": str(d)})
+        self.assertIsInstance(named, Recorded)
+        self.assertEqual([c["id"] for c in named.comments(3)], [2, 3, 8])
+        for settings in ({}, {"GITHUB_LOGINS": ""}):
+            self.assertEqual([c["id"] for c in connect(settings, env={"FACTORY_GITHUB": str(d)}).comments(3)], [2, 3])
+
+    def test_repo_must_be_owner_name(self):
+        for repo in ("https://github.com/owner/project", "owner", "owner/project/x", "own er/project", "owner/"):
+            self.assertEqual(self.connect_error({"REPO": repo, "GITHUB_LOGINS": "someone"}),
+                             "setting REPO is not owner/name")
+        self.assertEqual(self.connect_error({"REPO": "https://github.com/owner/project"}),
+                         "setting REPO is not owner/name")
+        self.assertEqual(self.connect_error({"REPO": "", "GITHUB_LOGINS": ""}), "setting REPO is empty")
+
+    def test_owner_name_gives_gh(self):
+        for repo in ("owner/project", "Owner-1/my.repo_2"):
+            got = connect({"REPO": repo, "GITHUB_LOGINS": "someone"}, env={})
+            self.assertIsInstance(got, Gh)
+            self.assertEqual(got.repo, repo)
+
+
+class SameRefusalsOnBothFormsTest(TmpCase):
+    """ISSUE-225 behaviours 6 to 9 and 12: each call gives the same result on ``Recorded`` and on ``Gh``."""
+
+    def both(self, call, *answers):
+        """``call``'s result on a copy of the clean fixture and on ``Gh`` answered with ``answers``."""
+        self.d = self.copy_clean(f"s{len(list(self.tmp.iterdir()))}")
+        self.before = tree(self.d)
+        self.fake = FakeRun(*answers)
+        results = []
+        for form in (Recorded(self.d), Gh(REPO, run=self.fake, logins=("someone",))):
+            try:
+                results.append(call(form))
+            except GitHubError as e:
+                results.append(("error", str(e)))
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(self.fake.answers, [], "an answer was not asked for")
+        return results[0]
+
+    def assert_refused(self, call, text, *answers):
+        self.assertEqual(self.both(call, *answers), ("error", text))
+        self.assertEqual(tree(self.d), self.before)
+
+    def test_remove_label_of_an_unknown_issue(self):
+        self.assert_refused(lambda g: g.remove_label(99, "x"), "remove_label #99: not found", NO_SUCH_ISSUE)
+
+    def test_remove_label_the_issue_does_not_carry(self):
+        self.assertIsNone(self.both(lambda g: g.remove_label(1, "never-there"), LABEL_NOT_ON_ISSUE))
+
+    def test_a_pull_is_not_an_issue(self):
+        pull = ok(gh_fixture("issue_view_pull.json"))
+        self.assert_refused(lambda g: g.issue(3), "issue #3: not found", pull)
+        self.assert_refused(lambda g: g.close_issue(3), "close_issue #3: not found", pull)
+        self.assertEqual([argv[:3] for argv in self.fake.argvs()], [["gh", "issue", "view"]])
+        self.assertEqual(Recorded(self.d).pull(3)["state"], "open")
+
+    def test_an_issue_is_an_issue(self):
+        shape = ["body", "created_at", "labels", "number", "state", "title"]
+        self.assertEqual(self.both(lambda g: sorted(g.issue(1)), ok(gh_fixture("issue_view.json"))), shape)
+        self.assertIsNone(self.both(lambda g: g.close_issue(1), ok(gh_fixture("issue_view.json")), ok('{"number": 1}')))
+        self.assertEqual([argv[:4] for argv in self.fake.argvs()],
+                         [["gh", "issue", "view", "1"], ["gh", "api", "-X", "PATCH"]])
+        self.assertEqual(Recorded(self.d).issue(1)["state"], "closed")
+
+    def test_unknown_number(self):
+        calls = {"issue": (lambda g: g.issue(99), VIEW_UNKNOWN),
+                 "close_issue": (lambda g: g.close_issue(99), VIEW_UNKNOWN),
+                 "comments": (lambda g: g.comments(99), NO_SUCH_ISSUE),
+                 "post": (lambda g: g.post(99, "x", "writer"), NO_SUCH_ISSUE),
+                 "add_label": (lambda g: g.add_label(99, "x"), NO_SUCH_ISSUE),
+                 "remove_label": (lambda g: g.remove_label(99, "x"), NO_SUCH_ISSUE)}
+        for op, (call, answer) in calls.items():
+            with self.subTest(op=op):
+                self.assert_refused(call, f"{op} #99: not found", answer)
+
+    def test_an_issue_with_no_comment(self):
+        self.assertEqual(self.both(lambda g: g.comments(2), ok("[[]]")), [])
+
+    def test_create_issue_sends_each_label_once(self):
+        self.assertEqual(self.both(lambda g: g.create_issue("t", "", ["hold", "hold"]), ok('{"number": 4}')), 4)
+        self.assertEqual(self.fake.stdin()["labels"], ["hold"])
+        self.assertEqual(Recorded(self.d).issue(4)["labels"], ["hold"])
+        self.assertEqual(self.both(lambda g: g.create_issue("t", "", ["b", "a", "b"]), ok('{"number": 4}')), 4)
+        self.assertEqual(self.fake.stdin()["labels"], ["b", "a"])
+
+    def test_a_label_longer_than_fifty_characters(self):
+        long = "x" * 51
+        self.assert_refused(lambda g: g.create_issue("t", "", ["hold", long]),
+                            "create_issue: a label is longer than 50 characters")
+        self.assertEqual(self.fake.calls, [])
+        self.assert_refused(lambda g: g.add_label(1, long), "add_label #1: a label is longer than 50 characters")
+        self.assertEqual(self.fake.calls, [])
+
+    def test_a_label_of_fifty_characters(self):
+        label = "x" * 50
+        self.assertEqual(self.both(lambda g: g.create_issue("t", "", [label]), ok('{"number": 4}')), 4)
+        self.assertIsNone(self.both(lambda g: g.add_label(1, label), ok("[]")))
+        self.assertIn(label, Recorded(self.d).issue(1)["labels"])
+
+    def test_role_must_match(self):
+        for role in ("Writer One", ""):
+            with self.subTest(role=role):
+                self.assert_refused(lambda g: g.post(1, "x", role), "post #1: role must match ^[a-z0-9:-]+$")
+                self.assertEqual(self.fake.calls, [])
+
+
+class GhFailureTextTest(unittest.TestCase):
+    """ISSUE-225 behaviour 10: what a failed ``gh`` or ``git`` call says."""
+
+    def fails(self, call, answer):
+        fake = FakeRun(answer)
+        with self.assertRaises(GitHubError) as e:
+            call(Gh(REPO, run=fake, logins=("someone",)))
+        self.assertEqual(len(fake.calls), 1)
+        return str(e.exception)
+
+    def test_status_of_the_json_answer(self):
+        forbidden = (1, '{"message":"Forbidden","documentation_url":"x","status":"403"}', "gh: Forbidden (HTTP 403)")
+        self.assertEqual(self.fails(lambda g: g.post(1, "x", "writer"), forbidden), "post #1: exit 1 (HTTP 403)")
+        self.assertEqual(self.fails(lambda g: g.add_label(1, "x"), LABEL_REFUSED), "add_label #1: exit 1 (HTTP 422)")
+
+    def test_status_of_stderr(self):
+        self.assertEqual(self.fails(lambda g: g.comments(99), (1, "not json", "gh: Not Found (HTTP 404)")),
+                         "comments #99: not found")
+        self.assertEqual(self.fails(lambda g: g.create_issue("t", "", []), (1, "", "gh: Validation Failed (HTTP 422)")),
+                         "create_issue: exit 1 (HTTP 422)")
+
+    def test_no_status(self):
+        self.assertEqual(self.fails(lambda g: g.push("/r", "main"), (128, "", "fatal: no such ref")), "push: exit 128")
+        self.assertEqual(self.fails(lambda g: g.issues(), (1, "", "connection reset")), "issues: exit 1")
+
+
+class GhTlsTimeoutTest(unittest.TestCase):
+    """ISSUE-225 behaviour 11: a TLS handshake timeout is run again, three runs at most."""
+
+    def test_second_run_answers(self):
+        fake = FakeRun(TLS, ok(gh_fixture("issue_list.json")))
+        got = Gh(REPO, run=fake, logins=("someone",)).issues("all")
+        self.assertEqual([i["number"] for i in got], [1, 2])
+        self.assertEqual(len(fake.calls), 2)
+        self.assertEqual(fake.argvs()[0], fake.argvs()[1])
+
+    def test_three_timeouts_raise(self):
+        fake = FakeRun(TLS, TLS, TLS)
+        with self.assertRaises(GitHubError) as e:
+            Gh(REPO, run=fake, logins=("someone",)).issues()
+        self.assertEqual(str(e.exception), "issues: exit 1")
+        self.assertEqual(len(fake.calls), 3)
+
+    def test_remove_label_is_run_again(self):
+        fake = FakeRun(TLS, ok("[]"))
+        self.assertIsNone(Gh(REPO, run=fake, logins=("someone",)).remove_label(1, "x"))
+        self.assertEqual(len(fake.calls), 2)
+
+    def test_any_other_failure_is_one_run(self):
+        others = (NO_SUCH_ISSUE, LABEL_REFUSED, (1, "", "connection reset"), (1, "", "gh: Bad Gateway (HTTP 502)"))
+        for answer in others:
+            with self.subTest(answer=answer):
+                fake = FakeRun(answer, ok("[]"))
+                with self.assertRaises(GitHubError):
+                    Gh(REPO, run=fake, logins=("someone",)).issues()
+                self.assertEqual(len(fake.calls), 1)
 
 
 class NoGhStartedTest(unittest.TestCase):

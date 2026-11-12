@@ -13,13 +13,19 @@ Shapes (keys exactly these; times ``YYYY-MM-DDTHH:MM:SSZ``):
 - issue: ``{"number", "title", "body", "state": "open"|"closed", "labels": [sorted names], "created_at"}``;
 - pull: ``{"number", "title", "body", "state": "open"|"merged"|"closed", "labels", "head_ref", "base_ref",
   "ticket": int | None, "created_at", "merged_at": str | None}``;
-- comment: ``{"id": int, "created_at", "role": str, "body"}``.
+- comment: ``{"id": int, "created_at", "author": str, "role": str, "body"}``.
+
+``author`` is the login that posted a comment. ``comments`` leaves out every comment whose author the
+setting ``GITHUB_LOGINS`` does not name (compared without regard to case), so no caller ever reads one;
+``Gh.post`` raises when GitHub says the kit posted as such a login. ``Gh`` names nobody by default.
+``Recorded`` always names ``factory``, and reads a stored comment with no ``author`` as written by it.
 
 GitHub records no role, so ``Gh.post`` ends the body with ``<!-- factory:role <role> -->`` after a
 newline. That newline cannot be told apart from one the body already had, so a posted comment's body
 always comes back ending with a newline, in both forms.
 
-Neither form reads or prints a credential, and an error message never holds a command's stderr.
+Neither form reads or prints a credential, and an error message never holds a command's stderr; the one
+exception is the three digits of an HTTP status, as in ``post #1: exit 1 (HTTP 403)``.
 """
 
 from __future__ import annotations
@@ -40,7 +46,15 @@ ISSUE_STATES = ("open", "closed", "all")
 PULL_STATES = ("open", "closed", "merged", "all")
 ISSUE_FIELDS = "number,title,body,state,labels,createdAt"
 PULL_FIELDS = "number,title,body,state,labels,headRefName,baseRefName,createdAt,mergedAt"
+ISSUE_VIEW_FIELDS = ISSUE_FIELDS + ",url"
 GIT_IDENTITY = ("-c", "user.name=factory", "-c", "user.email=factory@factory.invalid")
+REPO_NAME = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+FACTORY_LOGIN = "factory"
+LABEL_MAX = 50
+HTTP_STATUS = re.compile(r"\(HTTP (\d{3})\)$")
+NOT_RESOLVED = "GraphQL: Could not resolve to "
+TLS_TIMEOUT = "TLS handshake timeout"
+RUNS = 3
 
 
 class GitHubError(Exception):
@@ -48,17 +62,25 @@ class GitHubError(Exception):
 
 
 def connect(settings, env=None):
-    """``Recorded`` when ``FACTORY_GITHUB`` names a directory, else ``Gh`` on ``settings["REPO"]``."""
+    """``Recorded`` when ``FACTORY_GITHUB`` names a directory, else ``Gh`` on ``settings["REPO"]``.
+
+    Both read the comments of the logins ``settings["GITHUB_LOGINS"]`` names, comma-separated.
+    """
     env = os.environ if env is None else env
+    logins = tuple(name.strip() for name in settings.get("GITHUB_LOGINS", "").split(",") if name.strip())
     directory = env.get("FACTORY_GITHUB", "")
     if directory:
         if not Path(directory).is_dir():
             raise GitHubError("connect: FACTORY_GITHUB is not a directory")
-        return Recorded(Path(directory))
+        return Recorded(Path(directory), logins)
     repo = settings.get("REPO", "")
     if not repo:
         raise GitHubError("setting REPO is empty")
-    return Gh(repo)
+    if not REPO_NAME.fullmatch(repo):
+        raise GitHubError("setting REPO is not owner/name")
+    if not logins:
+        raise GitHubError("setting GITHUB_LOGINS is empty")
+    return Gh(repo, logins=logins)
 
 
 def ticket_of(body: str):
@@ -83,15 +105,27 @@ def _ended(body: str) -> str:
     return body if body.endswith("\n") else body + "\n"
 
 
+def _check_role(number, role) -> None:
+    if not isinstance(role, str) or not ROLE.match(role):
+        raise GitHubError(f"post #{number}: role must match {ROLE.pattern}")
+
+
+def _check_labels(where: str, labels) -> None:
+    if any(len(label) > LABEL_MAX for label in labels):
+        raise GitHubError(f"{where}: a label is longer than {LABEL_MAX} characters")
+
+
 class Recorded:
     """GitHub as a directory: ``issues/<n>.json``, ``pulls/<n>.json``, ``comments/<n>.json``, ``log.jsonl``.
 
     ``push`` and ``merge`` log their arguments without ``root``: a local path is not GitHub state.
     ``sync_base`` writes nothing and logs nothing: the recorded GitHub's base is the clone's own.
+    Unlike ``Gh``, ``push`` and ``open_pull`` do not refuse a branch that does not exist.
     """
 
-    def __init__(self, directory):
+    def __init__(self, directory, logins=()):
         self.dir = Path(directory)
+        self.logins = frozenset({FACTORY_LOGIN, *(name.lower() for name in logins)})
 
     # -- files
 
@@ -158,26 +192,33 @@ class Recorded:
     def pull(self, number: int) -> dict:
         return self._get("pull", "pulls", number)
 
-    def comments(self, number: int) -> list:
+    def _stored(self, number: int) -> list:
         return sorted(self._load(f"comments/{number}.json") or [], key=lambda c: (c["created_at"], c["id"]))
+
+    def comments(self, number: int) -> list:
+        self._issue_or_pull("comments", number)
+        found = [{**c, "author": c.get("author", FACTORY_LOGIN)} for c in self._stored(number)]
+        return [c for c in found if c["author"].lower() in self.logins]
 
     # -- writes
 
     def post(self, number: int, body: str, role: str) -> dict:
-        if not isinstance(role, str) or not role:
-            raise GitHubError(f"post #{number}: role must be a non-empty string")
+        _check_role(number, role)
         self._issue_or_pull("post", number)
-        comment = {"id": self._next_comment_id(), "created_at": _now(), "role": role, "body": _ended(body)}
-        self._write(f"comments/{number}.json", self.comments(number) + [comment])
+        comment = {"id": self._next_comment_id(), "created_at": _now(), "author": FACTORY_LOGIN, "role": role,
+                   "body": _ended(body)}
+        self._write(f"comments/{number}.json", self._stored(number) + [comment])
         self._log("post", number, body=body, role=role)
         return comment
 
     def create_issue(self, title: str, body: str, labels) -> int:
+        labels = list(labels)
+        _check_labels("create_issue", labels)
         number = self._next_number()
         self._write(f"issues/{number}.json", {
             "number": number, "title": title, "body": body, "state": "open",
             "labels": sorted(set(labels)), "created_at": _now()})
-        self._log("create_issue", number, title=title, body=body, labels=list(labels))
+        self._log("create_issue", number, title=title, body=body, labels=labels)
         return number
 
     def close_issue(self, number: int) -> None:
@@ -192,6 +233,7 @@ class Recorded:
         self._log(op, number, label=label)
 
     def add_label(self, number: int, label: str) -> None:
+        _check_labels(f"add_label #{number}", [label])
         self._relabel("add_label", number, label, True)
 
     def remove_label(self, number: int, label: str) -> None:
@@ -277,23 +319,61 @@ def _comment(raw: dict) -> dict:
     m = ROLE_LINE.match(last)
     if m:
         body, role = head + sep, m.group(1)
-    return {"id": raw["id"], "created_at": raw["created_at"], "role": role, "body": body}
+    author = (raw.get("user") or {}).get("login") or ""
+    return {"id": raw["id"], "created_at": raw["created_at"], "author": author, "role": role, "body": body}
+
+
+def _answer(stdout: str) -> dict:
+    try:
+        found = json.loads(stdout)
+    except ValueError:
+        return {}
+    return found if isinstance(found, dict) else {}
+
+
+def _status(done):
+    """The HTTP status of a failed call: the JSON answer's ``status``, else a stderr ending ``(HTTP <ddd>)``."""
+    status = str(_answer(done.stdout).get("status", ""))
+    if re.fullmatch(r"\d{3}", status):
+        return status
+    m = HTTP_STATUS.search((done.stderr or "").rstrip())
+    return m.group(1) if m else None
+
+
+def _failure(op: str, number, done) -> GitHubError:
+    where = f" #{number}" if number is not None else ""
+    status = _status(done)
+    if status == "404" or (done.stderr or "").startswith(NOT_RESOLVED):
+        return GitHubError(f"{op}{where}: not found")
+    if status:
+        return GitHubError(f"{op}{where}: exit {done.returncode} (HTTP {status})")
+    return GitHubError(f"{op}{where}: exit {done.returncode}")
 
 
 class Gh:
-    """GitHub through ``gh`` and ``git``. ``run`` defaults to ``subprocess.run``, looked up on each call."""
+    """GitHub through ``gh`` and ``git``. ``run`` defaults to ``subprocess.run``, looked up on each call.
 
-    def __init__(self, repo: str, run=None):
+    A call that fails with a TLS handshake timeout sent nothing and is run again, ``RUNS`` runs at most.
+    """
+
+    def __init__(self, repo: str, run=None, logins=()):
         self.repo = repo
         self._run = run
+        self.logins = frozenset(name.lower() for name in logins)
 
-    def _call(self, op: str, number, argv: list, payload=None) -> str:
+    def _start(self, argv: list, payload=None):
         run = self._run or subprocess.run
         stdin = "" if payload is None else json.dumps(payload)
-        done = run(argv, input=stdin, capture_output=True, text=True)
+        for _ in range(RUNS):
+            done = run(argv, input=stdin, capture_output=True, text=True)
+            if done.returncode == 0 or TLS_TIMEOUT not in (done.stderr or ""):
+                break
+        return done
+
+    def _call(self, op: str, number, argv: list, payload=None) -> str:
+        done = self._start(argv, payload)
         if done.returncode != 0:
-            where = f" #{number}" if number is not None else ""
-            raise GitHubError(f"{op}{where}: exit {done.returncode}")
+            raise _failure(op, number, done)
         return done.stdout
 
     def _api(self, op: str, number, method: str, path: str, payload) -> dict:
@@ -316,10 +396,17 @@ class Gh:
         found = [_pull(raw) for raw in json.loads(out)]
         return sorted((p for p in found if state == "all" or p["state"] == state), key=lambda p: p["number"])
 
+    def _view_issue(self, op: str, number: int) -> dict:
+        """The issue ``number``; a pull's number is not found."""
+        out = self._call(op, number, ["gh", "issue", "view", str(number), "-R", self.repo,
+                                      "--json", ISSUE_VIEW_FIELDS])
+        raw = json.loads(out)
+        if not raw.get("url", "").endswith(f"/issues/{number}"):
+            raise GitHubError(f"{op} #{number}: not found")
+        return _issue(raw)
+
     def issue(self, number: int) -> dict:
-        out = self._call("issue", number, ["gh", "issue", "view", str(number), "-R", self.repo,
-                                           "--json", ISSUE_FIELDS])
-        return _issue(json.loads(out))
+        return self._view_issue("issue", number)
 
     def pull(self, number: int) -> dict:
         out = self._call("pull", number, ["gh", "pr", "view", str(number), "-R", self.repo,
@@ -330,38 +417,42 @@ class Gh:
         out = self._call("comments", number, ["gh", "api", "--paginate", "--slurp",
                                               f"repos/{self.repo}/issues/{number}/comments"])
         found = [_comment(raw) for page in json.loads(out) for raw in page]
-        return sorted(found, key=lambda c: (c["created_at"], c["id"]))
+        named = (c for c in found if c["author"].lower() in self.logins)
+        return sorted(named, key=lambda c: (c["created_at"], c["id"]))
 
     # -- writes
 
     def post(self, number: int, body: str, role: str) -> dict:
-        if not isinstance(role, str) or not ROLE.match(role):
-            raise GitHubError(f"post #{number}: role must match {ROLE.pattern}")
+        _check_role(number, role)
         sent = _ended(body) + f"<!-- factory:role {role} -->"
-        return _comment(self._api("post", number, "POST", f"issues/{number}/comments", {"body": sent}))
+        comment = _comment(self._api("post", number, "POST", f"issues/{number}/comments", {"body": sent}))
+        if comment["author"].lower() not in self.logins:
+            raise GitHubError(f"post #{number}: posted as a login that setting GITHUB_LOGINS does not name")
+        return comment
 
     def create_issue(self, title: str, body: str, labels) -> int:
-        made = self._api("create_issue", None, "POST", "issues", {"title": title, "body": body, "labels": list(labels)})
+        labels = list(dict.fromkeys(labels))
+        _check_labels("create_issue", labels)
+        made = self._api("create_issue", None, "POST", "issues", {"title": title, "body": body, "labels": labels})
         return int(made["number"])
 
     def close_issue(self, number: int) -> None:
+        self._view_issue("close_issue", number)
         self._api("close_issue", number, "PATCH", f"issues/{number}", {"state": "closed"})
 
     def add_label(self, number: int, label: str) -> None:
+        _check_labels(f"add_label #{number}", [label])
         self._api("add_label", number, "POST", f"issues/{number}/labels", {"labels": [label]})
 
     def remove_label(self, number: int, label: str) -> None:
-        run = self._run or subprocess.run
+        """A label the issue does not carry is not an error; an issue that does not exist is."""
         path = f"repos/{self.repo}/issues/{number}/labels/{urllib.parse.quote(label, safe='')}"
-        done = run(["gh", "api", "-X", "DELETE", path], input="", capture_output=True, text=True)
+        done = self._start(["gh", "api", "-X", "DELETE", path])
         if done.returncode == 0:
             return
-        try:
-            status = str(json.loads(done.stdout).get("status", ""))
-        except (ValueError, AttributeError):
-            status = ""
-        if status != "404":
-            raise GitHubError(f"remove_label #{number}: exit {done.returncode}")
+        if _status(done) == "404" and _answer(done.stdout).get("message") == "Label does not exist":
+            return
+        raise _failure("remove_label", number, done)
 
     def open_pull(self, head_ref: str, base_ref: str, title: str, body: str) -> int:
         for p in self.pulls("open"):
