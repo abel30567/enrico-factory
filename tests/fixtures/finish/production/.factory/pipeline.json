@@ -1,0 +1,3 @@
+[
+ {"room": "story", "stage": "outline", "unit": "episode", "after": "", "maker": "writer", "lint": [], "checker": "critic", "judge": "weigher", "blind": true, "pitches": 1, "paths": ["episodes/*/outline.md"]}
+]
