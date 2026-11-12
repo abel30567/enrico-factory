@@ -1,0 +1,3 @@
+[
+ {"room": "story", "stage": "reel", "unit": "episode", "after": "board", "maker": "editorial", "lint": [], "checker": "story-editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/reel/**"]}
+]

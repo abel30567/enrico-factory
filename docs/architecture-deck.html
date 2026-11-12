@@ -1,0 +1,998 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>enrico-factory: content factory architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --page: #dfe4e3; --paper: #f6f8f7; --surface: #fcfcfb;
+  --ink: #14202b; --ink-2: #4b5661; --muted: #7d8791; --hair: #dde2e1; --axis: #c3c9c8;
+  --navy: #0f1a2b; --brand: #0f6e62;
+  --series-1: #008574; --series-2: #c25e00; --flag-wash: rgba(194, 94, 0, 0.08);
+  --font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: var(--page); color: var(--ink); font-family: var(--font); }
+body { overflow: hidden; -webkit-font-smoothing: antialiased; }
+
+/* Stage: every slide is drawn at 1280x720 and scaled to the window. */
+#viewport { position: fixed; inset: 0; display: grid; place-items: center; }
+#stage { width: 1280px; height: 720px; position: relative; transform-origin: center center; }
+.slide { position: absolute; inset: 0; background: var(--paper); display: none; padding: 50px 64px 60px;
+  box-shadow: 0 1px 2px rgba(15,26,43,.08), 0 12px 40px rgba(15,26,43,.10); }
+.slide.active { display: flex; flex-direction: column; }
+.slide footer { position: absolute; left: 64px; right: 64px; bottom: 20px; display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.slide footer .mark { display: flex; gap: 8px; align-items: center; color: var(--ink-2); font-weight: 600; }
+.slide footer .mark::before { content: ""; width: 10px; height: 10px; background: #5fd3b5; transform: rotate(45deg); border-radius: 2px; }
+
+h1 { font-size: 36px; line-height: 1.12; font-weight: 800; letter-spacing: -0.02em; max-width: 1080px; }
+h2 { font-size: 32px; line-height: 1.15; font-weight: 800; letter-spacing: -0.02em; max-width: 1100px; }
+h3 { font-size: 15px; font-weight: 700; line-height: 1.3; }
+p, li { font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.kicker { font-size: 14px; font-weight: 600; color: var(--brand); margin-bottom: 12px; }
+.num { font-variant-numeric: tabular-nums; }
+strong { color: var(--ink); font-weight: 650; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .86em; background: #e9eeed; padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+/* measured vs estimate tags: every number on a slide carries one */
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 4px; vertical-align: 2px; margin-left: 4px; }
+.tag.m { background: #e2f1ed; color: #0b5a50; }
+.tag.e { background: #fdecdc; color: #8a4300; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; margin-top: 24px; flex: 1; }
+.grid2 > * { min-width: 0; }
+
+/* Before / after flow */
+.flow { display: grid; grid-template-columns: 92px 1fr; border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.flow > div { padding: 11px 14px; font-size: 14px; line-height: 1.45; color: var(--ink-2); }
+.flow .lab { font-weight: 700; color: var(--ink); font-size: 13px; background: #f1f4f3; }
+.flow .lab.after { background: #e2f1ed; color: #0b5a50; }
+.flow > div:nth-child(n+3) { border-top: 1px solid var(--hair); }
+.bullets { list-style: none; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.bullets li { font-size: 13.5px; line-height: 1.42; padding-left: 16px; position: relative; }
+.bullets li::before { content: ""; position: absolute; left: 0; top: 6px; width: 7px; height: 7px; border-radius: 2px; background: var(--series-2); }
+
+/* Big-number outcome row */
+.outcomes { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--hair); margin-top: 16px; }
+.outcomes div { padding: 12px 14px 0 0; font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+.outcomes div + div { padding-left: 14px; border-left: 1px solid var(--hair); }
+.outcomes b { display: block; font-size: 25px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-bottom: 2px; }
+
+/* Figures and charts (SVG drawn in script) */
+.figure .sub { font-size: 12.5px; color: var(--muted); margin: 2px 0 8px; }
+.chart text { font-family: var(--font); font-size: 11.5px; fill: var(--muted); }
+.chart .grid { stroke: var(--hair); stroke-width: 1; }
+.chart .base { stroke: var(--axis); stroke-width: 1; }
+.chart .lbl { fill: var(--ink); font-weight: 650; font-size: 12px; }
+.chart .hit { fill: transparent; cursor: crosshair; }
+.stat-pair { display: flex; gap: 34px; margin: 4px 0 6px; }
+.stat-pair div { font-size: 13px; color: var(--muted); max-width: 230px; line-height: 1.35; }
+.stat-pair b { display: block; font-size: 24px; color: var(--ink); font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat-pair b span { color: var(--series-2); }
+
+/* Architecture strip: zones joined by wires */
+.pipe { margin-top: 20px; display: grid; grid-template-columns: 1fr 26px 1.25fr 26px 1fr 26px 1.25fr; align-items: stretch; }
+.pz { border-radius: 8px; padding: 10px 13px; background: var(--surface); border: 1px solid var(--hair); font-size: 12.5px; line-height: 1.4; color: var(--ink-2); }
+.pz b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 2px; }
+.pz.restricted { background: #fbf6f1; border: 1.5px dashed #c98a55; }
+.pz.restricted b { color: #8a4300; }
+.pz.lake { background: #eef6f4; border-color: #bfe0d8; }
+.pz.edge { background: var(--navy); border-color: var(--navy); color: #b9c4cf; }
+.pz.edge b { color: #fff; }
+.wire { display: flex; align-items: center; justify-content: center; }
+.wire svg { width: 26px; height: 12px; }
+.llm { display: inline-grid; place-items: center; width: 17px; height: 17px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 10.5px; font-weight: 700; margin: 0 2px; vertical-align: 1px; }
+.pz.edge .llm { background: #5fd3b5; color: var(--navy); }
+
+/* Requirements traceability table */
+table.trace { border-collapse: collapse; width: 100%; margin-top: 16px; font-size: 13px; }
+table.trace th { text-align: left; font-weight: 700; color: var(--ink); padding: 7px 10px; border-bottom: 1.5px solid var(--ink); }
+table.trace td { padding: 8px 10px; border-bottom: 1px solid var(--hair); color: var(--ink-2); vertical-align: top; line-height: 1.4; }
+table.trace td:first-child { color: var(--ink); font-weight: 650; }
+
+/* Timeline (demo path) */
+.track { display: grid; grid-template-columns: repeat(5, 1fr); position: relative; margin-top: 20px; }
+.track::before { content: ""; position: absolute; left: 7px; right: calc(20% - 7px); top: 7px; height: 2px; background: var(--series-1); }
+.stage-pt { position: relative; padding-right: 14px; font-size: 13px; line-height: 1.4; color: var(--ink-2); }
+.stage-pt::before { content: ""; display: block; width: 16px; height: 16px; border-radius: 50%; background: var(--paper); border: 2px solid var(--series-1); margin-bottom: 10px; position: relative; }
+.stage-pt b { display: block; color: var(--ink); font-size: 14px; margin-bottom: 2px; }
+.shot { margin-top: 22px; border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.shot img { display: block; width: 100%; height: 300px; object-fit: cover; object-position: left top; }
+
+/* Asks (closing slide) */
+.asks { list-style: none; display: flex; flex-direction: column; gap: 11px; margin-top: 10px; }
+.asks li { display: grid; grid-template-columns: 22px 1fr; gap: 8px; font-size: 13.5px; line-height: 1.42; }
+.asks li::before { content: ""; width: 14px; height: 14px; margin-top: 2px; border: 2px solid var(--brand); border-radius: 4px; }
+.asks li b { color: var(--ink); }
+
+/* Chrome: nav, progress, notes, tooltip */
+#nav { position: fixed; right: 18px; top: 12px; opacity: .35; transition: opacity .15s; display: flex; gap: 6px; align-items: center; z-index: 10; font-size: 12px; color: var(--ink-2); }
+#nav:hover, #nav:focus-within { opacity: 1; }
+#nav button { font: inherit; border: 1px solid var(--axis); background: #fff; color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+#nav button:hover { background: #eef2f1; }
+#nav button:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+#progress { position: fixed; left: 0; top: 0; height: 3px; background: var(--series-1); transition: width .2s ease; z-index: 10; }
+#notes { position: fixed; left: 0; right: 0; bottom: 0; max-height: 36vh; overflow: auto; background: #fff; border-top: 1px solid var(--axis);
+  padding: 14px 24px 46px; font-size: 15px; line-height: 1.55; color: var(--ink); display: none; z-index: 9; }
+#notes.on { display: block; }
+#notes h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
+#notesBody p { margin-bottom: 8px; color: var(--ink); }
+.notes { display: none; }
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--navy); color: #fff; font-size: 12.5px; line-height: 1.4;
+  padding: 8px 10px; border-radius: 6px; opacity: 0; transition: opacity .08s; box-shadow: 0 6px 18px rgba(15,26,43,.25); max-width: 260px; }
+@media (prefers-reduced-motion: reduce) { #progress, #tip { transition: none; } }
+
+
+/* Deck additions: role cards and command block */
+.roles { display: grid; grid-template-columns: 1.15fr repeat(4, 1fr); gap: 12px; margin-top: 24px; }
+.role { border: 1px solid var(--hair); border-radius: 8px; background: var(--surface); padding: 12px 13px; display: flex; flex-direction: column; gap: 4px; }
+.role b { font-size: 15px; color: var(--ink); }
+.role span { font-size: 11.5px; color: var(--brand); font-weight: 600; }
+.role p { font-size: 13px; line-height: 1.42; flex: 1; }
+.role em { font-style: normal; font-size: 12px; color: var(--ink); background: #f1f4f3; border-radius: 5px; padding: 6px 8px; line-height: 1.35; }
+.role.lead { background: var(--navy); border-color: var(--navy); }
+.role.lead b { color: #fff; } .role.lead span { color: #5fd3b5; } .role.lead p { color: #b9c4cf; }
+.role.lead em { background: rgba(95,211,181,.14); color: #dff6ef; }
+pre.cmd { background: var(--navy); color: #e6edf3; border-radius: 8px; padding: 16px 18px; font: 12.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; overflow-x: auto; margin-top: 4px; }
+pre.cmd .c { color: #7fb8ad; }
+@media (max-width: 820px) { .roles { grid-template-columns: 1fr; } }
+
+
+/* Visio-style diagrams */
+.vdiag svg { display: block; width: 100%; height: auto; font-family: var(--font); }
+.vdiag .lh { font-size: 11.5px; font-weight: 700; fill: var(--ink); }
+.vdiag .lhs { font-size: 9.5px; fill: var(--muted); }
+.vdiag .ch { font-size: 10.5px; font-weight: 700; fill: var(--ink-2); letter-spacing: .02em; text-transform: uppercase; }
+.vdiag .bt { font-size: 10.2px; font-weight: 700; }
+.vdiag .bx { font-size: 9.2px; }
+.vdiag .bs { font-size: 9.2px; font-weight: 650; }
+.vdiag .el { font-size: 9.4px; font-weight: 650; fill: var(--ink); }
+.vdiag .bad { font-size: 9.4px; font-weight: 700; fill: #b42318; }
+.vdiag .num { font-size: 9px; font-weight: 800; fill: #fff; }
+.vdiag .nt { font-size: 11px; }
+.vdiag .ntt { font-size: 12.5px; font-weight: 800; }
+
+
+.ghshot { border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgba(15,26,43,.06); }
+.ghshot img { display: block; width: 100%; height: auto; }
+.ghshot.tall { align-self: start; }
+.ghshot.tall img { max-height: 468px; object-fit: contain; object-position: top center; }
+.ghshot.board { justify-self: start; align-self: start; width: fit-content; }
+.ghshot.board img { height: 466px; width: auto; }
+
+/* Phones and narrow tablets: one scrolling page, single-column layouts. */
+@media (max-width: 820px) {
+  body { overflow: auto; }
+  #viewport { position: static; display: block; padding: 10px 0 24px; }
+  #stage { transform: none !important; width: 100% !important; max-width: 100%; height: auto; }
+  .slide { position: relative; display: flex !important; flex-direction: column; height: auto; padding: 26px 18px 18px; margin: 0 10px 12px; max-width: calc(100% - 20px); border-radius: 10px; box-shadow: 0 1px 2px rgba(15,26,43,.08); }
+  .slide footer { position: static; margin-top: 18px; }
+  #nav, #progress, #notes { display: none !important; }
+  h1 { font-size: 26px; } h2 { font-size: 23px; }
+  .grid2 { grid-template-columns: 1fr; gap: 26px; margin-top: 20px; }
+  .flow { grid-template-columns: 1fr; }
+  .flow > div:nth-child(2) { border-top: 0; }
+  .outcomes { grid-template-columns: 1fr 1fr; }
+  .outcomes div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .figure { overflow-x: auto; }
+  .pipe { grid-template-columns: 1fr; } .pipe > * { min-width: 0; }
+  .wire { height: 22px; } .wire svg { transform: rotate(90deg); }
+  table.trace { display: block; overflow-x: auto; }
+  table.trace td, table.trace th { min-width: 170px; }
+  .track { grid-template-columns: 1fr; gap: 10px; }
+  .track::before { left: 7px; right: auto; top: 8px; bottom: 8px; width: 2px; height: auto; }
+  .stage-pt { padding: 0 0 0 28px; }
+  .stage-pt::before { position: absolute; left: 0; top: 2px; }
+  .stat-pair { gap: 18px; } .stat-pair b { font-size: 21px; }
+}
+
+/* Print / PDF: one slide per page. */
+@media print {
+  @page { size: 1280px 720px; margin: 0; }
+  html, body { overflow: visible; height: auto; background: #fff; }
+  #viewport { position: static; display: block; }
+  #stage { transform: none !important; width: 1280px; height: auto; }
+  .slide { position: relative; display: flex !important; flex-direction: column; height: 720px; box-shadow: none; page-break-after: always; break-after: page; }
+  #nav, #progress, #notes, #tip { display: none !important; }
+}
+.vdiag svg { overflow: visible; }
+.mk { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 16px; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.mk b { display: block; color: var(--ink); font-size: 13.5px; margin-bottom: 4px; }
+@media (max-width: 820px) { .mk { grid-template-columns: 1fr; } .vdiag { overflow-x: auto; -webkit-overflow-scrolling: touch; } .vdiag svg { min-width: 860px; } #kitmap svg { min-width: 0; } }
+</style>
+</head>
+<body>
+<div id="progress"></div>
+<div id="viewport"><div id="stage">
+
+<!-- ============ 1. The answer ============ -->
+<section class="slide" data-title="The answer">
+  <div class="kicker">enrico-factory: the content factory</div>
+  <h1>A story ships like a ticket: one maker per artifact, a checker that did not write it, and a merge that locks it</h1>
+  <div class="grid2">
+    <div>
+      <div class="flow">
+        <div class="lab">Before</div>
+        <div>One session researches, writes, boards and generates. It judges its own work, and the state lives in chat.</div>
+        <div class="lab after">With the factory</div>
+        <div>A showrunner files tickets as issues. A maker delivers one artifact per pull request. A checker gives notes on the exact commit. A merge is the lock, and GitHub is the only state.</div>
+      </div>
+      <div style="margin-top:18px">
+        <h3>Six differences from the software kit, and why this is a new system</h3>
+        <ul class="bullets">
+          <li><strong>Roles are data</strong>: one file per studio role. <strong>A stage ladder with locks</strong>: cheap stages first</li>
+          <li><strong>Rooms</strong>: several makers pitch one ticket. <strong>Notes with severity</strong>: only a Blocker stops a lock</li>
+          <li><strong>Canon is protected</strong> and marks broken work stale. <strong>Provenance</strong> is tagged on every fact</li>
+        </ul>
+      </div>
+    </div>
+    <div class="figure">
+      <h3>Each part of the software kit has a counterpart <span class="tag m">v0 design</span></h3>
+      <div class="sub">Left: the orchestration kit this repository is built with. Right: what it builds.</div>
+      <div id="kitmap" class="vdiag"></div>
+      <div class="outcomes">
+        <div><b>9</b>role files in v0: 5 makers and 4 checkers <span class="tag m">v0 design</span></div>
+        <div><b>7</b>stages in the v0 ladder, research to storyboard <span class="tag m">v0 design</span></div>
+        <div><b>0</b>tickets run so far: the kit is designed, not built <span class="tag e">status</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <p>Lead with the parallel: this is the orchestrator, builder and verifier pattern, moved from code to story. The showrunner is the orchestrator, a maker is a builder, a checker is a verifier, and a merge is a lock.</p>
+    <p>Be plain about status: as of 2026-11-11 the architecture and the brief are written and the repository is public. Wave 1 of the build has not started, so nothing in this deck is a measured result.</p>
+    <p>If asked why a new system and not the same kit: the six differences on the left. Each one exists because story work has stages, canon and taste, which code does not.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 2. Two layers ============ -->
+<section class="slide" data-title="Two layers" style="padding-bottom:44px">
+  <div class="kicker">Where the system lives</div>
+  <h2 style="font-size:28px">enrico-factory is built with the software kit, and what it builds is a second kit that runs one production per repository</h2>
+  <div id="layers" class="vdiag" style="margin-top:14px"></div>
+  <aside class="notes">
+    <p>Lead with the split. Layer 1 is ordinary software work: builders and verifiers write the kit through pull requests, and the orchestrator merges. Layer 2 is a production: a series in its own repository, run by a showrunner with studio roles.</p>
+    <p>The only connection between the two is <code>factory init</code>, which installs the kit into a production repository as <code>.factory/</code>.</p>
+    <p>Every later slide describes layer 2.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 3. System map ============ -->
+<section class="slide" data-title="System map" style="padding-bottom:44px">
+  <div class="kicker">Interaction map: every connection and what travels on it</div>
+  <h2 style="font-size:28px">The showrunner is the only node that merges or spends; workers reach GitHub and their own worktree, and GitHub holds all the state</h2>
+  <div id="sysmap" class="vdiag" style="margin-top:12px"></div>
+  <aside class="notes">
+    <p>Lead with the hub. Tickets, launches, rulings, greenlights, paid jobs and the lock all go through the showrunner's session. Workers have two connections: they are launched with a rendered prompt and a worktree, and they talk to GitHub through a branch, a pull request and first-line markers.</p>
+    <p>Three facts hold the system together. GitHub is the only state. Makers and checkers never share a worktree and never merge. Anything that spends money or cannot be undone runs in the showrunner's session.</p>
+    <p>The paid jobs and the media store are planned, not in v0.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 4. Roles ============ -->
+<section class="slide" data-title="Responsibilities">
+  <div class="kicker">Who does what</div>
+  <h2>Five actors with fixed limits, and a studio role is one file: adding a department adds files, not code</h2>
+  <div class="roles" style="margin-top:18px">
+    <div class="role lead"><b>Showrunner</b><span>the orchestrating session · showrunner, line producer</span><p>Files tickets, launches roles, rules on disputes, selects in rooms, records greenlights, runs every paid job, locks.</p><em>May never: author a maker's artifact, or lock without the gate</em></div>
+    <div class="role"><b>Maker</b><span>writer, artist, researcher</span><p>One artifact per ticket on its own branch. Posts <code>READY</code> with evidence and <code>ADDRESSED</code> per note.</p><em>May never: merge, spend, or write outside its <code>writes</code> globs</em></div>
+    <div class="role"><b>Checker</b><span>script coordinator, QC</span><p>Judges the exact head commit. Posts <code>NOTES</code> (Blocker or Issue) or <code>APPROVED</code>.</p><em>May never: push, edit the pull request, merge</em></div>
+    <div class="role"><b>factory</b><span>command line · production office</span><p>Worktrees, rendered prompts, status, lint and the merge. It applies the rules and decides nothing.</p><em>May never: guess. A check that cannot run is ERROR</em></div>
+    <div class="role"><b>Owner</b><span>studio, network</span><p>Greenlights, budget, publishing, and any canon ruling they choose to make.</p><em>Is never asked what the showrunner can settle and undo</em></div>
+  </div>
+  <table class="trace" style="margin-top:14px;font-size:12.5px">
+    <tr><th>Department</th><th>Maker</th><th>Artifact</th><th>Checker</th><th>Checks</th></tr>
+    <tr><td>Development</td><td><code>researcher</code></td><td><code>research/&lt;topic&gt;.md</code> with an evidence table</td><td><code>fact-checker</code></td><td>sampled claims re-derived from the sources</td></tr>
+    <tr><td>Development</td><td><code>canon-keeper</code></td><td><code>canon/**</code>: bible, character and place sheets, rulings</td><td><code>canon-reviewer</code></td><td>consistency, and which locked work the change breaks</td></tr>
+    <tr><td>Story</td><td><code>story-writer</code></td><td>premise pitch, then <code>beats.md</code></td><td><code>story-editor</code></td><td>the format's structure lint, the story rubric</td></tr>
+    <tr><td>Story</td><td><code>script-writer</code></td><td><code>outline.md</code>, then <code>script.md</code>, <code>lines.json</code>, <code>ledger.json</code></td><td><code>story-editor</code></td><td>the format's structure lint, the story rubric</td></tr>
+    <tr><td>Story</td><td><code>storyboard-artist</code></td><td><code>shots/&lt;id&gt;.yaml</code> and the board</td><td><code>continuity-supervisor</code></td><td>wardrobe, props, facts, axis and eyeline against canon</td></tr>
+  </table>
+  <aside class="notes">
+    <p>Lead with the "may never" line on each card. Those limits are the design. The lock enforces them; they are not requests to the agent.</p>
+    <p>Checkers never author. Studios do not work this way, since an animation director corrects by redrawing. Here a correction is the maker relaunched on the same pull request.</p>
+    <p>The table is v0: Development and Story. Production and Post roles (designers, asset builder, layout, animator, render, editor, sound, technical QC) are planned.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 5. Stage ladder ============ -->
+<section class="slide" data-title="Data flow" style="padding-bottom:44px">
+  <div class="kicker">Data flow: the stage ladder</div>
+  <h2 style="font-size:28px">Work climbs a ladder of locked stages, cheapest first, so a bad idea fails on paper before anything is rendered</h2>
+  <div id="ladder" class="vdiag" style="margin-top:10px"></div>
+  <p style="font-size:12px;margin-top:6px"><strong>G</strong> owner greenlight · solid boxes are v0 · dashed grey boxes are planned · dashed bypass: short formats skip <code>outline</code> · dotted lines: bytes go to the media store, only a manifest row is committed</p>
+  <aside class="notes">
+    <p>Lead with the rule: a stage must be locked before the next stage of the same unit may start. A unit is a research topic, a canon change or an episode.</p>
+    <p>Only files on <code>main</code> travel between stages. A maker starts from a worktree of the current base, so it sees canon and every locked upstream artifact and nothing unfinished.</p>
+    <p>Every factual line carries a provenance tag: text, art, inferred or invented. An invention made at the premise stage is still visibly an invention at the board stage.</p>
+    <p>If asked about media: files are never committed. A job writes the bytes to the store and commits one manifest row with the hash, which changes the head, so a verdict on a commit is a verdict on exact bytes.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 6. Stage checks ============ -->
+<section class="slide" data-title="Stage checks">
+  <div class="kicker">What is checked at each stage</div>
+  <h2>Every stage pairs a deterministic lint with a judged check, and only two of the seven v0 stages need the owner</h2>
+  <table class="trace" style="margin-top:20px;font-size:12.5px">
+    <tr><th>Stage</th><th>Unit</th><th>Maker</th><th>Checker</th><th>Deterministic checks</th><th>Judged checks</th><th>Owner</th></tr>
+    <tr><td><code>research</code></td><td>topic</td><td>researcher</td><td>fact-checker</td><td>provenance tags, cited paths exist</td><td>sampled claims re-derived</td><td>no</td></tr>
+    <tr><td><code>canon</code></td><td>canon change</td><td>canon-keeper</td><td>canon-reviewer</td><td>provenance, references</td><td>consistency, the stale list</td><td>no</td></tr>
+    <tr><td><code>premise</code></td><td>episode</td><td>story-writer, three in a room</td><td>story-editor</td><td>format named and known</td><td>one rubric over every pitch</td><td><strong>greenlight</strong></td></tr>
+    <tr><td><code>beats</code></td><td>episode</td><td>story-writer</td><td>story-editor</td><td>the format's beats in order; durations sum to its runtime</td><td>story rubric</td><td>no</td></tr>
+    <tr><td><code>outline</code></td><td>episode</td><td>script-writer</td><td>story-editor</td><td>every beat covered by a scene</td><td>story rubric</td><td>no</td></tr>
+    <tr><td><code>script</code></td><td>episode</td><td>script-writer</td><td>story-editor</td><td>every line in <code>lines.json</code>; ledger complete per scene</td><td>voice and story rubric</td><td>no</td></tr>
+    <tr><td><code>board</code></td><td>episode</td><td>storyboard-artist</td><td>continuity-supervisor</td><td>shot schema, durations; wardrobe and prop ids exist in canon</td><td>axis, eyeline, the tone notes</td><td><strong>greenlight</strong></td></tr>
+    <tr><td>animatic and later <span class="tag e">planned</span></td><td>episode, shot, asset</td><td>planned</td><td>planned</td><td>scene state, stream, loudness, hashes</td><td>repeated runs; split votes go to a person</td><td>at animatic and at publish</td></tr>
+  </table>
+  <p style="margin-top:12px;font-size:13px"><code>factory lint</code> returns PASS, FAIL or ERROR per check. ERROR means the check could not run, and it is never treated as FAIL.</p>
+  <aside class="notes">
+    <p>Lead with the two columns in the middle. The deterministic column is code: the same input gives the same answer. The judged column is a rubric applied by a checker that did not write the work.</p>
+    <p>The owner appears twice in v0: the premise greenlight and the board greenlight. When the animatic stage is built, the board's greenlight moves to it, because the animatic is the last cheap gate before render spend.</p>
+    <p>Runtimes and shot counts in the formats come from guidance for live-action video. None is tested on stylised animation, so each is a starting value.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 7. Swimlane ============ -->
+<section class="slide" data-title="Swimlane" style="padding-bottom:44px">
+  <div class="kicker">Process map: one beats ticket across five lanes</div>
+  <h2 style="font-size:28px">One ticket crosses five lanes from issue to lock, and the owner appears in a single column: the greenlight</h2>
+  <div id="swim" class="vdiag" style="margin-top:12px"></div>
+  <aside class="notes">
+    <p>Lead with the dashed band in the owner lane. While the artifact is made, checked and fixed, the owner is not involved. A choice that can be undone is settled by a showrunner ruling posted on the ticket.</p>
+    <p>Follow the numbers: 1 file the ticket, 2 launch the maker, 3 the maker writes and posts READY, 4 the checker posts NOTES on that head, 5 the maker is relaunched and posts ADDRESSED, 6 a fresh checker posts APPROVED on the new head, 7 the owner's greenlight where the stage needs one, 8 the lock.</p>
+    <p>Nothing starts a worker automatically. A worker posts a marker and exits, <code>factory status</code> reads the markers, and the showrunner launches the next role.</p>
+    <p>This example uses a beats ticket, which needs no greenlight. Column 7 applies to the premise and board stages.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 8. Lifecycle ============ -->
+<section class="slide" data-title="Ticket states" style="padding-bottom:44px">
+  <div class="kicker">A ticket's life on GitHub</div>
+  <h2 style="font-size:28px">A ticket's state is never set by hand: it is derived from labels and the newest first-line marker</h2>
+  <div id="states" class="vdiag" style="margin-top:12px"></div>
+  <div class="mk">
+    <div><b>Maker markers, on the pull request</b><code>[&lt;ROLE&gt;] READY</code> head SHA, lint table, evidence per criterion · <code>ADDRESSED</code> the change and commit per note · <code>BLOCKED</code> missing, tried, resume from</div>
+    <div><b>Checker markers, on the pull request</b><code>[&lt;ROLE&gt;] NOTES</code> N1..Nn, each a Blocker or an Issue · <code>APPROVED</code> evidence per criterion. Both carry <code>Reviewed head &lt;sha&gt;</code></div>
+    <div><b>Showrunner markers, on the issue</b><code>[SHOWRUNNER] LAUNCH</code> the exact prompt, sha256, model, base · <code>RULING</code> · <code>SELECTED #&lt;pr&gt;</code> · <code>GREENLIGHT</code> the owner's words and date</div>
+  </div>
+  <aside class="notes">
+    <p>Lead with "derived". Nobody drags a card. A new session rebuilds the whole picture from issues, pull requests, labels and markers.</p>
+    <p>Only the first line of a comment counts as a marker. A checker verdict counts only if it is newer than the maker's last READY or ADDRESSED, names the current head, and comes from the checker the pipeline names for that stage.</p>
+    <p>After three rounds of notes on one pull request the showrunner rules.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 9. Room ============ -->
+<section class="slide" data-title="A room" style="padding-bottom:44px">
+  <div class="kicker">The writers' room: one ticket, several pitches</div>
+  <h2 style="font-size:28px">A room turns one premise ticket into three competing pull requests, and exactly one of them is locked</h2>
+  <div id="room" class="vdiag" style="margin-top:14px"></div>
+  <aside class="notes">
+    <p>Lead with the studio practice: several writers pitch, one idea is chosen. This is the one place where a ticket has more than one pull request.</p>
+    <p>One checker reads all three pitches and scores them on one rubric, so the scores are comparable. The showrunner selects and posts the reason. The owner greenlights. The lock merges the selected pitch and the others are closed.</p>
+    <p>In v0 only the premise stage runs as a room.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 10. Canon change ============ -->
+<section class="slide" data-title="Canon change" style="padding-bottom:44px">
+  <div class="kicker">The one change that can break locked work</div>
+  <h2 style="font-size:28px">Canon changes only through its own pull request, and a locked change marks the work it breaks as stale</h2>
+  <div id="canon" class="vdiag" style="margin-top:12px"></div>
+  <aside class="notes">
+    <p>Lead with why canon is special: every story stage builds on it, so it is the only change that can invalidate work already locked.</p>
+    <p>The canon-reviewer plays the part the blast-radius reviewer plays in the software kit: it lists the locked artifacts that relied on the old text. After the lock, the showrunner files one revision ticket per broken unit at the earliest broken stage, and later stages of that unit wait.</p>
+    <p>A writer cannot change canon inside a script: any pull request that touches <code>canon/**</code> needs APPROVED from the canon-reviewer, whatever its stage.</p>
+    <p>Open question, be honest: how a locked artifact pins the canon it relied on (cited path or content hash) is not decided. Until then the stale list comes from the canon-reviewer.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 11. GitHub model vs kit ============ -->
+<section class="slide" data-title="GitHub model">
+  <div class="kicker">Compared with the orchestration kit</div>
+  <h2>Every part of the orchestration kit has a counterpart here, and the changes are where story work differs from code</h2>
+  <table class="trace" style="margin-top:18px;font-size:12.5px">
+    <tr><th>Orchestration kit (software)</th><th>Content factory</th><th>What changed</th></tr>
+    <tr><td>Issue <code>[KEY]</code> with <code>tracked</code></td><td>the same, plus <code>stage:</code> and <code>unit:</code> labels</td><td>the gate needs to know the unit and the stage</td></tr>
+    <tr><td><code>[BUILDER] READY</code> / <code>ADDRESSED</code> / <code>BLOCKED</code></td><td><code>[&lt;ROLE&gt;] READY</code> / <code>ADDRESSED</code> / <code>BLOCKED</code></td><td>the role id is in the marker; roles are data files, not four fixed prompts</td></tr>
+    <tr><td><code>[VERIFIER] CHANGES REQUESTED</code> / <code>VERIFIED</code></td><td><code>[&lt;ROLE&gt;] NOTES</code> / <code>APPROVED</code></td><td>each note is a Blocker or an Issue; the verdict must come from that stage's checker</td></tr>
+    <tr><td>Fixer</td><td>the maker relaunched on the same pull request</td><td>no separate role</td></tr>
+    <tr><td>Blast radius</td><td><code>canon-reviewer</code></td><td>lists the locked work a canon change breaks</td></tr>
+    <tr><td><code>[ORCHESTRATOR] LAUNCH</code> and rulings</td><td><code>[SHOWRUNNER] LAUNCH</code>, <code>RULING</code>, <code>SELECTED</code>, <code>GREENLIGHT</code></td><td>two new markers: the room selection and the owner's approval</td></tr>
+    <tr><td><code>orch merge --apply</code>, one merge per run</td><td><code>factory lock --apply</code>, one lock per run</td><td>adds: upstream stage locked, greenlight recorded, room selection, <code>writes</code> globs</td></tr>
+    <tr><td><code>GATES</code>: build, tests, lint</td><td><code>factory lint</code>: provenance, references, media, structure, roles</td><td>text and data are linted, not compiled</td></tr>
+    <tr><td>A verdict survives a base-only merge</td><td>not when the base merge changes canon the work relies on</td><td>stricter</td></tr>
+    <tr><td>One task, one pull request</td><td>the same, except a room</td><td>one ticket, several pull requests, one selected</td></tr>
+    <tr><td><code>[LIVE-CHECK]</code>, run and signed by the orchestrator</td><td>signed records of showrunner-run media jobs <span class="tag e">planned</span></td><td>the same idea: workers cannot produce it</td></tr>
+  </table>
+  <aside class="notes">
+    <p>Lead with the left column: anyone who has run the orchestration kit already knows this system. The right column is the vocabulary change, and the last column is the real difference.</p>
+    <p>The stricter rule to point at: in the software kit a verdict survives a merge of the base. Here it does not when that merge changes canon the work relies on.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 12. Tools ============ -->
+<section class="slide" data-title="Tools">
+  <div class="kicker">Tools required, by department</div>
+  <h2>v0 needs only git, gh and Python; every media tool is a candidate that an experiment still has to choose</h2>
+  <div class="pipe" style="margin-top:16px">
+    <div class="pz lake"><b>Development + Story · v0</b><code>git</code>, <code>gh</code>, Python 3 standard library, bash, the <code>factory</code> command line. Web search and image reading for research.</div>
+    <div class="wire"><svg viewBox="0 0 26 12"><path d="M0 6h22M18 2l4 4-4 4" fill="none" stroke="#7d8791" stroke-width="1.5"/></svg></div>
+    <div class="pz restricted"><b>Production · planned</b>Image generation and editing, image-to-3D, Blender headless as the pilot, Unreal Engine 5 as a side test.</div>
+    <div class="wire"><svg viewBox="0 0 26 12"><path d="M0 6h22M18 2l4 4-4 4" fill="none" stroke="#7d8791" stroke-width="1.5"/></svg></div>
+    <div class="pz"><b>Post · planned</b><code>ffmpeg</code> with the cut list as code, text-to-speech, a loudness meter.</div>
+    <div class="wire"><svg viewBox="0 0 26 12"><path d="M0 6h22M18 2l4 4-4 4" fill="none" stroke="#7d8791" stroke-width="1.5"/></svg></div>
+    <div class="pz edge"><b>Checks · planned</b>Scene state read from the engine, a perceptual metric against an approved render, a vision judge that only lists defects.</div>
+  </div>
+  <table class="trace" style="margin-top:12px;font-size:12.5px">
+    <tr><th>Need</th><th>Candidate tools <span class="tag e">not decided</span></th><th>Run by</th></tr>
+    <tr><td>Board panels, design sheets, reference stills</td><td>image generation and editing: xAI Grok Imagine first, other generators as alternates</td><td>showrunner</td></tr>
+    <tr><td>3D characters and environments</td><td>image-to-3D for a first mesh; Blender for cleanup, rigging and toon shading</td><td>showrunner runs paid generation; makers write the build scripts</td></tr>
+    <tr><td>Scenes, animation, render</td><td>Blender headless with Python as the pilot; Unreal Engine 5 as a side test on a Windows GPU</td><td>makers write scene scripts; showrunner renders</td></tr>
+    <tr><td>Scene-state checks</td><td>per-bone transforms, camera, wardrobe and prop ids read in a headless run</td><td>checker reruns the readout</td></tr>
+    <tr><td>Render against reference</td><td>a perceptual difference metric; the owner's target is within about 10% noticeable difference</td><td>checker</td></tr>
+    <tr><td>Voice, edit, technical QC</td><td>text-to-speech, <code>ffmpeg</code>, <code>ebur128</code>, <code>ffprobe</code>, speech recognition against <code>lines.json</code></td><td>showrunner runs; checker verifies</td></tr>
+    <tr><td>Judged checks on pictures</td><td>a vision model returns a defect list in a fixed schema; pass or fail is computed in code over several runs</td><td>checker; split votes go to a person</td></tr>
+  </table>
+  <aside class="notes">
+    <p>Lead with the left zone: the kit itself has no third-party packages. Everything to the right is planned, and each tool is chosen by an experiment when its department is built.</p>
+    <p>The 3D-first direction is why the checks column exists. A scene built by script can be rebuilt and measured: bone transforms, camera, wardrobe and prop ids are read from the engine, so continuity is a check on data, not an opinion about pixels.</p>
+    <p>If asked about the 10% target: the metric and its threshold are not chosen. It has to be calibrated on approved references before it gates anything.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+<!-- ============ 13. Boundaries, open questions, build order ============ -->
+<section class="slide" data-title="Boundaries and next steps">
+  <div class="kicker">Trust boundaries, open questions, build order</div>
+  <h2>Five boundaries are enforced at the lock, five design questions are open, and wave 1 of the build has not started</h2>
+  <div class="grid2" style="margin-top:18px;gap:36px;flex:0 1 auto">
+    <div>
+      <h3>Enforced</h3>
+      <ul class="bullets">
+        <li><strong>Workers cannot merge.</strong> Only <code>factory lock --apply</code> merges, and it rechecks every rule from GitHub at that moment</li>
+        <li><strong>Workers cannot spend.</strong> Generation, rendering and voice run only in the showrunner's session</li>
+        <li><strong>A maker writes only inside its role's <code>writes</code> globs.</strong> The lock refuses anything else</li>
+        <li><strong>A verdict is bound to a commit.</strong> A new commit, including a manifest row for new media, makes it stale</li>
+        <li><strong>Launch prompts are public record</strong>: prompt, hash, model and base commit, posted before the worker starts</li>
+        <li><strong>Known limit:</strong> workers run under the showrunner's GitHub login, so markers stop honest mistakes and drift, not deliberate forgery</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Not decided yet</h3>
+      <ul class="asks">
+        <li><span>How a locked artifact <b>pins the canon</b> it relied on: by cited path, or by content hash</span></li>
+        <li><span>Whether <code>factory lock</code> holds a <b>stale unit's later stages</b> itself, or the showrunner does it with <code>hold</code></span></li>
+        <li><span>The <b>3D toolchain</b>. Blender is the pilot; nothing is chosen</span></li>
+        <li><span>The <b>perceptual metric</b> and its threshold, calibrated on approved references before it gates anything</span></li>
+        <li><span>Which stages run on a <b>heartbeat</b> without the showrunner, and when</span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="outcomes" style="margin-top:14px">
+    <div><b>Wave 1</b>In parallel on disjoint files: role registry and launcher; nine role files and seven format files; pipeline, status and lock; lints</div>
+    <div><b>Wave 2</b><code>factory init</code>, then the Primal sample imported into its own repository with it</div>
+    <div><b>Wave 3</b>The sample's first tickets run through the system: research, the owner's rulings into canon, an episode premise room</div>
+  </div>
+  <aside class="notes">
+    <p>Lead with the known limit, because it is the honest part: the markers are an audit aid. Signed job records, which are planned, cover the media steps where forgery would matter most.</p>
+    <p>The open questions are design decisions, and none of them blocks wave 1.</p>
+    <p>Next step: start wave 1 through the orchestration kit already installed in the repository. Later waves add the animatic stage, the 3D departments, post, technical QC, signed job records, a board and a heartbeat.</p>
+  </aside>
+  <footer><span class="mark">enrico-factory · Content factory architecture</span><span class="pn"></span></footer>
+</section>
+
+
+
+</div></div>
+<div id="nav" aria-label="Slide navigation">
+  <button id="prev" aria-label="Previous slide">Previous</button>
+  <span id="count" class="num"></span>
+  <button id="next" aria-label="Next slide">Next</button>
+  <button id="notesBtn" aria-pressed="false">Notes</button>
+</div>
+<div id="notes" aria-live="polite"><h4>Speaker notes</h4><div id="notesBody"></div></div>
+<div id="tip" role="tooltip"></div>
+<script>
+// ---------------- Helpers ----------------
+const NS = "http://www.w3.org/2000/svg";
+const PHONE = matchMedia("(max-width: 820px)").matches;
+const chartW = full => (PHONE ? Math.min(full, document.documentElement.clientWidth - 56) : full);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+const tip = document.getElementById("tip");
+function showTip(html, ev) { tip.innerHTML = html; tip.style.opacity = 1; moveTip(ev); }
+function moveTip(ev) { const x = ev.clientX + 14, y = ev.clientY + 14; tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 8) + "px"; tip.style.top = Math.min(y, innerHeight - tip.offsetHeight - 8) + "px"; }
+function hideTip() { tip.style.opacity = 0; }
+function hover(node, html) { node.addEventListener("mouseenter", e => showTip(html, e)); node.addEventListener("mousemove", moveTip); node.addEventListener("mouseleave", hideTip); }
+
+// ---------------- Visio-style diagrams ----------------
+function vsvg(id, W, H, aria) {
+  const host = document.getElementById(id); if (!host) return null;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": aria }, host);
+  const d = el("defs", {}, svg);
+  [["ar", "#4b5661"], ["arb", "#b42318"], ["art", "#0f6e62"]].forEach(([n, c]) => {
+    const m = el("marker", { id: id + n, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, d);
+    el("path", { d: "M0 0L10 5L0 10z", fill: c }, m);
+  });
+  return svg;
+}
+function vtext(svg, x, y, lines, opts = {}) {
+  const t = el("text", { x, y, "text-anchor": opts.anchor || "middle" }, svg);
+  lines.forEach((ln, i) => {
+    const [cls, txt, fill] = Array.isArray(ln) ? ln : ["bx", ln];
+    const ts = el("tspan", { x, dy: i ? (opts.lh || 12.5) : 0, class: cls }, t);
+    if (fill) ts.setAttribute("fill", fill);
+    ts.textContent = txt;
+  });
+  return t;
+}
+function vbox(svg, x, y, w, h, lines, st) {
+  el("rect", { x, y, width: w, height: h, rx: 6, fill: st.fill, stroke: st.stroke, "stroke-width": st.sw || 1.2, "stroke-dasharray": st.dash || "" }, svg);
+  const n = lines.length, lh = st.lh || 12.5;
+  vtext(svg, x + w / 2, y + h / 2 - ((n - 1) * lh) / 2 + 3.5, lines.map(l => (Array.isArray(l) ? l : ["bx", l, st.ink])).map((l, i) => i === 0 && !Array.isArray(lines[0]) ? ["bt", l[1], st.ink] : [l[0], l[1], l[2] || st.ink]), { lh });
+}
+function vline(svg, id, pts, o = {}) {
+  el("path", { d: pts.map((p, i) => (i ? "L" : "M") + p[0] + " " + p[1]).join(" "), fill: "none", stroke: o.c || "#4b5661", "stroke-width": o.w || 1.3,
+    "stroke-dasharray": o.dash || "", "marker-end": o.noEnd ? "" : `url(#${id}${o.m || "ar"})`, "marker-start": o.both ? `url(#${id}${o.m || "ar"})` : "" }, svg);
+}
+function vlabel(svg, x, y, txt, cls = "el", anchor = "middle") {
+  const t = el("text", { x, y, "text-anchor": anchor, class: cls }, svg); t.textContent = txt;
+  const w = [...txt].reduce((a, ch) => a + (ch === " " ? 2.6 : /[il.,:;·'\-\[\]|]/.test(ch) ? 2.9 : /[A-Z0-9#<>→×mw]/.test(ch) ? 6.6 : 5.3), 0) + 6;
+  const x0 = anchor === "start" ? x - 3 : anchor === "end" ? x - w + 3 : x - w / 2;
+  const r = el("rect", { x: x0, y: y - 9, width: w, height: 12, rx: 3, fill: "#f6f8f7", opacity: 0.92 }, svg);
+  svg.insertBefore(r, t);
+}
+function vnum(svg, x, y, n, c = "#c25e00") { el("circle", { cx: x, cy: y, r: 7.5, fill: c }, svg); const t = el("text", { x, y: y + 3.2, "text-anchor": "middle", class: "num" }, svg); t.textContent = n; }
+
+// ---------------- Diagram styles shared by every figure ----------------
+const GT = "#0f6e62", OR = "#c25e00", NV = "#0f1a2b", MI = "#5fd3b5", GY = "#7d8791", RD = "#b42318", TN = "#c98a55", BL = "#2f6fd1", INK = "#14202b";
+const VS = {
+  gh: { fill: "#ffffff", stroke: GT, ink: INK },
+  show: { fill: NV, stroke: NV, ink: "#ffffff" },
+  wk: { fill: "#fffaf5", stroke: TN, dash: "4 3", ink: INK },
+  plain: { fill: "#ffffff", stroke: GY, ink: INK },
+  owner: { fill: "#ffffff", stroke: BL, ink: INK },
+  plan: { fill: "#fbfcfc", stroke: "#aab3b2", dash: "3 3", ink: "#4b5661" },
+  lake: { fill: "#eef6f4", stroke: "#8fcabd", ink: INK },
+  none: { fill: "#f6f8f7", stroke: "#dde2e1", dash: "3 3", ink: GY },
+  bad: { fill: "#fff5f4", stroke: RD, ink: INK },
+  warn: { fill: "#fff7ef", stroke: OR, dash: "4 3", ink: INK } };
+const HD = {
+  show: { fill: NV, stroke: NV, head: GT, ht: "#fff", ink: "#dfe7ee" },
+  gh: { fill: "#fff", stroke: GT, head: GT, ht: "#fff", ink: INK },
+  grey: { fill: "#fff", stroke: GY, head: "#4b5661", ht: "#fff", ink: INK },
+  owner: { fill: "#fff", stroke: BL, head: BL, ht: "#fff", ink: INK },
+  wk: { fill: "#fffaf5", stroke: TN, dash: "5 3", head: TN, ht: "#fff", ink: INK },
+  bad: { fill: "#fff", stroke: RD, head: RD, ht: "#fff", ink: INK },
+  plan: { fill: "#fbfcfc", stroke: "#aab3b2", dash: "4 3", head: "#7d8791", ht: "#fff", ink: INK },
+  lake: { fill: "#eef6f4", stroke: GT, head: GT, ht: "#fff", ink: INK } };
+function vnode(svg, x, y, w, h, st, title, lines) {
+  el("rect", { x, y, width: w, height: h, rx: 8, fill: st.fill, stroke: st.stroke, "stroke-width": 1.4, "stroke-dasharray": st.dash || "" }, svg);
+  el("rect", { x, y, width: w, height: 24, rx: 8, fill: st.head }, svg); el("rect", { x, y: y + 14, width: w, height: 10, fill: st.head }, svg);
+  vtext(svg, x + 10, y + 16.5, [["ntt", title, st.ht]], { anchor: "start" });
+  if (lines && lines.length) vtext(svg, x + 10, y + 40, lines.map(l => (Array.isArray(l) ? l : ["nt", l, st.ink])), { anchor: "start", lh: 14 });
+}
+function vnote(svg, x, y, w, h, st, lines) {
+  el("rect", { x, y, width: w, height: h, rx: 6, fill: st.fill, stroke: st.stroke, "stroke-width": 1.2, "stroke-dasharray": st.dash || "" }, svg);
+  vtext(svg, x + 10, y + 15, lines.map((l, i) => (Array.isArray(l) ? l : [i ? "bx" : "bt", l, st.ink])), { anchor: "start", lh: 13 });
+}
+
+// ---------------- 1. Kit mapping ----------------
+(function kitmap() {
+  const id = "kitmap", W = 540, RH = 35, Y0 = 20, H = Y0 + RH * 6;
+  const svg = vsvg(id, W, H, "Mapping from the software orchestration kit to the content factory. Orchestrator becomes showrunner. Builder becomes maker, one role per craft. Verifier becomes checker, one per stage. Fixer becomes the maker relaunched on the same pull request. Blast radius becomes the canon-reviewer. The merge gate becomes factory lock, where a merge is the lock."); if (!svg) return;
+  vtext(svg, 95, 12, [["ch", "Software kit"]]); vtext(svg, 400, 12, [["ch", "Content factory"]]);
+  const rows = [
+    ["Orchestrator", "Showrunner", "also selects in rooms, records greenlights"],
+    ["Builder", "Maker, one role per craft", "roles are data files"],
+    ["Verifier", "Checker, one per stage", "notes are a Blocker or an Issue"],
+    ["Fixer", "The maker, relaunched", "same pull request; no separate role"],
+    ["Blast radius", "canon-reviewer", "lists the locked work a change breaks"],
+    ["orch merge --apply", "factory lock --apply", "a merge is the lock"]];
+  rows.forEach(([a, b, c], i) => {
+    const y = Y0 + i * RH, lead = i === 0;
+    vbox(svg, 0, y, 190, 28, [a], lead ? VS.show : VS.plain);
+    vbox(svg, 260, y, 280, 28, [b, c], lead ? VS.show : VS.lake);
+    vline(svg, id, [[190, y + 14], [260, y + 14]], { c: GT, m: "art" });
+  });
+})();
+
+// ---------------- 2. Two layers ----------------
+(function layers() {
+  const id = "layers", W = 1152, H = 412;
+  const svg = vsvg(id, W, H, "Two layers. Layer 1 is the enrico-factory repository: an orchestrator session launches builder and verifier workers, whose pull requests build the kit directory with roles, formats, the pipeline and the factory command line. Layer 2 is a production repository, one per series: factory init installs the kit as .factory, a showrunner session launches role workers, and their pull requests, locked by factory lock, produce sources, research, canon and episodes."); if (!svg) return;
+  const group = (x, w, title, sub) => {
+    el("rect", { x, y: 0, width: w, height: H, rx: 10, fill: "#f1f4f3", stroke: "#c3c9c8", "stroke-width": 1.2 }, svg);
+    vtext(svg, x + 16, 22, [["ntt", title, INK]], { anchor: "start" });
+    vtext(svg, x + 16, 38, [["nt", sub, "#4b5661"]], { anchor: "start" });
+  };
+  group(0, 530, "Layer 1 · this repository, enrico-factory", "Built with the software orchestration kit in .agents/orchestrator/");
+  group(622, 530, "Layer 2 · a production repository, one per series", "Run with the kit that layer 1 builds");
+  // layer 1
+  vnode(svg, 20, 62, 200, 92, HD.show, "Orchestrator session", ["Triages, launches workers,", "runs the merge gate", "The only role that merges"]);
+  vnode(svg, 310, 62, 200, 92, HD.wk, "Builder and verifier workers", ["Headless, one worktree each", "PR markers: READY, VERIFIED", "Never merge"]);
+  vnode(svg, 20, 240, 490, 150, HD.lake, "kit/  ·  what this repository builds", [
+    "roles/  one file per studio role: 5 makers and 4 checkers in v0",
+    "formats/  one file per story formula: 7 formats, 15 seconds to 20 minutes",
+    "pipeline.json  the stage ladder: maker, checker, room and greenlight per stage",
+    "factory  the command line: roles, launch, status, lint, lock, init",
+    "No third-party packages: Python 3 standard library, bash, git, gh"]);
+  vline(svg, id, [[220, 108], [310, 108]]);
+  vlabel(svg, 265, 100, "orch launch");
+  vline(svg, id, [[410, 154], [410, 240]], { c: GT, m: "art" });
+  vlabel(svg, 404, 194, "pull requests, merged by", "el", "end"); vlabel(svg, 404, 208, "orch merge --apply", "el", "end");
+  // layer 2
+  vnode(svg, 642, 62, 200, 92, HD.show, "Showrunner session", ["Files tickets, launches roles,", "rules, selects, locks", "The only role that merges"]);
+  vnode(svg, 932, 62, 200, 92, HD.wk, "Role workers", ["Makers and checkers", "Headless, one worktree each", "Never merge"]);
+  vnode(svg, 642, 240, 220, 150, HD.lake, ".factory/  ·  the installed kit", ["Role prompts", "Formats and the pipeline", "Lint and lock rules", "rules/production-rules.md is", "pasted into every prompt"]);
+  vnode(svg, 912, 240, 220, 150, HD.gh, "The production's work", ["sources/  raw inputs as text", "research/  researcher output", "canon/  bible, sheets, rulings", "episodes/<ep>/  premise … shots", "media/manifest.tsv"]);
+  vline(svg, id, [[842, 108], [932, 108]]);
+  vlabel(svg, 887, 100, "factory launch");
+  vline(svg, id, [[1032, 154], [1032, 240]], { c: GT, m: "art" });
+  vlabel(svg, 1026, 194, "pull requests, locked by", "el", "end"); vlabel(svg, 1026, 208, "factory lock --apply", "el", "end");
+  vline(svg, id, [[752, 240], [752, 154]], { dash: "4 3" });
+  vlabel(svg, 746, 201, "prompts, gates", "el", "end");
+  svg.querySelectorAll("rect[opacity]").forEach(r => r.setAttribute("fill", "#f1f4f3"));
+  // init
+  vline(svg, id, [[510, 315], [642, 315]], { c: OR, w: 1.8 });
+  vlabel(svg, 576, 306, "factory init <dir>");
+  vtext(svg, 576, 334, [["bx", "installs the kit into", "#4b5661"], ["bx", "a production repository", "#4b5661"]], { lh: 12 });
+})();
+
+// ---------------- 3. System map ----------------
+(function sysmap() {
+  const id = "sysmap", W = 1152, H = 474;
+  const svg = vsvg(id, W, H, "Interaction map. The owner gives greenlights, canon rulings and money decisions to the showrunner. The showrunner files tickets and posts launch, ruling, selected and greenlight comments on GitHub, runs the factory command line, gathers outside inputs into sources, and runs every paid job. The factory command line gives each worker a rendered role prompt and a worktree, reads the markers, and performs the merge that is the lock. Role workers push a branch, open a pull request and post first-line markers, and reach nothing else. Paid jobs write bytes to the media store and a manifest row to the pull request."); if (!svg) return;
+  const N = {
+    owner: [20, 14, 230, 86], ext: [20, 196, 230, 84], jobs: [20, 356, 230, 112],
+    gh: [462, 14, 228, 108], show: [462, 186, 228, 104], cli: [462, 362, 228, 106],
+    wk: [902, 164, 230, 144], lim: [902, 366, 230, 102] };
+  const cx = k => N[k][0] + N[k][2] / 2, cy = k => N[k][1] + N[k][3] / 2, r = k => N[k][0] + N[k][2], b = k => N[k][1] + N[k][3];
+  const node = (k, st, title, lines) => vnode(svg, N[k][0], N[k][1], N[k][2], N[k][3], st, title, lines);
+  node("owner", HD.owner, "Owner · the studio", ["Greenlights, budget, publishing", "Canon rulings they choose to make", "Approves in their own words"]);
+  node("ext", HD.grey, "Outside inputs", ["Web, documents, art archive", "Workers cannot reach these directly"]);
+  node("jobs", HD.plan, "Paid jobs + media store · planned", ["Image generation, 3D render, voice", "Run only in the showrunner session", "Bytes: media store, outside git", "Hash: a manifest row on the PR"]);
+  node("gh", HD.gh, "GitHub · the only state", ["Issues: tickets, labels, rulings", "Pull requests: one artifact each", "Comments: first-line markers", "main: locked work and canon"]);
+  node("show", HD.show, "Showrunner · orchestrating agent", ["Files tickets, launches roles, rules,", "selects, records greenlights, locks", "The only node that merges or spends"]);
+  node("cli", HD.grey, "factory command line", ["launch · status · lint · lock", "Applies the rules, decides nothing", "A check that cannot run is ERROR", "The merge is the lock"]);
+  node("wk", HD.wk, "Role workers · headless", ["Maker: writes one artifact on its", "own branch, in its own worktree", "Checker: reads the exact head,", "writes nothing", "Inputs: role prompt + main", "No access to money or merges"]);
+  node("lim", HD.bad, "Refused at the lock", ["A merge by anyone but factory lock", "Files outside the role's writes globs", "A verdict on an older head", "Canon changed without its reviewer"]);
+  const lab = (x, y, t, a = "middle", c = "el") => vlabel(svg, x, y, t, c, a);
+  // owner <-> showrunner
+  vline(svg, id, [[N.show[0], cy("show") - 30], [r("owner") + 40, cy("show") - 30], [r("owner") + 40, cy("owner")], [r("owner"), cy("owner")]], { both: true, c: BL });
+  lab(r("owner") + 46, 132, "greenlights, canon rulings, money;", "start"); lab(r("owner") + 46, 146, "asked only what cannot be undone", "start");
+  // outside inputs -> showrunner
+  vline(svg, id, [[r("ext"), cy("ext") + 6], [N.show[0], cy("ext") + 6]]);
+  lab((r("ext") + N.show[0]) / 2, cy("ext") + 22, "gathered into sources/");
+  // showrunner -> jobs
+  vline(svg, id, [[N.show[0], cy("show") + 38], [356, cy("show") + 38], [356, cy("jobs")], [r("jobs"), cy("jobs")]], { dash: "4 3" });
+  lab(362, 330, "runs every paid job", "start");
+  // showrunner <-> github
+  vline(svg, id, [[cx("show") - 40, N.show[1]], [cx("show") - 40, b("gh")]], { both: true, c: GT, m: "art" });
+  lab(cx("show") - 34, b("gh") + 26, "tickets, LAUNCH, RULING,", "start"); lab(cx("show") - 34, b("gh") + 40, "SELECTED, GREENLIGHT", "start");
+  // showrunner -> cli
+  vline(svg, id, [[cx("show") - 40, b("show")], [cx("show") - 40, N.cli[1]]]);
+  lab(cx("show") - 34, b("show") + 38, "runs", "start");
+  // cli <-> github
+  vline(svg, id, [[r("gh"), b("gh") - 12], [r("show") + 20, b("gh") - 12], [r("show") + 20, N.cli[1] + 40], [r("cli"), N.cli[1] + 40]], { both: true, c: GT, m: "art" });
+  lab(r("show") + 26, 330, "status and lock read the markers;", "start"); lab(r("show") + 26, 344, "the merge to main is the lock", "start");
+  // showrunner -> workers
+  vline(svg, id, [[r("show"), cy("show") + 8], [N.wk[0], cy("show") + 8]]);
+  lab((r("show") + N.wk[0]) / 2 + 12, cy("show") + 2, "factory launch: role prompt + worktree");
+  // workers <-> github
+  vline(svg, id, [[cx("wk"), N.wk[1]], [cx("wk"), cy("gh")], [r("gh"), cy("gh")]], { both: true, c: GT, m: "art" });
+  lab(cx("wk") - 6, cy("gh") - 22, "branch, pull request, canon and locked work from main", "end");
+  lab(cx("wk") - 6, cy("gh") - 8, "READY · ADDRESSED · BLOCKED · NOTES · APPROVED", "end");
+  // limits -> workers
+  vline(svg, id, [[cx("lim"), N.lim[1]], [cx("lim"), b("wk")]], { c: RD, m: "arb" });
+  lab(cx("lim") + 8, N.lim[1] - 22, "rechecked from GitHub", "start", "bad"); lab(cx("lim") + 8, N.lim[1] - 9, "on every lock", "start", "bad");
+})();
+
+// ---------------- 5. Stage ladder ----------------
+(function ladder() {
+  const id = "ladder", W = 1152, Y0 = 48, RH = 76, BH = 62, H = Y0 + RH * 5 - (RH - BH) + 10;
+  const svg = vsvg(id, W, H, "The stage ladder. Sources feed research, which feeds canon. Every story stage reads canon. The story stages run premise, beats, outline, script and board, each locked before the next starts; premise and board need an owner greenlight. Planned stages: the board feeds an animatic; canon feeds design, then asset build; the animatic and assets feed layout and animation, then render, then edit and sound, then technical QC, then a release tag after the owner decides to publish. Asset, render and edit bytes go to a media store outside git."); if (!svg) return;
+  const ry = r => Y0 + r * RH, cyr = r => ry(r) + BH / 2, bb = r => ry(r) + BH;
+  const band = (x, w, t, planned) => {
+    el("rect", { x, y: 0, width: w, height: H, rx: 8, fill: planned ? "#f6f8f7" : "#f1f4f3", stroke: "#dde2e1", "stroke-dasharray": planned ? "5 4" : "" }, svg);
+    vtext(svg, x + w / 2, 16, [["ch", t]]);
+  };
+  const C = { src: [0, 120], dev: [134, 172], story: [320, 190], pa: [526, 180], pb: [714, 180], post: [912, 240] };
+  band(0, 120, "Sources"); band(134, 172, "Development · v0"); band(320, 190, "Story · v0");
+  band(524, 372, "Production · planned", true); band(910, 242, "Post · planned", true);
+  const X = k => C[k][0] + 10, BW = k => C[k][1] - 20, R = k => X(k) + BW(k), CX = k => X(k) + BW(k) / 2;
+  const B = (k, r, st, lines) => vbox(svg, X(k), ry(r), BW(k), BH, lines, VS[st]);
+  B("src", 0, "plain", ["sources/", "lore text,", "card data,", "art reads"]);
+  B("dev", 0, "gh", ["research", "by researcher", "research/<topic>.md", ["bs", "checked by fact-checker", GT]]);
+  B("dev", 1, "gh", ["canon", "by canon-keeper", "canon/** bible, sheets, rulings", ["bs", "checked by canon-reviewer", GT]]);
+  vnote(svg, X("dev"), ry(2), BW("dev"), ry(4) + BH - ry(2), VS.lake, [
+    "What travels between", ["bt", "stages", INK], ["bx", ""], "Only files on main. A maker", "starts from a worktree of", "the current base, so it sees", "canon and every locked",
+    "upstream artifact, and", "nothing unfinished.", ["bx", ""], "Every factual line carries", "a provenance tag:", ["bs", "[text] [art]", GT], ["bs", "[inferred] [invented]", GT]]);
+  B("story", 0, "gh", ["premise · a room", "by 3 story-writers", "premise.md, names its format", ["bs", "checked by story-editor", GT]]);
+  B("story", 1, "gh", ["beats", "by story-writer", "beats.md", ["bs", "checked by story-editor", GT]]);
+  B("story", 2, "gh", ["outline", "by script-writer", "outline.md", ["bs", "checked by story-editor", GT]]);
+  B("story", 3, "gh", ["script", "by script-writer", "script.md, lines.json, ledger.json", ["bs", "checked by story-editor", GT]]);
+  B("story", 4, "gh", ["board", "by storyboard-artist", "shots/<id>.yaml", ["bs", "checked by continuity-supervisor", GT]]);
+  B("pa", 0, "plan", ["design", "character and set sheets"]);
+  B("pa", 1, "plan", ["asset build", "3D models, rigs, materials"]);
+  B("pa", 4, "plan", ["animatic", "timed panels + scratch voice", "last cheap gate before render"]);
+  B("pb", 2, "plan", ["layout and animation", "scene scripts"]);
+  B("pb", 3, "plan", ["render", "frames and", "scene-state records"]);
+  B("post", 1, "plan", ["release tag", "delivery of a finished episode"]);
+  B("post", 2, "plan", ["technical QC", "stream, loudness, spoken lines,", "cut list"]);
+  B("post", 3, "plan", ["edit and sound", "the cut as code, the mix"]);
+  B("post", 4, "lake", ["Media store", "bytes live outside git", "media/manifest.tsv holds", "id, sha256, bytes, source"]);
+  // flows
+  const Vd = (k, a, b2, o) => vline(svg, id, [[CX(k), bb(a)], [CX(k), ry(b2)]], o);
+  const Vu = (k, a, b2, o) => vline(svg, id, [[CX(k), ry(a)], [CX(k), bb(b2)]], o);
+  vline(svg, id, [[R("src"), cyr(0)], [X("dev"), cyr(0)]]);
+  Vd("dev", 0, 1);
+  // canon -> premise and canon -> design, along the top
+  vline(svg, id, [[R("dev"), cyr(1)], [312, cyr(1)], [312, 32], [CX("pa"), 32], [CX("pa"), ry(0)]], { c: GT, m: "art" });
+  vline(svg, id, [[312, cyr(0)], [X("story"), cyr(0)]], { c: GT, m: "art" });
+  vlabel(svg, 420, 35, "every story stage reads canon");
+  Vd("story", 0, 1); Vd("story", 1, 2); Vd("story", 2, 3); Vd("story", 3, 4);
+  vline(svg, id, [[R("story"), cyr(1) + 8], [R("story") + 9, cyr(1) + 8], [R("story") + 9, cyr(3) - 8], [R("story"), cyr(3) - 8]], { dash: "4 3", c: GY });
+  vline(svg, id, [[R("story"), cyr(4)], [X("pa"), cyr(4)]]);
+  Vd("pa", 0, 1);
+  vline(svg, id, [[CX("pa") - 20, bb(1)], [CX("pa") - 20, cyr(2) - 10], [X("pb"), cyr(2) - 10]]);
+  vline(svg, id, [[CX("pa") + 20, ry(4)], [CX("pa") + 20, cyr(2) + 10], [X("pb"), cyr(2) + 10]]);
+  Vd("pb", 2, 3);
+  vline(svg, id, [[R("pb"), cyr(3)], [X("post"), cyr(3)]]);
+  Vu("post", 3, 2); Vu("post", 2, 1);
+  vline(svg, id, [[CX("pb"), bb(3)], [CX("pb"), cyr(4)], [X("post"), cyr(4)]], { dash: "2 3", c: GY });
+  vline(svg, id, [[CX("post") + 60, bb(3)], [CX("post") + 60, ry(4)]], { dash: "2 3", c: GY });
+  vlabel(svg, CX("pa") + 26, cyr(3), "timing", "el", "start");
+  vlabel(svg, CX("pa") - 26, cyr(2) - 22, "assets", "el", "end");
+  // greenlights
+  vnum(svg, CX("story"), (bb(0) + ry(1)) / 2 - 1, "G"); vnum(svg, (R("story") + X("pa")) / 2 + 6, cyr(4), "G"); vnum(svg, CX("post"), (bb(1) + ry(2)) / 2 + 1, "G");
+  vtext(svg, X("post"), ry(0) + 16, [["bt", "Owner decides to publish", INK], ["bx", "A release tag is the delivery.", "#4b5661"], ["bx", "Nothing here is built in v0.", "#4b5661"]], { anchor: "start", lh: 13 });
+})();
+
+// ---------------- 7. Swimlane ----------------
+(function swim() {
+  const id = "swim", W = 1152, HH = 22, LHW = 106, CW = (W - LHW) / 8, LH = 90, H = HH + LH * 5;
+  const svg = vsvg(id, W, H, "Swimlane of one beats ticket. Showrunner lane: files the ticket, launches the story-writer, reads the markers with factory status, launches the story-editor, relaunches the maker after notes, launches a fresh checker, asks the owner for a greenlight where the stage needs one, and runs factory lock. GitHub lane: the issue, the launch comment, the pull request with READY, NOTES, ADDRESSED, APPROVED, GREENLIGHT and the merge to main. Maker lane: the story-writer writes beats.md and later addresses the notes. Checker lane: the story-editor reruns the lint and applies the rubric on each head. Owner lane: not involved until the greenlight."); if (!svg) return;
+  const L = c => LHW + c * CW, BX = c => L(c) + 7, BW = CW - 14, T = l => HH + l * LH, BY = l => T(l) + 11, BH = LH - 22;
+  const BR = c => BX(c) + BW, CX = c => BX(c) + BW / 2, CY = l => BY(l) + BH / 2, BB = l => BY(l) + BH;
+  const lanes = [
+    ["Owner", "the studio", "#eef3fb", "#9db7e0"], ["Showrunner", "orchestrator session", "#e9edf2", NV],
+    ["GitHub", "issue · PR · markers", "#eef6f4", "#8fcabd"], ["Maker", "story-writer", "#fbf6f1", "#d8a77c"], ["Checker", "story-editor", "#fbf6f1", "#d8a77c"]];
+  const cols = ["Ticket", "Launch", "Make", "Check", "Fix round", "Approve", "Greenlight", "Lock"];
+  lanes.forEach(([n, sub, f, s], i) => {
+    el("rect", { x: 0, y: T(i), width: W, height: LH, fill: i % 2 ? "#fbfcfc" : "#f3f6f5", stroke: "#dde2e1" }, svg);
+    el("rect", { x: 0, y: T(i), width: LHW - 6, height: LH, fill: f, stroke: s }, svg);
+    vtext(svg, (LHW - 6) / 2, T(i) + LH / 2 - 2, [["lh", n], ["lhs", sub]], { lh: 14 });
+  });
+  cols.forEach((c, i) => { vtext(svg, L(i) + CW / 2, 15, [["ch", c]]); if (i) el("line", { x1: L(i), x2: L(i), y1: HH, y2: H, stroke: "#dde2e1", "stroke-dasharray": "2 3" }, svg); });
+  const ST = { o: VS.owner, d: VS.show, g: VS.gh, w: VS.wk };
+  const B = (c, l, st, lines) => vbox(svg, BX(c), BY(l), BW, BH, lines, ST[st]);
+  // Owner
+  vnote(svg, BX(0), BY(0), BR(1) - BX(0), BH, VS.owner, ["The owner is asked only for", "greenlights, money, publishing,", "and canon rulings they choose to make"]);
+  el("rect", { x: BX(2), y: BY(0) + 6, width: BR(5) - BX(2), height: BH - 12, rx: 6, fill: "#ffffff", stroke: "#9db7e0", "stroke-dasharray": "5 4" }, svg);
+  vtext(svg, (BX(2) + BR(5)) / 2, CY(0) - 3, [["bt", "No owner involvement while the artifact is made, checked and fixed"], ["bx", "a choice that can be undone is settled by a [SHOWRUNNER] RULING on the ticket, not by a question"]], { lh: 14 });
+  B(6, 0, "o", ["Approves", "in their own words", ["bs", "premise and board only", BL]]);
+  // Showrunner
+  B(0, 1, "d", ["File the ticket", "[KEY] summary with", "checkable criteria"]);
+  B(1, 1, "d", ["factory launch", "story-writer: worktree", "+ rendered prompt"]);
+  B(2, 1, "d", ["factory status", "reads the markers,", ["bs", "prints the next step", MI]]);
+  B(3, 1, "d", ["factory launch", "story-editor: fresh", "worktree at the head"]);
+  B(4, 1, "d", ["Relaunch maker", "same pull request,", "with the notes"]);
+  B(5, 1, "d", ["Fresh checker", "a new session on", "the new head"]);
+  B(6, 1, "d", ["Ask for greenlight", "shows the artifact and", "the open Issue notes"]);
+  B(7, 1, "d", ["factory lock --apply", "one lock per run", ["bs", "rechecks every rule", MI]]);
+  // GitHub
+  B(0, 2, "g", ["Issue", "tracked · stage:beats", ["bs", "unit:ep01", GT]]);
+  B(1, 2, "g", ["LAUNCH comment", "exact prompt, sha256,", "model, base commit"]);
+  B(2, 2, "g", ["Pull request", "body: Ref #issue", ["bs", "marker: READY", GT]]);
+  B(3, 2, "g", ["NOTES", "N1 Blocker · N2 Issue", ["bs", "Reviewed head abc123", GT]]);
+  B(4, 2, "g", ["ADDRESSED", "new commits; the old", "verdict is now stale"]);
+  B(5, 2, "g", ["APPROVED", "evidence per criterion", ["bs", "Reviewed head def456", GT]]);
+  B(6, 2, "g", ["GREENLIGHT", "the owner's words,", "quoted with the date"]);
+  B(7, 2, "g", ["Merge to main", "the merge is the lock", ["bs", "next stage may start", GT]]);
+  // Maker
+  vnote(svg, BX(0), BY(3), BR(1) - BX(0), BH, VS.warn, ["How the next step starts: no direct triggers", "1. A worker posts a first-line marker and exits", "2. factory status reads the markers", "3. The showrunner launches the next role"]);
+  B(2, 3, "w", ["story-writer", "writes beats.md,", "runs factory lint"]);
+  B(4, 3, "w", ["story-writer", "addresses N1..Nn", "on the same branch"]);
+  // Checker
+  vnote(svg, BX(0), BY(4), BR(1) - BX(0), BH, VS.lake, ["A verdict counts only when it", "is newer than the last READY or ADDRESSED,", "names the current head, and comes from", "the checker the pipeline names for the stage"]);
+  B(3, 4, "w", ["story-editor", "reruns the lint,", "applies the rubric"]);
+  B(5, 4, "w", ["story-editor", "reruns everything", "on the new head"]);
+  vnote(svg, BX(6), BY(4), BR(7) - BX(6), BH, VS.lake, ["What the lock rechecks", "APPROVED on the head · no open Blocker", "upstream stage locked · greenlight recorded", "writes globs · lint green · base merged · no hold"]);
+  // Flows
+  const V = (c, a, b, o) => vline(svg, id, [[CX(c), a > b ? BY(a) : BB(a)], [CX(c), a > b ? BB(b) : BY(b)]], o);
+  const Hz = (l, a, b, o) => vline(svg, id, [[BR(a), CY(l)], [BX(b), CY(l)]], o);
+  V(0, 1, 2); V(1, 1, 2);
+  for (let c = 0; c < 7; c++) Hz(1, c, c + 1);
+  // launches through the gutters
+  vline(svg, id, [[BR(1), CY(1) + 18], [L(2) + 4, CY(1) + 18], [L(2) + 4, CY(3)], [BX(2), CY(3)]]);
+  vline(svg, id, [[BX(3), CY(1) + 18], [L(3) + 4, CY(1) + 18], [L(3) + 4, CY(4)], [BX(3), CY(4)]]);
+  vline(svg, id, [[BX(4), CY(1) + 18], [L(4) + 4, CY(1) + 18], [L(4) + 4, CY(3)], [BX(4), CY(3)]]);
+  vline(svg, id, [[BX(5), CY(1) + 18], [L(5) + 4, CY(1) + 18], [L(5) + 4, CY(4)], [BX(5), CY(4)]]);
+  vlabel(svg, L(2) + 11, T(3) + 7, "launch", "el", "start");
+  vlabel(svg, L(3) + 11, T(4) + 7, "launch", "el", "start");
+  // workers post on the pull request
+  V(2, 3, 2); V(3, 4, 2); V(4, 3, 2); V(5, 4, 2);
+  // markers are read, never pushed
+  const read = (c, t, col, m) => {
+    vline(svg, id, [[CX(c) + 30, BY(2)], [CX(c) + 30, BB(1) + 6], [CX(c + 1) - 28, BB(1) + 6], [CX(c + 1) - 28, BB(1)]], { c: col, m });
+    vlabel(svg, CX(c) + 34, BB(1) + 9, t, "el", "start");
+  };
+  read(2, "READY", OR); read(3, "NOTES", OR); read(4, "ADDRESSED", OR); read(5, "APPROVED", GT, "art");
+  // greenlight and lock
+  V(6, 1, 0, { both: true, c: BL }); V(6, 1, 2); V(7, 1, 2);
+  // step numbers
+  [[0, 1, 1], [1, 1, 2], [2, 3, 3], [3, 4, 4], [4, 3, 5], [5, 4, 6], [6, 0, 7], [7, 1, 8]]
+    .forEach(([c, l, n]) => vnum(svg, BX(c) + 2, BY(l) + 2, n, l === 0 ? BL : l === 1 ? OR : TN));
+})();
+
+// ---------------- 8. Ticket states ----------------
+(function states() {
+  const id = "states", W = 1152, H = 262, BW = 152, BH = 58, GAP = (W - 6 * BW) / 5;
+  const svg = vsvg(id, W, H, "Ticket state diagram. Backlog becomes Ready when criteria are written and the upstream stage is locked. Ready becomes In progress on a showrunner launch. In progress becomes In review when the maker posts READY, or Blocked when it posts BLOCKED; a showrunner ruling returns a blocked ticket to Ready. In review becomes Notes given when the checker posts NOTES with a Blocker, and returns to In review when the maker posts ADDRESSED. In review becomes Approved when the checker posts APPROVED on the current head. Approved becomes Locked when factory lock merges. A later canon change makes a locked ticket Stale, and the showrunner files a revision ticket that returns it to Backlog."); if (!svg) return;
+  const X = i => i * (BW + GAP), CX = i => X(i) + BW / 2, Y1 = 18, Y2 = 150, CY1 = Y1 + BH / 2, CY2 = Y2 + BH / 2;
+  const top = [
+    ["Backlog", "the showrunner files", "the ticket", "plain"], ["Ready", "criteria written,", "upstream stage locked", "plain"],
+    ["In progress", "[SHOWRUNNER] LAUNCH", "of the maker", "wk"], ["In review", "the maker posts", "READY or ADDRESSED", "gh"],
+    ["Approved", "the checker posts APPROVED", "on the current head", "gh"], ["Locked", "greenlight recorded if needed,", "then factory lock merges", "show"]];
+  top.forEach(([t, a, b, st], i) => vbox(svg, X(i), Y1, BW, BH, [t, a, b], VS[st]));
+  for (let i = 0; i < 5; i++) vline(svg, id, [[X(i) + BW, CY1], [X(i + 1), CY1]], i === 4 ? { c: GT, m: "art" } : {});
+  vbox(svg, X(2), Y2, BW, BH, ["Blocked", "the maker posts BLOCKED:", "missing, tried, resume from"], VS.warn);
+  vbox(svg, X(3), Y2, BW, BH, ["Notes given", "the checker posts NOTES", "with a Blocker"], VS.warn);
+  vbox(svg, X(5), Y2, BW, BH, ["Stale", "a later canon change", "breaks it"], VS.bad);
+  // in progress -> blocked -> ready
+  vline(svg, id, [[CX(2), Y1 + BH], [CX(2), Y2]], { c: OR });
+  vline(svg, id, [[X(2), CY2], [CX(1), CY2], [CX(1), Y1 + BH]], { c: OR });
+  vlabel(svg, CX(1) + 8, CY2 - 8, "showrunner RULING", "el", "start");
+  // in review <-> notes given
+  vline(svg, id, [[CX(3) - 24, Y1 + BH], [CX(3) - 24, Y2]], { c: OR });
+  vline(svg, id, [[CX(3) + 24, Y2], [CX(3) + 24, Y1 + BH]], { c: GT, m: "art" });
+  vlabel(svg, CX(3) - 30, (Y1 + BH + Y2) / 2 + 3, "NOTES", "el", "end");
+  vlabel(svg, CX(3) + 30, (Y1 + BH + Y2) / 2 + 3, "ADDRESSED", "el", "start");
+  vtext(svg, X(4), CY2 - 8, [["bt", "After three rounds of notes", INK], ["bx", "on one pull request, the", "#4b5661"], ["bx", "showrunner rules.", "#4b5661"]], { anchor: "start", lh: 13 });
+  // locked -> stale -> backlog
+  vline(svg, id, [[CX(5), Y1 + BH], [CX(5), Y2]], { c: RD, m: "arb" });
+  vline(svg, id, [[CX(5), Y2 + BH], [CX(5), 240], [CX(0), 240], [CX(0), Y1 + BH]], { c: RD, m: "arb", dash: "5 3" });
+  vlabel(svg, (CX(0) + CX(5)) / 2, 243, "the showrunner files a revision ticket at the earliest broken stage → back to Backlog", "bad");
+})();
+
+// ---------------- 9. A room ----------------
+(function room() {
+  const id = "room", W = 1152, RH = 92, Y0 = 30, BH = 66, H = Y0 + RH * 3 + 82;
+  const svg = vsvg(id, W, H, "A room. One premise ticket for episode one is launched to three story-writers, each in its own worktree and branch with the same canon. They open three pull requests, each naming its format and posting READY. One story-editor reads all three and scores every pitch on one rubric, posting NOTES or APPROVED on each. The showrunner posts SELECTED with the chosen pull request and the reason, then GREENLIGHT after the owner approves. Factory lock merges the selected pitch, and the other two are closed."); if (!svg) return;
+  const C = { tk: [0, 158], mk: [204, 168], pr: [418, 180], ck: [644, 176], dc: [866, 132], out: [1024, 128] };
+  const ry = r => Y0 + r * RH + (RH - BH) / 2, cyr = r => ry(r) + BH / 2;
+  const X = k => C[k][0], R = k => C[k][0] + C[k][1];
+  [["tk", "Room ticket"], ["mk", "Three makers, in parallel"], ["pr", "Three pull requests"], ["ck", "One checker, one rubric"], ["dc", "Showrunner decides"], ["out", "Outcome"]]
+    .forEach(([k, t]) => vtext(svg, X(k) + C[k][1] / 2, 14, [["ch", t]]));
+  const BXr = (k, r, st, lines) => vbox(svg, X(k), ry(r), C[k][1], BH, lines, VS[st]);
+  BXr("tk", 1, "show", ["Premise ticket", "[KEY] ep01 premise", ["bs", "stage:premise · unit:ep01", MI]]);
+  ["A", "B", "C"].forEach((n, r) => {
+    BXr("mk", r, "wk", ["story-writer " + n, "own worktree, own branch", "same ticket, same canon"]);
+    BXr("pr", r, "gh", ["Pull request " + n, "premise.md, names its format", ["bs", "marker: READY", GT]]);
+    vline(svg, id, [[R("tk"), cyr(1)], [R("tk") + 23, cyr(1)], [R("tk") + 23, cyr(r)], [X("mk"), cyr(r)]]);
+    vline(svg, id, [[R("mk"), cyr(r)], [X("pr"), cyr(r)]], { c: GT, m: "art" });
+    vline(svg, id, [[R("pr"), cyr(r)], [X("ck"), cyr(r)]], { c: OR });
+  });
+  vlabel(svg, R("tk") + 17, cyr(0) + 3, "launch ×3", "el", "end");
+  el("rect", { x: X("ck"), y: ry(0), width: C.ck[1], height: ry(2) + BH - ry(0), rx: 6, fill: "#fffaf5", stroke: TN, "stroke-width": 1.2, "stroke-dasharray": "4 3" }, svg);
+  vtext(svg, X("ck") + C.ck[1] / 2, cyr(1) - 34, [["bt", "story-editor", INK], ["bx", "reads all three pitches", INK], ["bx", "against the same canon", INK], ["bx", ""], ["bs", "scores every pitch", GT], ["bs", "on one rubric", GT], ["bx", ""], ["bx", "posts NOTES or APPROVED", INK], ["bx", "on each pull request", INK]], { lh: 12.5 });
+  const dy0 = cyr(0) + 14, dy1 = cyr(2) - 14;
+  vbox(svg, X("dc"), dy0 - BH / 2, C.dc[1], BH, ["SELECTED #<pr>", "the chosen pitch", "and the reason"], VS.show);
+  vbox(svg, X("dc"), dy1 - BH / 2, C.dc[1], BH, ["GREENLIGHT", "the owner approves;", "words and date recorded"], VS.owner);
+  vline(svg, id, [[R("ck"), dy0], [X("dc"), dy0]]);
+  vlabel(svg, (R("ck") + X("dc")) / 2, dy0 - 7, "scores");
+  vline(svg, id, [[X("dc") + C.dc[1] / 2, dy0 + BH / 2], [X("dc") + C.dc[1] / 2, dy1 - BH / 2]]);
+  BXr("out", 0, "none", ["Pull request A", "closed"]);
+  BXr("out", 1, "show", ["Pull request B", "factory lock merges", ["bs", "premise locked", MI]]);
+  BXr("out", 2, "none", ["Pull request C", "closed"]);
+  const bus = R("dc") + 13;
+  vline(svg, id, [[R("dc"), dy1], [bus, dy1], [bus, cyr(1)], [X("out"), cyr(1)]], { c: GT, m: "art", w: 1.6 });
+  vline(svg, id, [[bus, cyr(1)], [bus, cyr(0)], [X("out"), cyr(0)]], { c: GY, dash: "4 3" });
+  vline(svg, id, [[bus, dy1], [bus, cyr(2)], [X("out"), cyr(2)]], { c: GY, dash: "4 3" });
+  // tally band
+  const by = Y0 + 3 * RH + 14, bh = 58;
+  el("rect", { x: 0, y: by, width: W, height: bh, rx: 8, fill: NV }, svg);
+  vtext(svg, 18, by + 24, [["ntt", "The one exception to one ticket, one pull request", "#ffffff"], ["nt", "In v0 only the premise stage runs as a room. The lock merges a room pull request only if it is the one selected.", "#dfe7ee"]], { anchor: "start", lh: 18 });
+  [["1", "ticket"], ["3", "pull requests"], ["1", "rubric"], ["1", "locked"]].forEach(([n, t], i) => { const x = 760 + i * 100; vtext(svg, x, by + 26, [["ntt", n, MI], ["nt", t, "#dfe7ee"]], { anchor: "start", lh: 16 }); });
+})();
+
+// ---------------- 10. Canon change ----------------
+(function canon() {
+  const id = "canon", W = 1152, H = 446;
+  const svg = vsvg(id, W, H, "A canon change. A canon ticket, from a ruling or new research, goes to the canon-keeper, who opens a pull request on the canon directory. The canon-reviewer checks consistency and lists the locked artifacts that relied on the old text; notes send it back to the canon-keeper. On APPROVED, factory lock merges. The showrunner then files one revision ticket per broken unit, labelled stale, at the earliest broken stage, and later stages of that unit wait until the revision locks. Example grid: episode one's premise stays locked, its beats become stale, its outline in progress waits, and its script and board wait; episode two's premise stays locked and its beats pull request in review loses its verdict when the base merge brings canon it relies on."); if (!svg) return;
+  const BW = 170, GAP = (W - 6 * BW) / 5, Y = 26, BH = 70, X = i => i * (BW + GAP), CX = i => X(i) + BW / 2, CY = Y + BH / 2;
+  const steps = [
+    ["gh", ["Canon ticket", "a ruling or new research", ["bs", "stage:canon", GT]]],
+    ["wk", ["canon-keeper", "pull request on canon/**:", "bible, sheets, rulings.md"]],
+    ["wk", ["canon-reviewer", "checks consistency; lists the", "locked work that relied on", "the old text"]],
+    ["show", ["factory lock", "needs canon-reviewer", "APPROVED, whatever the", "pull request's stage"]],
+    ["show", ["Showrunner", "one revision ticket per", "broken unit, label stale,", "at the earliest broken stage"]],
+    ["plain", ["Later stages wait", "until the revision", "of that unit locks"]]];
+  steps.forEach(([st, lines], i) => vbox(svg, X(i), Y, BW, BH, lines, VS[st]));
+  for (let i = 0; i < 5; i++) vline(svg, id, [[X(i) + BW, CY], [X(i + 1), CY]], i === 2 ? { c: GT, m: "art" } : {});
+  vlabel(svg, X(3) - 12, Y - 7, "APPROVED", "el", "end");
+  vline(svg, id, [[CX(2), Y + BH], [CX(2), Y + BH + 16], [CX(1), Y + BH + 16], [CX(1), Y + BH]], { c: OR });
+  vlabel(svg, (CX(1) + CX(2)) / 2, Y + BH + 19, "NOTES");
+  [1, 2, 3, 4, 5, 6].forEach((n, i) => vnum(svg, X(i) + 2, Y + 2, n, i < 3 ? (i ? TN : GT) : i < 5 ? OR : GY));
+  // example grid
+  const GY0 = 196, GH = 60, GG = 12, LX = 262, CWd = (W - LX) / 5, cellX = c => LX + c * CWd + 6, cellW = CWd - 12, rowY = r => GY0 + r * (GH + GG);
+  vtext(svg, 0, 150, [["ntt", "Example: what one locked canon change does to two episodes", INK]], { anchor: "start" });
+  ["premise", "beats", "outline", "script", "board"].forEach((s, c) => vtext(svg, cellX(c) + cellW / 2, 172, [["ch", s]]));
+  vbox(svg, 0, rowY(0), 178, GH * 2 + GG, [["bt", "Canon change locks", RD], ["bx", "canon/characters/<id>.md", INK], ["bx", ""], ["bx", "the reviewer's stale list:", INK], ["bs", "ep01 beats", RD], ["bx", ""], ["bx", "other open work that reads it", INK], ["bx", "loses its verdict on rebase", INK]], VS.bad);
+  ["ep01", "ep02"].forEach((u, r) => vtext(svg, 222, rowY(r) + GH / 2 + 4, [["lh", u]]));
+  const cell = (r, c, st, lines) => vbox(svg, cellX(c), rowY(r), cellW, GH, lines, VS[st]);
+  cell(0, 0, "lake", ["locked", "did not rely on the", "changed text: untouched"]);
+  cell(0, 1, "bad", [["bt", "locked → stale", RD], ["bx", "relied on the old text;", INK], ["bs", "revision ticket filed here", RD]]);
+  cell(0, 2, "warn", ["in progress → waits", "until the beats", "revision locks"]);
+  cell(0, 3, "none", ["not started", "waits"]);
+  cell(0, 4, "none", ["not started", "waits"]);
+  cell(1, 0, "lake", ["locked", "did not rely on the", "changed text: untouched"]);
+  cell(1, 1, "warn", ["in review → verdict void", "merging the base brings in", "canon this work relies on"]);
+  cell(1, 2, "none", ["not started"]);
+  cell(1, 3, "none", ["not started"]);
+  cell(1, 4, "none", ["not started"]);
+  // stale arrow along the top of the grid
+  vline(svg, id, [[89, rowY(0)], [89, 184], [cellX(1) + cellW / 2, 184], [cellX(1) + cellW / 2, rowY(0)]], { c: RD, m: "arb" });
+  vline(svg, id, [[244, rowY(1) + GH / 2 + 18], [cellX(0) - 2, rowY(1) + GH / 2 + 18], [cellX(0) - 2, rowY(1) + GH + 6], [cellX(1) + cellW / 2, rowY(1) + GH + 6], [cellX(1) + cellW / 2, rowY(1) + GH]], { c: OR, dash: "4 3" });
+  vline(svg, id, [[178, rowY(1) + GH / 2 + 18], [244, rowY(1) + GH / 2 + 18]], { c: OR, noEnd: true, dash: "4 3" });
+  // legend
+  const ly = rowY(1) + GH + 30;
+  [["lake", "locked, unaffected"], ["bad", "stale: revision ticket"], ["warn", "held or verdict void"], ["none", "not started"]].forEach(([st, t], i) => {
+    const x = LX + 6 + i * 180;
+    el("rect", { x, y: ly - 10, width: 16, height: 12, rx: 3, fill: VS[st].fill, stroke: VS[st].stroke, "stroke-dasharray": VS[st].dash || "" }, svg);
+    vtext(svg, x + 22, ly, [["bx", t, "#4b5661"]], { anchor: "start" });
+  });
+  vtext(svg, 0, ly + 22, [["bx", "A pull request that touches canon/** needs APPROVED from canon-reviewer whatever its stage, so a writer cannot change canon inside a script. Stricter than the software kit: a verdict does not survive a base merge that changes canon it relies on.", GY]], { anchor: "start" });
+})();
+
+// ---------------- Deck navigation ----------------
+const slides = [...document.querySelectorAll(".slide")];
+const stage = document.getElementById("stage");
+let cur = Math.min(Math.max(parseInt(location.hash.slice(1), 10) - 1 || 0, 0), slides.length - 1);
+slides.forEach((s, i) => { s.querySelector(".pn").textContent = s.dataset.title + ", " + (i + 1) + " of " + slides.length; });
+function fit() { const s = Math.min(innerWidth / 1320, innerHeight / 760); stage.style.transform = `scale(${s})`; }
+function go(i) {
+  cur = Math.max(0, Math.min(slides.length - 1, i));
+  slides.forEach((s, k) => s.classList.toggle("active", k === cur));
+  document.getElementById("count").textContent = cur + 1 + " / " + slides.length;
+  document.getElementById("progress").style.width = ((cur + 1) / slides.length) * 100 + "%";
+  document.getElementById("notesBody").innerHTML = slides[cur].querySelector(".notes")?.innerHTML || "";
+  history.replaceState(null, "", "#" + (cur + 1));
+  hideTip();
+}
+function toggleNotes() { const n = document.getElementById("notes"), b = document.getElementById("notesBtn"); n.classList.toggle("on"); b?.setAttribute("aria-pressed", n.classList.contains("on")); }
+const phone = matchMedia("(max-width: 820px)");
+phone.addEventListener("change", () => location.reload());
+addEventListener("keydown", e => {
+  if (phone.matches) return;
+  if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); go(cur + 1); }
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); go(cur - 1); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(slides.length - 1);
+  else if (e.key.toLowerCase() === "n") toggleNotes();
+});
+document.getElementById("prev").onclick = () => go(cur - 1);
+document.getElementById("next").onclick = () => go(cur + 1);
+document.getElementById("notesBtn").onclick = toggleNotes;
+addEventListener("hashchange", () => go((parseInt(location.hash.slice(1), 10) || 1) - 1));
+addEventListener("resize", fit);
+fit(); go(cur);
+</script>
+</body>
+</html>

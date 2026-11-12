@@ -319,6 +319,76 @@ class UpstreamTest(unittest.TestCase):
         self.assertEqual(self.upstream(4), (True, "upstream stage premise is locked for ep02"))
 
 
+SEQUENCE = '{"id": "Q"}\n'
+
+
+class EpisodeAfterSequenceTest(unittest.TestCase):
+    """ISSUE-251 behaviours 1 to 6: rule 4 across ``episode`` and ``sequence`` stages."""
+
+    def setUp(self):
+        self.w = World(self)
+        for rel in ("episodes/ep01/sequences/Q1/sequence.json", "episodes/ep01/sequences/Q2/sequence.json",
+                    "episodes/ep02/sequences/Q1/sequence.json"):
+            self.w.commit_file(rel, SEQUENCE)
+        self.w.apply({"issue": ticket_issue(11, "BD-1", "board", "ep01/Q1", state="closed")})
+        self.w.apply({"pull": pull_record(12, 11, "feat/BD-1", state="merged")})
+        self.w.apply({"issue": ticket_issue(13, "BD-2", "board", "ep01/Q2", state="closed")})
+        self.w.apply({"pull": pull_record(14, 13, "feat/BD-2", state="merged")})
+        for number, unit in ((21, "ep01"), (22, "ep02"), (23, "ep03")):
+            self.w.apply({"issue": ticket_issue(number, f"RL-{number}", "reel", unit)})
+
+    def upstream(self, number):
+        state = self.w.load()
+        return tickets.upstream(self.w.p, state, state.tickets[number], self.w.root)
+
+    def test_every_board(self):
+        self.assertEqual(self.upstream(21), (True, "upstream stage board is locked for ep01"))
+        self.w.set_pull(14, state="closed", merged_at=None)
+        self.assertEqual(self.upstream(21), (False, "upstream stage board is not locked for ep01/Q2"))
+
+    def test_another_episode(self):
+        self.assertEqual(self.upstream(22), (False, "upstream stage board is not locked for ep02/Q1"))
+        self.w.apply({"issue": ticket_issue(15, "BD-3", "board", "ep02/Q1", state="closed")})
+        self.w.apply({"pull": pull_record(16, 15, "feat/BD-3", state="merged")})
+        self.assertEqual(self.upstream(22), (True, "upstream stage board is locked for ep02"))
+
+    def test_no_sequence(self):
+        self.assertEqual(self.upstream(23),
+                         (False, "upstream stage board is not locked for ep03: no sequence on the base"))
+        self.assertEqual(self.upstream(21), (True, "upstream stage board is locked for ep01"))
+
+    def test_a_sequence_added_on_the_base(self):
+        self.w.commit_file("episodes/ep01/sequences/Q3/sequence.json", SEQUENCE)
+        self.assertEqual(self.upstream(21), (False, "upstream stage board is not locked for ep01/Q3"))
+
+    def test_a_sequence_off_the_base_is_not_read(self):
+        path = self.w.root / "episodes/ep01/sequences/Q3/sequence.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(SEQUENCE)
+        self.assertEqual(self.upstream(21), (True, "upstream stage board is locked for ep01"))
+        self.w.git("checkout", "-q", "-b", "elsewhere")
+        self.w.commit("Q3 elsewhere")
+        self.assertEqual(self.upstream(21), (True, "upstream stage board is locked for ep01"))
+
+    def test_sequence_after_episode(self):
+        w = World(self, "upstream")
+        w.set_pull(34, state="closed", merged_at=None)
+        w.apply({"issue": ticket_issue(12, "SC-4", "script", "ep04", state="closed")})
+        w.apply({"pull": pull_record(40, 12, "feat/SC-4-ep04", state="merged")})
+        state = w.load()
+        self.assertEqual(tickets.upstream(w.p, state, state.tickets[9], w.root),
+                         (False, "upstream stage script is not locked for ep03/Q1"))
+
+    def test_sequences(self):
+        self.w.commit_file("episodes/ep05/sequences/Q10/sequence.json", SEQUENCE)
+        self.w.commit_file("episodes/ep05/sequences/Q2/sequence.json", SEQUENCE)
+        self.w.commit_file("episodes/ep05/sequences/Q1/sequence.json", SEQUENCE)
+        self.w.commit_file("episodes/ep05/sequences/Q1/shots/Q1-1.json", "{}\n")
+        self.w.commit_file("episodes/ep05/sequences/notes.md", "Notes.\n")
+        self.assertEqual(tickets.sequences(self.w.p, self.w.root, "ep05"), ["Q1", "Q10", "Q2"])
+        self.assertEqual(tickets.sequences(self.w.p, self.w.root, "ep03"), [])
+
+
 class FrozenTest(unittest.TestCase):
     def test_open_freeze_issue(self):
         self.assertTrue(tickets.frozen(github.Recorded(FIX / "freeze" / "open")))

@@ -4,5 +4,6 @@
  {"room": "story", "stage": "beats", "unit": "episode", "after": "premise", "maker": "writer", "lint": ["structure"], "checker": "editor", "judge": "critic", "blind": false, "pitches": 1, "paths": ["episodes/*/beats.md"]},
  {"room": "story", "stage": "outline", "unit": "episode", "after": "beats", "maker": "writer", "lint": ["structure"], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/outline.md"]},
  {"room": "story", "stage": "script", "unit": "episode", "after": "outline", "maker": "writer", "lint": ["structure"], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/script.md"]},
- {"room": "story", "stage": "board", "unit": "sequence", "after": "script", "maker": "writer", "lint": ["structure"], "checker": "editor", "judge": "critic", "blind": true, "pitches": 1, "paths": ["episodes/*/sequences/**"]}
+ {"room": "story", "stage": "board", "unit": "sequence", "after": "script", "maker": "writer", "lint": ["structure"], "checker": "editor", "judge": "critic", "blind": true, "pitches": 1, "paths": ["episodes/*/sequences/**"]},
+ {"room": "story", "stage": "reel", "unit": "episode", "after": "board", "maker": "writer", "lint": [], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/reel/**"]}
 ]
