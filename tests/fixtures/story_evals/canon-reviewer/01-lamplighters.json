@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "A2 makes Mara born in Velle; ledger row mara / born_in (A1) says Ostry.",
+      "evidence": "bible/canon/ledger.tsv mara born_in, mara birthplace"
+    }
+  ]
+}

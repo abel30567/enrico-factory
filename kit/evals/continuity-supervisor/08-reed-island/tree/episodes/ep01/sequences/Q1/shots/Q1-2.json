@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "saba"
+  ],
+  "set": "broad",
+  "camera": "medium, last light",
+  "action": "Saba poles towards the island."
+}

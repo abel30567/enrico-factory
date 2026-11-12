@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The model sheet of wen shows media:dax-turnaround, the turnaround of another character.",
+      "evidence": "bible/style/model-sheets/wen.md Turnaround"
+    }
+  ]
+}

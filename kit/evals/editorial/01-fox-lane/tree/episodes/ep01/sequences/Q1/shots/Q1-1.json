@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 12,
+  "characters": [
+    "tam"
+  ],
+  "set": "fox-lane",
+  "camera": "medium",
+  "action": "Tam at the gate with his lantern."
+}

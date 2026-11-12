@@ -1,0 +1,13 @@
+{
+  "id": "Q1-4",
+  "scene": "S2",
+  "beat": "B4",
+  "duration": 12,
+  "characters": [
+    "dace",
+    "mo"
+  ],
+  "set": "quarry-road",
+  "camera": "wide, lamplight",
+  "action": "Mo and Dace unload the cart."
+}

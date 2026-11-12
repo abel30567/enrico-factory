@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "B2 answers a different question (the lost cat) from the one B1 raises (the ferry horn).",
+      "evidence": "episodes/ep01/beats.md B1, B2"
+    }
+  ]
+}

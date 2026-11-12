@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "S3 is given B3 but plays the act 3 resolution; the traps, the sale notice and the lowest point never happen.",
+      "evidence": "episodes/ep01/outline.md S3; episodes/ep01/beats.md B3"
+    }
+  ]
+}

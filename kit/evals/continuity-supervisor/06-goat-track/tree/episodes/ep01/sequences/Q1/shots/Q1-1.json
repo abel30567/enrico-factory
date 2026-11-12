@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 12,
+  "characters": [
+    "lark"
+  ],
+  "set": "goat-track",
+  "camera": "wide, moonlit",
+  "action": "Lark at the empty pen, listening."
+}

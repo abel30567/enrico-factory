@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F3 says the keepers burned whale oil; the charter forbids whale oil and names colza oil.",
+      "evidence": "research/lamp-oil.md F3; sources/keepers-charter.md"
+    }
+  ]
+}

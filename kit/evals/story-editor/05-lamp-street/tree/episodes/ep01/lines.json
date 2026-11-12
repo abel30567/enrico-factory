@@ -1,0 +1,7 @@
+[
+ {"id": "L1", "scene": "S1", "speaker": "RIN", "text": "Let me do the street tonight."},
+ {"id": "L2", "scene": "S1", "speaker": "MASTER", "text": "Take the spare key to the lamp tower. If the power fails, the tower switch is the only way."},
+ {"id": "L3", "scene": "S1", "speaker": "RIN", "text": "I won't need it."},
+ {"id": "L4", "scene": "S2", "speaker": "RIN", "text": "Last one."},
+ {"id": "L5", "scene": "S3", "speaker": "MASTER", "text": "Your hook now."}
+]

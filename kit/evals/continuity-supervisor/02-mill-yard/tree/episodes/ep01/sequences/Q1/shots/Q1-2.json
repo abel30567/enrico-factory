@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "joss"
+  ],
+  "set": "mill-yard",
+  "camera": "wide, tracking",
+  "action": "Joss crosses the yard with the sack and sets it down by the millstone."
+}

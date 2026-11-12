@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 8,
+  "characters": [
+    "nell"
+  ],
+  "set": "kiln-yard",
+  "camera": "wide",
+  "action": "The kiln warm in the dark yard."
+}

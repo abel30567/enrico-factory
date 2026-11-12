@@ -1,0 +1,13 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "ari",
+    "noor"
+  ],
+  "set": "dunes",
+  "camera": "wide",
+  "action": "The kite climbs; Noor runs up behind."
+}

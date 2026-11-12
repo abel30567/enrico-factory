@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "oren.md (changed in A2) makes Oren right-handed; the ledger says left, and A2 does not list oren.md.",
+      "evidence": "bible/canon/characters/oren.md; bible/canon/ledger.tsv oren hand"
+    }
+  ]
+}

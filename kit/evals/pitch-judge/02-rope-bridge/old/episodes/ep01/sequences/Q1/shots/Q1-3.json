@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "kofi"
+  ],
+  "set": "gorge",
+  "camera": "close, low",
+  "action": "A plank breaks under Kofi; his hand closes on a knot of the handrail, and it holds."
+}
