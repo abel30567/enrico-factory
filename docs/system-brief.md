@@ -129,6 +129,18 @@ jobs), `analyst` (turns data into notes and proposals).
 
 **Lab:** `lab-director`; makers `hypothesis-writer`, `experimenter`, `metric-proposer`, `method-researcher`.
 
+**Rights.** No role is added for rights (section 16, "Rights"). `researcher` writes the names it
+meets that belong to someone else into `research/not-ours.tsv`. `canon-reviewer` raises a Blocker on a
+new character, place or creature that has no origin or that takes after someone else's; `look-reviewer`
+raises one on a design that looks like someone else's character; `packaging-judge` raises one on a
+title, a caption or a thumbnail that uses one. The room's orchestrator may not rule such a Blocker
+away. No role writes `sources/**`.
+
+**Trends.** `researcher` writes the topics the production watches on each platform and judges whether
+a trend is usable; `trend-scout` reads the same data (section 16, "Other people's videos"). Neither
+holds a platform key: a program makes the reads. A trend reaches the show only as a pivot proposal,
+which the showrunner triages like any other.
+
 Correction is the maker relaunched on the same pull request to address the notes. There is no fixer role.
 
 ## 5. Role file format
@@ -266,9 +278,17 @@ to it on the base branch, and nothing else may write it.
 | Results log | `lab/results.tsv` | lab-director | Append-only: every experiment, kept or not |
 | Ledger | `ledger/spend.tsv` | `factory gate`, `factory run` | Append-only: every gated job and its caller (the gate's row), and the real cost of its one call (the `run` row) |
 | Media manifest | `media/manifest.tsv` | makers and operators | `id`, `sha256`, `bytes`, `source` per file. The bytes live in the media store, never in git |
+| Rights file | `sources/rights.tsv` | the owner only | One row per work the production may draw on, with its holder and the basis. A row a role wants added is an issue labelled `owner` (section 16, "Rights") |
+| Not-ours list | `research/not-ours.tsv` | researcher | The names of characters, places, creatures, works and marks that belong to someone else, each with its holder and the link where it was seen |
+| Topics | `research/topics/<topic>.json` | researcher | The words, hashtags and named accounts to read on each platform. The reads start once the file is locked |
+| Trend cards | `research/trends/<topic>.<platform>.tsv` | researcher, from the ranking command | Per video: link, id, rank at read time, read time and the role's note. No count |
 
 Every factual line in research, bible and story artifacts carries one of `[text]`, `[art]`,
 `[inferred]`, `[invented]`; the first two carry a source pointer.
+
+What a platform says about other people's videos (counts, titles, comment text) is not a store in the
+repository. It lives in the state directory with a read time and is refreshed or deleted within 30
+days. It never enters git, because git history cannot forget (`docs/resources.md`, R8).
 
 ### Pivots
 
@@ -376,6 +396,15 @@ Built first (text and data):
   after trimming and lower-casing.
 - **Spoiler and CTA** (`spoiler`). Titles, captions and CTAs against the intent packet's spoiler list and the
   rulebook's bait patterns.
+- **Rights** (`rights`, built in #274). A canon sheet with `origin: source` cites a file or a media id
+  that a row of `sources/rights.tsv` covers, and one with `origin: house` names an amendment that
+  exists. Every rights row has a `holder` and a `basis` of `own`, `licence`, `permission` or
+  `public-domain`. No name in `research/not-ours.tsv` appears in `episodes/**`, `bible/canon/**`,
+  `bible/style/**`, `post/**` or `distribution/**`, as a whole word compared after trimming and
+  lower-casing. Every `speaker` in `lines.json` has a canon character sheet, from the `script` stage
+  on. `bible/charter.md`, `research/**` and `sources/**` are not checked against the list, so that they
+  can name a comparable show or a trend. A generation request whose text contains a listed name is
+  refused before any call. This check matches names; a likeness is judged by the checkers (section 4).
 
 Built with their rooms (read from the engine or from media): the production and post checks in the
 table in section 6. Each one is developed against a seeded defect it must fail on and a clean case it
@@ -476,6 +505,10 @@ Specified in `docs/harness.md` and `docs/resources.md`. The rules:
 - **Knowledge in Fermi, state in GitHub.** Roles read procedures, craft knowledge and recall from the
   Fermi MCP server. Nothing a gate reads lives only there: a lesson binds once it is a playbook file
   locked by pull request.
+- **Other people's videos are read by a program.** `factory tick` asks `factory run` for the reads of
+  the locked topics, through the platforms' official APIs only and inside a daily budget set in
+  `production.env`. No role holds a platform key, and no video file, frame, audio or thumbnail is
+  fetched (`docs/resources.md`, R7 to R9).
 - **Only programs write state.** No agent holds the GitHub credential. `factory` commits a worker's
   files, opens the pull request and posts the markers, so a role cannot post another role's verdict.
 
@@ -507,8 +540,9 @@ One repository per show. `factory init` creates:
 .factory/                 the installed kit
 production.env            repository, base branch, rooms installed, caps, media store, worker command (no secrets)
 rules/production-rules.md pasted into every role prompt after the rules of power
-sources/                  raw inputs as text
-research/                 researcher output
+sources/                  raw inputs as text; rights.tsv, the works the production may draw on
+research/                 researcher output; topics/ and trends/ (other people's videos);
+                          not-ours.tsv, the names that belong to someone else
 bible/                    charter.md, canon/, amendments/, style/
 playbook/  calibration/  registry/  rulebook/  ledger/  lab/
 episodes/<ep>/            premise.md, beats.md, outline.md, script.md, lines.json, ledger.json,
@@ -560,6 +594,62 @@ canon sheet, the art director designs its model sheet from that sheet and the st
 reviewer checks it. An approved design is then the reference, as source art is. A generated panel
 starts from the reference images of the characters and the set in its shot. Production assets are
 built to match them.
+
+### Other people's videos
+
+The production watches what is trending for the topics it might tell stories about, one platform at
+a time, because a trend on one platform is not a trend on another.
+
+| File | Written by | Shape |
+|---|---|---|
+| `research/topics/<topic>.json` | researcher | `{topic, youtube: {words: [...], region, days}, tiktok: {hashtags: [...]}, instagram: {accounts: [...], hashtags: [...]}}`. A platform that is not watched for the topic is left out |
+| `research/trends/<topic>.<platform>.tsv` | researcher, from the ranking command | one row per video and ranking: `ranking`, `rank`, `id`, `link`, `read_at`, `note`. `note` is the role's own words. No count, title or comment text |
+
+- **Topics.** A topic file names what to read. The reads start once it is locked, and stop when it
+  is removed.
+- **Reads.** A program makes them, never a role: `factory tick` asks `factory run` for the reads of
+  the locked topics, inside a daily budget set in `production.env` (YouTube allows 100 searches a
+  day). A read costs no money and changes nothing, so it is not a gated job. No role holds a key.
+- **Expiry.** Counts, titles and comment text go to the state directory with a read time, and are
+  refreshed or deleted within 30 days. They never enter git.
+- **What git keeps.** The trend card: the link and id of each video, its rank at read time, the read
+  time, and the notes a role wrote in its own words.
+- **Who reads.** `researcher` and `trend-scout` get a snapshot of the current reads and rankings of
+  their ticket's topic in their working directory at launch, outside git, removed when the run ends.
+- **One ranking per platform.** Rankings are computed with no model and are never merged across
+  platforms, because a view is not the same thing on each. A trend reaches the show only as a pivot
+  proposal (section 7).
+
+### Rights
+
+A production uses only characters, places, creatures, names and marks that are its own: they come
+from a work listed in its rights file, or they were designed in the production and cleared. No third
+party's character, name or likeness appears in a story, an image, a prompt or a post. The `rights`
+lint (#274) adds this to the rules of power as rule 8.
+
+| File | Written by | Shape |
+|---|---|---|
+| `sources/rights.tsv` | the owner only; `factory init` creates it with the header | one row per work the production may draw on: `path` (the files under `sources/` or the media sources the row covers), `work`, `holder`, `basis` (`own`, `licence`, `permission` or `public-domain`), `note` |
+| `research/not-ours.tsv` | researcher | one row per name that belongs to someone else: `name`, `holder`, `link` (where the name was seen) |
+| every sheet under `bible/canon/characters/` and `bible/canon/places/` | canon-keeper, by amendment | one line `origin: source` with the file or the media id the subject comes from, or `origin: house` with the amendment that added it |
+
+- **Origin.** A subject is `source` when it comes from a work in the rights file, and `house` when it
+  was designed in the production. The amendment that adds a `house` subject is what clears it. A
+  subject with source art is `source` and is not designed again.
+- **The rights file is the owner's.** No role's `writes` covers `sources/**`. The kit ships no rights
+  file, and a row a role wants added is an issue labelled `owner`.
+- **A trend can be used, its character cannot.** What a trend offers is a format, a subject or a
+  rhythm. The character, the sound and the shot stay with their owner, and `researcher` lists each
+  such name in `research/not-ours.tsv`.
+- **Where the list is checked.** Where work reaches the audience or a generator: `episodes/**`,
+  `bible/canon/**`, `bible/style/**`, `post/**`, `distribution/**` and the text of a generation
+  request. Not in `bible/charter.md`, `research/**` or `sources/**`, which must be able to name a
+  comparable show or a trend.
+- **A name is linted, a likeness is judged.** A program can match a name. It cannot tell that a
+  drawing looks like someone else's character, so `canon-reviewer`, `look-reviewer` and
+  `packaging-judge` raise a Blocker (section 4). A check on rendered frames waits for the identity
+  metrics of wave 4 (#131).
+- No role and no stage is added for rights.
 
 ## 17. Build order
 
