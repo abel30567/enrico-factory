@@ -359,9 +359,9 @@ class CheckersRuleTest(OneRule):
 
 class JudgesRuleTest(OneRule):
     def test_judge_with_no_verdict(self):
-        w = World(self, (10,))
-        w.drop(10, 1006)
-        self.assertOnly(w, 10, {3}, "judge braintrust has no counting verdict")
+        w = World(self, (12,))
+        w.drop(12, 1204)
+        self.assertOnly(w, 12, {3}, "judge braintrust has no counting verdict")
 
     def test_blind_one_of_three_for_new(self):
         w = World(self, (19,))
