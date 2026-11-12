@@ -85,7 +85,8 @@ Rulings (reversible, on #273):
 5. A name is linted; a likeness is judged (`canon-reviewer`, `look-reviewer`, `packaging-judge`).
 6. No new role and no new stage.
 
-- [ ] #273 (w3-26) the layer in the brief (orchestrator)
+- [x] #273 (w3-26) the layer in the brief (orchestrator): sections 4, 7, 10 and 16 on 2026-11-12. Rule 8
+      itself is not in section 2 yet; it lands with #274, because a test holds the brief and the kit file equal
 - [ ] #274 (w3-27) the `rights` lint, rule 8, the refused generation request (builder; after #273, #235)
 - [ ] #275 (w3-28) role files and eval cases with a seeded third-party character (builder; after #273, #235; not beside #269)
 - [ ] owner: #276 D7, which works the sample may draw on and on what basis. Until answered the Primal
