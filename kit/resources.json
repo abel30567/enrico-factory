@@ -77,7 +77,8 @@
       "setup": "owner",
       "checks": [
         {"kind": "command", "argv": ["git", "--version"]},
-        {"kind": "command", "argv": ["gh", "auth", "status"]}
+        {"kind": "command", "argv": ["gh", "auth", "status"]},
+        {"kind": "command", "argv": ["gh", "api", "user", "--jq", ".login"], "names_in": "GITHUB_LOGINS"}
       ]
     },
     {
