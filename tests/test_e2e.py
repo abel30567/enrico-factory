@@ -737,7 +737,7 @@ class OwnWorldRules(Case):
         self.assertEqual(w.record("pulls", 4)["state"], "open")
 
     def test_rule_6_amendment(self):
-        w = self.world([json.loads(fixture("bible.json"))] + pipeline())
+        w = self.world([json.loads(fixture("bible.json"))] + pipeline()[:1])
         w.set_record("issues", 3, labels=["room:story", "stage:bible", "tracked", "unit:A-1"],
                      title="[A-1] The harbour lamp enters the canon")
         w.script(step("You are the canon keeper", "READY",
@@ -983,6 +983,49 @@ class Judgments(Case):
         self.assertEqual([r for r in records if " LAUNCH showrunner " in r], ["[SHOWRUNNER] LAUNCH showrunner 4-1"])
         self.assertNotIn("[SHOWRUNNER] LAUNCH story-writer 4-5", records)
         self.assertEqual(w.record("pulls", 4)["state"], "open")
+
+
+
+class Filing(Case):
+    """ISSUE-90: the tick files the next stage's ticket after a lock, one ``board`` per sequence."""
+
+    SEQUENCES = {"episodes/ep01/sequences/Q1/sequence.json": '{"id": "Q1"}\n',
+                 "episodes/ep01/sequences/Q2/sequence.json": '{"id": "Q2"}\n'}
+
+    def created(self, w):
+        return [e["number"] for e in w.log() if e["op"] == "create_issue"]
+
+    def test_the_whole_line(self):
+        w = self.world(pipeline() + json.loads(fixture("sequences-board.json")))
+        w.script(*happy_script(), step("You are the head of story", "READY", self.SEQUENCES, evidence=EVIDENCE),
+                 step("You are the continuity supervisor", "APPROVED", evidence=EVIDENCE))
+        ticks = to_lock(self, w)
+        self.assertEqual(ticks[-1], ["STEP #3 lock PR #4"])
+        self.assertEqual(self.created(w), [])
+
+        self.assertEqual(self.ticked(w, apply=True), ["STEP #3 file sequences ep01"])
+        [n] = self.created(w)
+        issue = w.record("issues", n)
+        self.assertEqual((issue["state"], issue["labels"]),
+                         ("open", ["room:story", "stage:sequences", "tracked", "unit:ep01"]))
+
+        for _ in range(6):
+            if w.record("issues", n)["state"] == "closed":
+                break
+            out = self.ticked(w, apply=True)
+        self.assertEqual(w.record("issues", n)["state"], "closed")
+        self.assertRegex(out[-1], rf"\ASTEP #{n} lock PR #\d+\Z")
+        for rel, text in sorted(self.SEQUENCES.items()):
+            self.assertEqual(w.git("show", f"main:{rel}"), text)
+
+        self.assertEqual(self.ticked(w, apply=True), [f"STEP #{n} file board ep01/Q1", f"STEP #{n} file board ep01/Q2"])
+        boards = self.created(w)[1:]
+        self.assertEqual([w.record("issues", b)["labels"] for b in boards],
+                         [["room:story", "stage:board", "tracked", "unit:ep01/Q1"],
+                          ["room:story", "stage:board", "tracked", "unit:ep01/Q2"]])
+        self.assertEqual(len(self.created(w)), 3)
+        self.ticked(w, apply=True)
+        self.assertEqual(len(self.created(w)), 3)
 
 
 if __name__ == "__main__":

@@ -381,14 +381,14 @@ class Rooms(Case):
                          ["STEP #9 lock PR #10", "WAIT #11 lockable (one lock per room per tick)"])
         self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10", "STEP #11 sync PR #12"])
         self.assertEqual(self.merged(w), [10])
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #11 lock PR #12"])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 file render ep01", "STEP #11 lock PR #12"])
         self.assertEqual(self.merged(w), [10, 12])
 
     def test_one_lockable_pull_in_each_of_two_rooms(self):
         w = self.world((9, 10, 13, 14))
         self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10", "STEP #13 sync PR #14"])
         self.assertEqual(self.merged(w), [10])
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #13 lock PR #14"])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 file render ep01", "STEP #13 lock PR #14"])
         self.assertEqual(self.merged(w), [10, 14])
 
 
@@ -631,8 +631,9 @@ class VoidLock(Case):
         with failing_merge(w, {10: 1}):
             self.assertEqual(lines(self.ticked(w, "--apply", code=1)),
                              ["FAIL #9 lock: merge failed", "STEP #11 lock PR #12"])
-            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 sync PR #10"])
-            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10"])
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #11 file render ep02", "STEP #9 sync PR #10"])
+            self.assertEqual(lines(self.ticked(w, "--apply")),
+                             ["STEP #9 lock PR #10", "STEP #13 launch painter on #13"])
         self.assertEqual(w.record("pulls", 10)["state"], "merged")
 
     def test_the_void_text_by_another_role_voids_nothing(self):
@@ -1026,6 +1027,77 @@ class ResourceDown(Case):
         with mock.patch.object(github.Recorded, "issues", counted):
             self.ticked(w)
         self.assertEqual(calls.count("open"), 2)  # the freeze check, and one for every launch step
+
+
+
+FILED_BODY = ("Do the stage render for unit ep01.\n\n"
+              "Upstream: #9 frames ep01, locked by PR #10.\n"
+              "Filed by factory tick.\n")
+
+
+class Filing(Case):
+    """ISSUE-90: the tick after a lock files the next stage's ticket, once, and only with ``--apply``."""
+
+    def locked(self):
+        """``World((9, 10))`` after the tick that locks pull 10; that tick files nothing."""
+        w = self.world((9, 10))
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 lock PR #10"])
+        self.assertEqual(w.ops("create_issue"), [])
+        return w
+
+    def filed(self, w):
+        return [i for i in w.gh.issues("all") if i["number"] not in (9, 10)]
+
+    def test_dry_then_applied(self):
+        w = self.locked()
+        self.dry_then_apply(w, ["STEP #9 file render ep01"])
+        [issue] = self.filed(w)
+        self.assertEqual((issue["number"], issue["state"], issue["title"], issue["body"]),
+                         (11, "open", "[RENDER-EP01] render for ep01", FILED_BODY))
+        self.assertEqual(issue["labels"], ["room:production", "stage:render", "tracked", "unit:ep01"])
+        self.assertEqual(len(w.ops("create_issue")), 1)
+
+    def test_once(self):
+        w = self.locked()
+        self.ticked(w, "--apply")
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #11 launch painter on #11"])
+        self.ticked(w, "--apply")
+        self.assertEqual(len(w.ops("create_issue")), 1)
+        w.gh.close_issue(11)
+        out = self.ticked(w, "--apply")
+        self.assertNotIn(" file ", out)
+        self.assertEqual(len(w.ops("create_issue")), 1)
+        self.assertEqual(len(self.filed(w)), 1)
+
+    def test_a_filing_that_fails(self):
+        w = self.locked()
+        refused = github.GitHubError("create_issue: HTTP 403")
+        with mock.patch.object(github.Recorded, "create_issue", side_effect=refused):
+            out = self.ticked(w, "--apply", code=1)
+        self.assertEqual(lines(out), ["FAIL #9 file: create_issue: HTTP 403"])
+        self.assertTrue(out.endswith("tick: 0 steps, 0 need, 0 wait, 1 failed\n"), out)
+        self.assertEqual((self.filed(w), w.ops("create_issue")), ([], []))
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #9 file render ep01"])
+        self.assertEqual(len(self.filed(w)), 1)
+
+    def test_another_room_files_nothing(self):
+        w = self.locked()
+        self.assertEqual(lines(self.ticked(w, "--room", "story", "--apply")), [])
+        self.assertEqual((self.filed(w), w.ops("create_issue")), ([], []))
+
+    def test_a_frozen_production_files_nothing(self):
+        w = self.locked()
+        shutil.copyfile(FIX / "github" / "issues" / "24.json", w.github / "issues" / "24.json")
+        self.assertEqual(w.tick("--apply"), (0, "FROZEN\n", ""))
+        self.assertEqual(w.ops("create_issue"), [])
+
+    def test_an_unreadable_ticket_files_nothing(self):
+        w = self.locked()
+        (w.github / "issues" / "30.json").write_text(json.dumps({
+            "number": 30, "title": "no key", "body": "", "state": "open", "created_at": NOW,
+            "labels": ["room:production", "stage:render", "tracked", "unit:ep01"]}) + "\n")
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED - ticket #30: title is not [KEY] summary"])
+        self.assertEqual(w.ops("create_issue"), [])
 
 
 if __name__ == "__main__":
