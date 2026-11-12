@@ -77,6 +77,20 @@ Any harness that provides these eight things can run a role. They are the adapte
    - computes the head and the manifest hash from git itself;
    - pushes the branch, opens the pull request if there is none, and posts the marker.
 
+A role of kind `orchestrator` is launched for a judgment only, and only when one is due: a ruling
+after three rounds of notes (the number is a pull request) or a pitch selection (the number is a
+ticket). It must be the orchestrator of the ticket's room. Steps 3 and 8 differ for it:
+
+- It gets no git worktree and no branch. Its working directory is a plain directory with one `pr-<n>/`
+  per pull request it judges, holding that pull's files at its head, and it is removed when the run ends.
+- Its task quotes the comments it judges: the makers' and checkers' markers for a ruling, each pitch's
+  report and counting verdicts for a selection.
+- The launcher posts `RULING` on the pull request or `SELECTED #<pr>` on the ticket, and commits,
+  pushes and opens nothing. A `SELECTED` that names a pull request outside the launch is `BLOCKED`.
+- The newest `RULING` is quoted in the next maker's task and in the next checker's prompt.
+
+A BLOCKED maker, a lint `ERROR` and a pivot are not launched (#242). Operators and analysts are refused.
+
 A worker that dies, times out or returns no valid result gets `[<ROLE>] BLOCKED` posted for it with the
 exit status. A missing result is never read as approval.
 
