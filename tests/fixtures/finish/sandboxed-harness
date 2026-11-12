@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""The `fake-harness` beside this file, for a run inside the sandbox, for tests.
+
+The sandbox lets a worker write only in its worktree and its run directory, and the fake keeps its call
+record beside itself. So this copies `fake-harness` and `fake-harness.json` into `fake/` in the run
+directory (the parent of `CLAUDE_CONFIG_DIR`) and runs that copy with the same arguments, standard
+streams and descriptors. `--version` runs the fake where it is.
+"""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main():
+    here = Path(sys.argv[0]).resolve().parent
+    fake = here / "fake-harness"
+    if "--version" not in sys.argv[1:]:
+        copy = Path(os.environ["CLAUDE_CONFIG_DIR"]).parent / "fake"
+        copy.mkdir(exist_ok=True)
+        for name in ("fake-harness", "fake-harness.json"):
+            shutil.copy2(here / name, copy / name)
+        fake = copy / "fake-harness"
+    return subprocess.run([str(fake), *sys.argv[1:]], close_fds=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

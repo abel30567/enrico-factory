@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #4\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "outline/OL-3-writer-1",
+ "labels": [],
+ "merged_at": null,
+ "number": 5,
+ "state": "open",
+ "ticket": 4,
+ "title": "Work for #4"
+}
