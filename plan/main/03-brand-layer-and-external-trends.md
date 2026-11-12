@@ -45,7 +45,10 @@ does not own; every part is a registered item on GitHub.
 
 - [x] #262 (w6-31) `docs/research/07-external-trends-and-ingestion.md` on main (48c14ff), with the register
       rows, rulings R7 to R10, decisions D5 and D6 and owner step 8 in `docs/resources.md`
-- [ ] #266 (w6-32) the brief: topics, reads by a program, expiry, what git keeps (orchestrator)
+- [x] #266 (w6-32) the brief: topics, reads by a program, expiry, what git keeps (orchestrator): sections 4, 7,
+      14 and 16 and `docs/harness.md` section 8 on 2026-11-12. Shapes: `research/topics/<topic>.json` and
+      `research/trends/<topic>.<platform>.tsv`. Ruling: a read is not a gated job. #268 is now free of
+      dependencies; its full ticket is the next to write for this line
 - [ ] #267 (w6-33) YouTube read tool (builder; after #266, #205)
 - [ ] #268 (w6-34) ranking per platform and the trend card (builder; after #266; needs no key)
 - [ ] #269 (w6-35) snapshot at launch and the two role files (builder; after #268; trend-scout after #168)

@@ -242,6 +242,12 @@ made by the worker still runs; for GitHub the boundary is that the worker cannot
 - **Injected credentials** are the exception, for a tool an agent must drive step by step (the render
   node's remote control). The role file names the secret, the launcher injects only that one, only for
   a job with a gate PASS, and prefers a short-lived credential minted for the job.
+- **Reads of other people's videos** (`docs/system-brief.md`, section 16) are made by `factory run`
+  for `factory tick`, never by a worker. A read costs no money and changes nothing, so it needs no
+  gate PASS; it is counted against a daily budget in `production.env` and refused past it. The
+  answers go to the state directory with a read time and are refreshed or deleted within 30 days.
+  At launch, `researcher` and `trend-scout` get a snapshot of the current reads and rankings of their
+  ticket's topic in the working directory, outside git, and it is removed when the run ends (#269).
 - Keys are files outside every repository, one per resource id in `kit/resources.json`.
   `factory doctor` checks that each exists and works, and prints names and states, never values.
 - **Whose comments count.** No worker holds the GitHub login, but anyone who can comment on the
