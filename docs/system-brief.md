@@ -264,7 +264,7 @@ to it on the base branch, and nothing else may write it.
 | Registries | `registry/assets.tsv`, `variants.tsv`, `posts.tsv` | orchestrators, on lock | Asset versions and dependents; file hash per variant; live post, hash and beat map |
 | Platform rulebook | `rulebook/<platform>.json` | post-supervisor, from platform notes | Specs, safe zones, policy; read by the platform gate |
 | Results log | `lab/results.tsv` | lab-director | Append-only: every experiment, kept or not |
-| Ledger | `ledger/spend.tsv` | `factory gate` | Append-only: every gated job, its cost and its caller |
+| Ledger | `ledger/spend.tsv` | `factory gate`, `factory run` | Append-only: every gated job and its caller (the gate's row), and the real cost of its one call (the `run` row) |
 | Media manifest | `media/manifest.tsv` | makers and operators | `id`, `sha256`, `bytes`, `source` per file. The bytes live in the media store, never in git |
 
 Every factual line in research, bible and story artifacts carries one of `[text]`, `[art]`,
