@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "A2 says kell / age becomes 40; the ledger row still says 34 (since A1).",
+      "evidence": "bible/canon/ledger.tsv kell age"
+    }
+  ]
+}

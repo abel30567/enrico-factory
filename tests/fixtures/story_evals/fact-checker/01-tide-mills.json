@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F2 gives 1,240 sacks of barley; the mill ledger says 1,420.",
+      "evidence": "research/tide-mills.md F2; sources/mill-ledger.md"
+    }
+  ]
+}

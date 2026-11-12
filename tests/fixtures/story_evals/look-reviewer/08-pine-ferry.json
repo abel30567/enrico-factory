@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "kit's coat is #3A6EA9; the lock's coat value P2 is #3A6EA5, and #3A6EA9 is in no palette row.",
+      "evidence": "bible/style/model-sheets/kit.md coat"
+    }
+  ]
+}

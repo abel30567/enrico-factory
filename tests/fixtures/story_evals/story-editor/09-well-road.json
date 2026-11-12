@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "B2 holds two events, the stranger's lantern and the mill fire; the format allows one.",
+      "evidence": "episodes/ep01/beats.md B2"
+    }
+  ]
+}

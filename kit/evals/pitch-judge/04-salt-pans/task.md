@@ -1,0 +1,1 @@
+Two versions of the board of sequence Q1 of episode ep01 are in A/ and B/; each is a full copy of the production (A/episodes/ep01/sequences/Q1/shots/ and B/episodes/ep01/sequences/Q1/shots/). Compare the two boards against the script and its beats, and say which one is better, or that neither is.

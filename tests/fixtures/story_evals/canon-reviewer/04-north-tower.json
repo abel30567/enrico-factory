@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Ledger row brin / rank captain is marked A2, and A2 does not list it.",
+      "evidence": "bible/canon/ledger.tsv brin rank"
+    }
+  ]
+}

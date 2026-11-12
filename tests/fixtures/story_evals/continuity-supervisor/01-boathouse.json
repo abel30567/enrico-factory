@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Q1-3 continues Q1-2 with both of Edda's hands on the mallet and no lantern; it was in her hand in Q1-2 and is never set down.",
+      "evidence": "episodes/ep01/sequences/Q1/shots/Q1-3.json"
+    }
+  ]
+}

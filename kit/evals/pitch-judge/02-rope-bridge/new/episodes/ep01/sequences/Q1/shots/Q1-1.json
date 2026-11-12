@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 8,
+  "characters": [
+    "kofi"
+  ],
+  "set": "gorge",
+  "camera": "medium",
+  "action": "Kofi lifts the lamb."
+}

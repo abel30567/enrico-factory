@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 14,
+  "characters": [
+    "edda"
+  ],
+  "set": "slipway",
+  "camera": "close, low",
+  "action": "Edda kneels at the chocks, both hands on the mallet, lit by moonlight alone."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 14,
+  "characters": [
+    "tilda",
+    "bram"
+  ],
+  "set": "salt-store",
+  "camera": "high, rain",
+  "action": "Tilda patches the roof in the rain while Bram holds the ladder."
+}

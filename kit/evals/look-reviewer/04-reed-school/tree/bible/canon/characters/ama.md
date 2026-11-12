@@ -1,0 +1,3 @@
+# Ama
+
+Ama, the teacher.

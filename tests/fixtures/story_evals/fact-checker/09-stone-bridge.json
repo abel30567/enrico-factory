@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F2 names Tomas Varrow as the mason; the inscription names Ilse Varrow. Tomas carted the stone.",
+      "evidence": "research/stone-bridge.md F2; sources/bridge-stone.md; sources/carters-account.md"
+    }
+  ]
+}

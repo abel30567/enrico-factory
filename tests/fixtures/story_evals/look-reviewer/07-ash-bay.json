@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "S3 is a night scene keyed D2; night scenes are keyed N1.",
+      "evidence": "bible/style/color-script.md S3; bible/style/lock.md Rules"
+    }
+  ]
+}

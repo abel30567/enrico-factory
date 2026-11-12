@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "B3 is on screen for 0.5 s (Q1-3): the twist cannot read, so the beat is dropped in effect.",
+      "evidence": "episodes/ep01/reel/edit-list.json event 3"
+    }
+  ]
+}

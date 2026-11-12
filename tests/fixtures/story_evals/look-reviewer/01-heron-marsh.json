@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "S2's accent #C0392B is not a value of the style lock's palette.",
+      "evidence": "bible/style/color-script.md S2; bible/style/lock.md Palette"
+    }
+  ]
+}

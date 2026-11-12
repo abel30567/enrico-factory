@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Q1-3 has Bram holding the ladder, but he rowed to the mainland in S1 and returns only in S3.",
+      "evidence": "episodes/ep01/sequences/Q1/shots/Q1-3.json"
+    }
+  ]
+}

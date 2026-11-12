@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "yara",
+    "tomas"
+  ],
+  "set": "salt-pans",
+  "camera": "close on Tomas's face",
+  "action": "Tomas works the rake out of frame; the water runs off somewhere below."
+}
