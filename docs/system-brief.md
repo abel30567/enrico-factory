@@ -424,8 +424,11 @@ the outermost loop changes the room's own rules.
 
 Orchestrators do not poll. A timer runs `factory tick`, which dispatches the next mechanical step
 (launch the named checker, relaunch a maker on notes, run the lint, run the gate, lock at most one
-ticket per room) from GitHub state alone, and wakes an orchestrator only for a judgment: a ruling
-after three rounds, a pitch selection, a pivot triage, a BLOCKED worker.
+ticket per room) from GitHub state alone. For a ruling after three rounds and for a pitch selection
+it launches the room's orchestrator role itself, once per pull request and once per ticket; from the
+third round on, every round of notes needs its own ruling. It wakes an orchestrator (a `NEED` line and
+the label `needs:orchestrator`) only when that one run did not settle the judgment, and for a pivot
+triage or a BLOCKED worker.
 
 ## 13. The lab
 
