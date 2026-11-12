@@ -539,6 +539,25 @@ a premise alone passes; a script without `lines.json` fails.
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
 the canon ledger, the episode ledger, the role file, the task.
 
+### Bible sheets
+
+The bible is the show's memory of its characters and places. Every stage reads it, so a character or
+a place is described once and reused by every later episode. Each subject has two sheets (the lint for
+them is #235):
+
+| File | Written by | Shape |
+|---|---|---|
+| `bible/canon/characters/<id>.md` | canon-keeper, by amendment | who the character is, then `## Behaviour` (how it acts and speaks) and `## Motivation` (what it wants and why), neither empty |
+| `bible/canon/places/<id>.md` | canon-keeper, by amendment | what the place is and what happens there |
+| `bible/style/characters/<id>.md`, `bible/style/places/<id>.md` | art-director, in the `style` stage | the model sheet: how the subject looks, with at least one reference image as `media:<id>` |
+
+Where a production already holds art of a subject, the model sheet cites that art and nothing is
+designed. A subject with no art goes through design before a board may use it: an amendment adds its
+canon sheet, the art director designs its model sheet from that sheet and the style lock, and the look
+reviewer checks it. An approved design is then the reference, as source art is. A generated panel
+starts from the reference images of the characters and the set in its shot. Production assets are
+built to match them.
+
 ## 17. Build order
 
 The kit is built in this repository through the orchestration pattern in `CLAUDE.md`. Checks come first.
