@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from kit.lib import frontmatter
+from kit.lib import frontmatter, markers
 from kit.lib.frontmatter import as_list
 
 ROLE_REQUIRED = ("role", "room", "kind", "analog", "stage", "reads", "model", "family", "tools",
@@ -21,8 +21,6 @@ PLACEHOLDERS = ("REPO", "TICKET", "WORKTREE", "TASK", "RULES")
 PLACEHOLDERS_BY_KIND = {"maker": ("BRANCH",), "operator": ("BRANCH",),
                         "checker": ("PR",), "judge": ("PR",)}
 
-# Actors only a program posts as (brief section 8): no role may take one.
-PROGRAM_ACTORS = ("AUTORESEARCH", "LINT", "PLATFORM-GATE", "PRODUCER")
 CHANNEL = "CHANNEL:"
 
 FORMAT_REQUIRED = ("format", "runtime", "beats", "shots", "skips")
@@ -34,7 +32,6 @@ STAGE_ROLE_KINDS = (("maker", ("maker", "operator")), ("checker", ("checker",)),
 
 _PLACEHOLDER = re.compile(r"\{\{([^{}]*)\}\}")
 _RANGE = re.compile(r"(\d+)-(\d+)")
-_ACTOR = re.compile(r"(?:CHANNEL:)?[A-Z][A-Z0-9-]*")
 
 
 def _load_dir(directory, label):
@@ -99,9 +96,10 @@ def _check_actor(problems, where, meta, kind):
     if "actor" not in meta:
         return
     value = meta["actor"]
-    if not _ACTOR.fullmatch(value):
-        problems.append(f"{where}: actor {value!r} is not [A-Z][A-Z0-9-]* or CHANNEL:[A-Z][A-Z0-9-]*")
-    elif value in PROGRAM_ACTORS:
+    if not markers.is_actor(value):
+        problems.append(f"{where}: actor {value!r} is not an upper-case id such as STORY-EDITOR or "
+                        "CHANNEL:TUBE")
+    elif value in markers.PROGRAM_VERBS:  # actors only a program posts as (brief section 8)
         problems.append(f"{where}: actor {value!r} is a program's, not a role's")
     elif value.startswith(CHANNEL) and kind != "operator":
         problems.append(f"{where}: actor {value!r} is a channel, allowed only for kind operator")

@@ -59,9 +59,15 @@ MAKER_VERBS = ("READY", "ADDRESSED", "BLOCKED")
 
 _UPPER_ID = r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*"
 _FIRST_LINE = re.compile(r"\[(%s|CHANNEL:%s)\]\s+(\S.*)" % (_UPPER_ID, _UPPER_ID))
+_ACTOR = re.compile(r"(?:CHANNEL:)?%s" % _UPPER_ID)
 _ROLE_ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 _REVIEWED = re.compile(r"reviewed head ([0-9a-f]{40}) manifest ([0-9a-f]{64}|none)")
 _NOTE = re.compile(r"(?:[-*]\s+|\|\s*)?\**(B\d+)\b")
+
+
+def is_actor(text):
+    """Whether ``text`` is an actor ``parse`` reads: an upper-case id, or ``CHANNEL:`` and one."""
+    return _ACTOR.fullmatch(text) is not None
 
 
 def _verbs_for(actor):
@@ -208,20 +214,29 @@ def is_verdict(marker):
     return marker.verb in ROLE_VERDICTS or marker.verb == "VOTE"
 
 
+def reviewed_reason(verdict, pr):
+    """None when the comment ends with the reviewed head line, its head is the current head or is followed
+    only by merges of the base, and its manifest is the current one; else why not."""
+    seen = reviewed(verdict["body"])
+    if seen is None:
+        return "reviewed: no reviewed head line"
+    sha, manifest = seen
+    reason = _head_reason(pr["commits"], sha, pr["head"], pr["base_shas"])
+    if reason:
+        return reason
+    if manifest != pr["manifest"]:
+        return "manifest: %s is not the current manifest %s" % (manifest, pr["manifest"])
+    return None
+
+
 def counts(verdict, pr, stage, roles):
     """``(True, "counts")``, or ``(False, reason)`` naming the first condition of section 8 that fails."""
     marker = parse(verdict["body"])
     if not is_verdict(marker):
         return False, "marker: not a lint, checker or judge verdict"
-    seen = reviewed(verdict["body"])
-    if seen is None:
-        return False, "reviewed: no reviewed head line"
-    sha, manifest = seen
-    reason = _head_reason(pr["commits"], sha, pr["head"], pr["base_shas"])
+    reason = reviewed_reason(verdict, pr)
     if reason:
         return False, reason
-    if manifest != pr["manifest"]:
-        return False, "manifest: %s is not the current manifest %s" % (manifest, pr["manifest"])
     last = None
     for c in _ordered(pr["comments"]):
         m = _maker_marker(c, stage)

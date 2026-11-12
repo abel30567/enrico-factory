@@ -128,6 +128,14 @@ class World:
         self.write(rel, text)
         self.commit("move the base")
 
+    def push(self, number, rel, text):
+        """One more commit on pull ``number``'s branch, writing ``rel``."""
+        ref = self.record("pulls", number)["head_ref"]
+        self.git("checkout", "-q", ref)
+        self.write(rel, text)
+        self.commit(f"more work on {ref}")
+        self.git("checkout", "-q", "trunk")
+
     def merge_base_into(self, number):
         ref = self.record("pulls", number)["head_ref"]
         self.git("checkout", "-q", ref)
@@ -351,9 +359,9 @@ class CheckersRuleTest(OneRule):
 
 class JudgesRuleTest(OneRule):
     def test_judge_with_no_verdict(self):
-        w = World(self, (10,))
-        w.drop(10, 1006)
-        self.assertOnly(w, 10, {3}, "judge braintrust has no counting verdict")
+        w = World(self, (12,))
+        w.drop(12, 1204)
+        self.assertOnly(w, 12, {3}, "judge braintrust has no counting verdict")
 
     def test_blind_one_of_three_for_new(self):
         w = World(self, (19,))
@@ -403,6 +411,43 @@ class AmendmentRuleTest(OneRule):
         w = World(self, (10,))
         w.edit(10, 1007, created_at=at(10, 15))  # after READY (10:00), before ADDRESSED (10:20)
         self.assertOnly(w, 10, {6}, "class charter needs a [BRAINTRUST] VOTE")
+
+    VOTE = "[BRAINTRUST] VOTE 5-2\nFive seats for, two against.\n"
+    CANNOT = "bible/amendments/A-1.json: the [BRAINTRUST] VOTE does not count: "
+
+    def test_vote_without_the_reviewed_line(self):
+        w = World(self, (10,))
+        w.edit(10, 1007, body=self.VOTE)
+        rules = self.assertOnly(w, 10, {6})
+        self.assertEqual(rules[5].reason, self.CANNOT + "reviewed: no reviewed head line")
+
+    def test_vote_for_an_earlier_head(self):
+        w = World(self, (10,))
+        voted = w.head(10)
+        w.push(10, "bible/canon/lamps.md", "# Lamps\n\nA lamp stays lit.\n")
+        head = w.head(10)
+        for verdict in (1004, 1005, 1006):  # the lint, checker and judge review the new head
+            w.replace(10, verdict, voted, head)
+        w.edit(10, 1007, body=self.VOTE + "reviewed head {head:10~1} manifest none\n")
+        rules = self.assertOnly(w, 10, {6})
+        self.assertEqual(rules[5].reason,
+                         self.CANNOT + f"head: commit {head} after {voted} is not a merge of the base")
+
+    def test_vote_for_another_manifest(self):
+        w = World(self, (10,))
+        w.replace(10, 1007, "manifest none", "manifest " + "0" * 64)
+        rules = self.assertOnly(w, 10, {6})
+        self.assertEqual(rules[5].reason,
+                         self.CANNOT + "manifest: %s is not the current manifest none" % ("0" * 64))
+
+    def test_vote_followed_only_by_a_merge_of_the_base(self):
+        w = World(self, (10,))
+        voted = w.head(10)
+        w.move_base()
+        w.merge_base_into(10)
+        self.assertNotEqual(w.head(10), voted)
+        self.assertTrue(w.comments(10)[-1]["body"].endswith(f"reviewed head {voted} manifest none\n"))
+        self.assertEqual(w.failed(10), set())
 
     def test_canon_amendment_that_changes_the_charter_needs_a_vote(self):
         w = World(self, (12,), edits={12: {"bible/charter.md": "# Charter\n\n1. Kites may land.\n"}})

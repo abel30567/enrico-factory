@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import roles  # noqa: E402
+from kit.lib import markers, roles  # noqa: E402
 
 KIT = ROOT / "kit"
 FACTORY = KIT / "factory"
@@ -113,7 +113,31 @@ class ValidateTest(unittest.TestCase):
                       "", "[ANALYST]"):
             with self.subTest(value):
                 self.check(lambda k: k.add_key("roles/watcher.md", f"actor: {value}"),
-                           "roles/watcher.md", f"actor {value!r} is not [A-Z][A-Z0-9-]*")
+                           "roles/watcher.md", f"actor {value!r} is not an upper-case id such as STORY-EDITOR "
+                                               "or CHANNEL:TUBE")
+
+    ACTOR_DEFECTS = (("writer", "FOO-"), ("writer", "FOO--BAR"), ("uploader", "CHANNEL:TUBE-"))
+    ACTOR_CLEAN = (("writer", "QUILL-2"), ("writer", "A"), ("writer", "A-B-C"), ("uploader", "CHANNEL:TUBE"))
+
+    def test_actor_that_markers_cannot_read(self):
+        for file, value in self.ACTOR_DEFECTS:
+            with self.subTest(value):
+                self.check(lambda k: k.add_key(f"roles/{file}.md", f"actor: {value}"), f"roles/{file}.md",
+                           f"actor {value!r} is not an upper-case id such as STORY-EDITOR or CHANNEL:TUBE")
+
+    def test_actor_that_markers_read(self):
+        for file, value in self.ACTOR_CLEAN:
+            with self.subTest(value):
+                kit = KitCopy(self)
+                kit.add_key(f"roles/{file}.md", f"actor: {value}")
+                self.assertEqual(kit.validate(), [])
+
+    def test_actor_is_what_markers_parse(self):
+        malformed = ("analyst", "Analyst", "2ND", "CHANNEL:tube", "CHANNEL:", "CHANNEL:-X", "A B", "", "[ANALYST]")
+        for value in [v for _, v in self.ACTOR_DEFECTS + self.ACTOR_CLEAN] + list(malformed):
+            with self.subTest(value):
+                verb = "POSTED" if value.startswith("CHANNEL:") else "READY"
+                self.assertEqual(markers.is_actor(value), markers.parse(f"[{value}] {verb}") is not None)
 
     def test_actor_of_a_program(self):
         for value in ("LINT", "PRODUCER", "PLATFORM-GATE", "AUTORESEARCH"):

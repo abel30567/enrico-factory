@@ -73,7 +73,7 @@ class ApplyTest(unittest.TestCase):
                 (19, "relied on: lint #1902; editor APPROVED #1903; critic PREFERS A #1904 (new); "
                      "elder PREFERS A #1905 (new); viewer PREFERS B #1906 (old)"),
                 (21, "relied on: lint #2102; editor APPROVED #2103; gate #2104"),
-                (10, "relied on: lint #1004; canon-reviewer APPROVED #1005; braintrust NO PREFERENCE #1006"),
+                (10, "relied on: lint #1004; canon-reviewer APPROVED #1005; braintrust VOTE #1007"),
                 (6, "relied on: inspector APPROVED #602")):
             with self.subTest(pull=number):
                 w = World(self, (number,))

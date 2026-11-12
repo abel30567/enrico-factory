@@ -121,6 +121,18 @@ class Markers(LintCase):
         self.assertEqual([(f.rule, f.message.split(":")[0]) for f in self.markers(root).findings],
                          [("marker-reviewed", f"comment {n}") for n in (1, 2, 3, 4, 5)])
 
+    def test_rule4_braintrust_vote_without_reviewed_head_line(self):
+        root = self.with_comments(comments((1, "braintrust", "[BRAINTRUST] VOTE 5-2\n\ntally")),
+                                  self.role("panel", "braintrust"))
+        self.assertEqual(self.findings(root), [
+            ("marker-reviewed", "comment 1: '[BRAINTRUST] VOTE 5-2': verdict does not end with "
+                                "'reviewed head <sha> manifest <hash>'")])
+
+    def test_rule4_braintrust_vote_with_reviewed_head_line(self):
+        self.assertClean(self.with_comments(
+            comments((1, "braintrust", "[BRAINTRUST] VOTE 5-2\n\ntally\n" + HEAD)),
+            self.role("panel", "braintrust")))
+
     def test_rule5_role_comment_that_is_not_a_marker(self):
         root = self.with_comments((FIX / "r5_not_marker.json").read_text())
         self.assertOnly(root, "markers", [(COMMENTS, 2, "marker-missing")])
@@ -183,16 +195,16 @@ class Markers(LintCase):
 
     def test_actor_braintrust_vote_from_a_judge(self):
         self.assertClean(self.with_comments(
-            comments((1, "braintrust", "[BRAINTRUST] VOTE 5-2\n\ntally")), self.role("panel", "braintrust")))
+            comments((1, "braintrust", "[BRAINTRUST] VOTE 5-2\n\ntally\n" + HEAD)), self.role("panel", "braintrust")))
 
     def test_actor_braintrust_vote_from_another_kind(self):
-        root = self.with_comments(comments((1, "jury", "[BRAINTRUST] VOTE 5-2\n\ntally")),
+        root = self.with_comments(comments((1, "jury", "[BRAINTRUST] VOTE 5-2\n\ntally\n" + HEAD)),
                                   self.role("editor", "jury", "BRAINTRUST"))
         self.assertEqual(self.findings(root), [
             ("marker-verb", "comment 1: '[BRAINTRUST] VOTE 5-2': a checker may not post VOTE")])
 
     def test_actor_braintrust_vote_with_another_actor(self):
-        root = self.with_comments(comments((1, "panel", "[BRAINTRUST] VOTE 5-2\n\ntally")))
+        root = self.with_comments(comments((1, "panel", "[BRAINTRUST] VOTE 5-2\n\ntally\n" + HEAD)))
         self.assertEqual(self.findings(root), [
             ("marker-actor", "comment 1: '[BRAINTRUST] VOTE 5-2': actor BRAINTRUST does not match role panel (PANEL)")])
 

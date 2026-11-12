@@ -316,8 +316,10 @@ class Tick(unittest.TestCase):
     def test_seeded_a_vote_without_the_line_is_launched_again(self):
         w = World(self)
         w.rewrite(6, old_body(w.vote()["body"]))
-        self.assertEqual(w.lock(), "PR #2 #1 story/bible A-1: NO 1 rule(s)\n"
-                                   "  rule 3 judges: judge braintrust has no counting verdict\n")
+        self.assertEqual(w.lock(), "PR #2 #1 story/bible A-1: NO 2 rule(s)\n"
+                                   "  rule 3 judges: judge braintrust has no counting verdict\n"
+                                   "  rule 6 amendment: bible/amendments/A-1.json: the [BRAINTRUST] VOTE does not count: "
+                                   "reviewed: no reviewed head line\n")
         self.assertEqual(w.ticked().splitlines()[0], "STEP #1 launch braintrust on PR #2")
 
 
