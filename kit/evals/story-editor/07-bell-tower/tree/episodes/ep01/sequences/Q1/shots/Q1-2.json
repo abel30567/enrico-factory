@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "aya"
+  ],
+  "set": "bell-tower",
+  "camera": "wide on the bells",
+  "action": "Aya rings the scale; one bell thuds."
+}

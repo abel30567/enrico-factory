@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "edda"
+  ],
+  "set": "slipway",
+  "camera": "wide, high",
+  "action": "Edda walks down the slipway, lantern in her right hand, lighting the chocks."
+}

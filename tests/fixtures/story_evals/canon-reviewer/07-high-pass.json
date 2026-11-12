@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "A2 has Tamsin guiding a caravan in year 9; the ledger has her dead since year 3, and no flashback is marked.",
+      "evidence": "bible/canon/ledger.tsv tamsin status, tamsin died"
+    }
+  ]
+}

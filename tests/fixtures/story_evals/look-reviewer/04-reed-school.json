@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "lio's sash is P7; the style lock's palette has no P7.",
+      "evidence": "bible/style/model-sheets/lio.md sash"
+    }
+  ]
+}

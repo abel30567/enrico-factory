@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S2",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "nell"
+  ],
+  "set": "kiln-yard",
+  "camera": "insert",
+  "action": "A strange pot in the kiln."
+}

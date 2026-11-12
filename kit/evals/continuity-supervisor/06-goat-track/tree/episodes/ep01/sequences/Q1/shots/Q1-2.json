@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "lark"
+  ],
+  "set": "goat-track",
+  "camera": "medium, tracking",
+  "action": "Lark climbs the goat track under a high noon sun, shading her eyes."
+}

@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "ari",
+    "noor"
+  ],
+  "set": "dunes",
+  "camera": "close on Ari's hands, then tilt up",
+  "action": "The string snaps in Ari's hands; the kite drops into Noor's arms."
+}

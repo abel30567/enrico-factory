@@ -1,0 +1,7 @@
+[
+ {"id": "L1", "scene": "S1", "speaker": "PIM", "text": "Let me take the big one."},
+ {"id": "L2", "scene": "S1", "speaker": "GRAN", "text": "Then take the gloves. The line bites when the wind turns."},
+ {"id": "L3", "scene": "S1", "speaker": "PIM", "text": "I won't need them."},
+ {"id": "L4", "scene": "S2", "speaker": "PIM", "text": "Gloves."},
+ {"id": "L5", "scene": "S3", "speaker": "GRAN", "text": "Yours now."}
+]
