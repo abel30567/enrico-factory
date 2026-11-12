@@ -212,6 +212,7 @@ class Tick:
             raise Failed(f"no run {name}") from None
         with _captured():
             finish.post(self.p, self.gh, self.p.root, run, harness.Outcome("failed", None, "timed out"))
+        finish.cleanup(self.p.root, run)
 
     def lock(self, state, ticket, entry, first):
         n, m, room = ticket["number"], entry["pull"], ticket["room"]

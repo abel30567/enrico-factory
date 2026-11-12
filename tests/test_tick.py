@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from kit.lib import blind, cmd_tick, gitstate, github, launch, lint, production  # noqa: E402
 from kit.lib import cmd_lock  # noqa: E402
+from kit.lib import steps  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "tick"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -431,7 +432,8 @@ class Idempotence(Case):
 
 
 class Timeout(Case):
-    """Criteria 6 and 10: a LAUNCH older than RUN_TIMEOUT_MIN with no marker of its role."""
+    """Criteria 6 and 10: a LAUNCH with no marker of its role, older than RUN_ATTEMPTS times
+    RUN_TIMEOUT_MIN plus RUN_MARGIN_MIN."""
 
     def setUp(self):
         self.w = self.world((5, 6))
@@ -443,11 +445,11 @@ class Timeout(Case):
 
     def test_timed_out_run_is_blocked(self):
         w = self.w
-        self.at(121)
+        self.at(251)
         self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 timeout writer 6-1"])
         posted = w.ops("post")[1:]
         self.assertEqual(len(posted), 1)
-        [blocked] = [c for c in w.comments(6) if c["created_at"] == later(121)]
+        [blocked] = [c for c in w.comments(6) if c["created_at"] == later(251)]
         self.assertEqual((blocked["role"], blocked["body"].split("\n")[0]), ("writer", "[WRITER] BLOCKED"))
         self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
         self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
@@ -465,7 +467,7 @@ class Timeout(Case):
 
     def test_no_run_directory_fails(self):
         shutil.rmtree(self.w.state / "runs" / "writer-6-1")
-        self.at(121)
+        self.at(251)
         out = self.ticked(self.w, "--apply", code=1)
         self.assertEqual(out, "FAIL #5 timeout: no run writer-6-1\ntick: 0 steps, 0 need, 0 wait, 1 failed\n")
         self.assertEqual(len(self.w.ops("post")), 1)
@@ -658,6 +660,150 @@ class VoidLock(Case):
             for _ in range(2):
                 self.assertEqual(lines(self.ticked(w, "--apply")), [need])
         self.assertEqual(w.markers_lint(w.comments(8)).status, lint.PASS)
+
+
+class DeadRun(Case):
+    """ISSUE-81: a run is dead only after RUN_ATTEMPTS * RUN_TIMEOUT_MIN + RUN_MARGIN_MIN minutes (250 by
+    default); the tick's BLOCKED for a checker's or judge's run removes its worktree as the supervisor does."""
+
+    def at(self, minutes):
+        os.environ["FACTORY_NOW"] = later(minutes)
+
+    def maker(self):
+        w = self.world((5, 6))
+        p = w.p()
+        return w, launch.prepare(p, w.gh, p.root, "writer", 6)
+
+    def checker(self):
+        w = self.world((19, 20))
+        p = w.p()
+        return w, launch.prepare(p, w.gh, p.root, "inspector", 20)
+
+    def listed(self, w, path):
+        return f"worktree {path}" in w.git("worktree", "list", "--porcelain").splitlines()
+
+    def after_launch(self, w, number, role):
+        """The comments by ``role`` on ``number`` after its newest LAUNCH."""
+        found = []
+        for c in sorted(w.comments(number), key=lambda c: (c["created_at"], c["id"])):
+            if c["body"].startswith("[") and " LAUNCH " in c["body"].split("\n")[0]:
+                found = []
+            elif c["role"] == role:
+                found.append(c)
+        return found
+
+    def blocked(self, w, number, role):
+        """The first lines of the comments by ``role`` after the LAUNCH on ``number``."""
+        return [c["body"].split("\n")[0] for c in self.after_launch(w, number, role)]
+
+    # -- criteria 1, 2, 4, 6 and 11: the line
+
+    def test_alive_past_the_setting_waits(self):
+        w, _ = self.maker()
+        for minutes in (121, 250):
+            self.at(minutes)
+            self.assertEqual(lines(self.ticked(w, "--apply")), [f"WAIT #5 running writer launched at {NOW}"])
+        self.assertEqual(len(w.ops("post")), 1)
+        self.assertNotIn("[WRITER] BLOCKED", self.blocked(w, 6, "writer"))
+
+    def test_dead_past_the_line_is_blocked_once(self):
+        w, run = self.maker()
+        self.at(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 timeout writer 6-1"])
+        [blocked] = self.after_launch(w, 6, "writer")
+        self.assertEqual(blocked["body"].split("\n")[0], "[WRITER] BLOCKED")
+        self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
+        self.assertEqual(len(w.ops("post")), 2)
+        # Criterion 6: a maker's worktree is kept.
+        self.assertEqual(run.worktree, w.state / "worktrees" / "writer-6-1")
+        self.assertTrue(run.worktree.is_dir())
+        self.assertTrue(self.listed(w, run.worktree))
+
+    def test_the_setting_scales_the_line(self):
+        w, _ = self.maker()
+        with open(w.root / "production.local.env", "a") as handle:
+            handle.write("RUN_TIMEOUT_MIN=30\n")
+        for minutes in (61, 70):
+            self.at(minutes)
+            self.assertEqual(lines(self.ticked(w, "--apply")), [f"WAIT #5 running writer launched at {NOW}"])
+        self.at(71)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 timeout writer 6-1"])
+
+    def test_the_line_follows_the_attempts(self):
+        w, _ = self.maker()
+        with mock.patch.object(steps, "RUN_ATTEMPTS", 1):
+            self.at(130)
+            self.assertEqual(lines(self.ticked(w)), [f"WAIT #5 running writer launched at {NOW}"])
+            self.at(131)
+            self.assertEqual(lines(self.ticked(w)), ["STEP #5 timeout writer 6-1"])
+
+    # -- criteria 5, 7, 8, 9 and 10: a checker's worktree
+
+    def test_checker_worktree_is_removed(self):
+        w, run = self.checker()
+        self.assertTrue(self.listed(w, run.worktree))
+        self.at(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertEqual(self.blocked(w, 20, "inspector"), ["[INSPECTOR] BLOCKED"])
+        self.assertFalse(run.worktree.exists())
+        self.assertFalse(self.listed(w, run.worktree))
+        self.assertFalse((run.dir / "supervisor.log").exists())
+
+    def test_removal_that_fails_is_logged(self):
+        w, run = self.checker()
+        self.at(251)
+        seeded = gitstate.GitError("worktree", 128, "seeded")
+        with mock.patch.object(gitstate, "remove_worktree", side_effect=seeded):
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertEqual(self.blocked(w, 20, "inspector"), ["[INSPECTOR] BLOCKED"])
+        self.assertTrue(run.worktree.is_dir())
+        self.assertEqual((run.dir / "supervisor.log").read_text(),
+                         "launch 20-1: worktree not removed: git worktree: exit 128\n")
+
+    def test_worktree_already_removed_through_git(self):
+        w, run = self.checker()
+        gitstate.remove_worktree(w.root, run.worktree)
+        self.at(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertEqual((run.dir / "supervisor.log").read_text(),
+                         "launch 20-1: worktree not removed: git worktree: exit 128\n")
+
+    def test_worktree_directory_deleted_by_hand(self):
+        w, run = self.checker()
+        shutil.rmtree(run.worktree)
+        self.assertTrue(self.listed(w, run.worktree))
+        self.at(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertFalse(self.listed(w, run.worktree))
+        self.assertFalse((run.dir / "supervisor.log").exists())
+
+    def test_dry_run_writes_nothing(self):
+        w, run = self.checker()
+        self.at(251)
+        before = w.snapshot()
+        self.assertEqual(lines(self.ticked(w)), ["STEP #19 timeout inspector 20-1"])
+        self.assertEqual(w.snapshot(), before)
+        self.assertTrue(run.worktree.is_dir())
+        self.assertTrue(self.listed(w, run.worktree))
+
+    def test_post_refused_keeps_the_worktree_for_the_next_tick(self):
+        w, run = self.checker()
+        self.at(251)
+
+        class Refusing(github.Recorded):
+            def post(self, number, body, role):
+                if number == 20:
+                    raise github.GitHubError(f"post #{number}: exit 1")
+                return super().post(number, body, role)
+
+        with mock.patch.object(github, "connect", lambda settings, env=None: Refusing(w.github)):
+            out = self.ticked(w, "--apply", code=1)
+        self.assertEqual(lines(out), ["FAIL #19 timeout: post #20: exit 1"])
+        self.assertTrue(run.worktree.is_dir())
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertFalse(run.worktree.exists())
+        self.assertFalse(self.listed(w, run.worktree))
 
 
 if __name__ == "__main__":
