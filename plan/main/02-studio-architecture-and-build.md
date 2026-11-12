@@ -77,7 +77,7 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #60 (w2-11) launch finish (merged in PR #61)
 - [x] #62 (w2-14) the eleven lock rules and `factory lock` (merged in PR #64)
 - [x] #53 gate push retry: merged (PR #63, main 8b8e85e)
-- [ ] #67 w2-15 `factory tick`: PR #68, F1 addressed (the test helper now stages by content), round 2 verifier launched
+- [x] #67 w2-15 `factory tick`: merged (PR #68, verified in round 2, main 4fb7478, gates OK with 1010 tests)
 - [x] #56 the amendment's `class` in the canon-keeper and canon-reviewer role files: merged (PR #70, main bc33542, gates OK)
 - [ ] #69 the sandbox denies an allowed endpoint on about one port in seven (the cause of the intermittent `test_connect_to_endpoint_allowed` failure; #54 closed as its duplicate): ticket filed with the measurements, builder launched
 - [x] group D bodies reviewed against the built code: `body-11.md`, `body-14.md`, `body-19.md` in `~/.agent-orch/enrico-factory/inputs/wave2/`
@@ -85,7 +85,7 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] rulings taken for group D (in the ticket bodies): Q7 to Q11, Q16, Q19 as recommended; the amendment is `bible/amendments/A-<n>.json` with a `class` key (the brief and `canon-keeper.md` over Q9's front matter); rule 6 applies to `amendment` stages and to `bible/**` changes outside the stage's own `paths`; a `LOCK` is posted as role `program:lock` with first line `[<ORCHESTRATOR ROLE ID>] LOCK`; `GATEWAY` and `RUN_TIMEOUT_MIN` stay in `production.env`, and `factory init` keeps writing `GATEWAY=on`, so a new production refuses launches until the gateway exists or it is set to `off` (fail closed; the w2-20 fixture sets `off`)
 - [ ] follow-ups filed: #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0), #65 (a timeout BLOCKED can be posted while the worker is alive) and #66 (a merge that keeps failing posts a LOCK and a void note every tick), both found in the w2-15 review, do after w2-15 merges
 - [x] update `docs/harness.md` section 5 (Q14): the result keys `addressed`, `selected`, `vote`, the per-marker rules and `VOTE`, as built in `kit/lib/harness.py`
-- [ ] group E: w2-20 end to end: review its draft against the built code once the tick pull request is open, then file and launch when #67 is merged
+- [ ] group E: w2-20 end to end: the draft is being reviewed against the built code (body-20.md); file and launch when the review is back
 
 ## Review
 
