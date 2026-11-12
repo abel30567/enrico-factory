@@ -42,8 +42,17 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 
 ## What you produce
 
-- **amendment** `bible/amendments/A-<n>.json`: the next free number; what it changes, why, and
-  the evidence, by file. Every other change in your pull request is one this amendment names.
+- **amendment** `bible/amendments/A-<n>.json`: the next free number; a JSON object with the keys
+  `class`, `changes` (what it changes, by file), `why` and `evidence` (by file). `class` is required:
+  `charter` when it changes `bible/charter.md`; `arc` when it adds or bends an arc (a story line that
+  runs across episodes); `canon` for every other change to the bible. When two apply, write the first
+  in this order. `charter` and `arc` need a Braintrust vote before the lock. Every other change in
+  your pull request is one this amendment names. For example:
+  ```json
+  {"class": "canon", "changes": {"bible/canon/places/mill.md": "adds the mill's second wheel"},
+   "why": "the second episode needs both wheels on screen",
+   "evidence": {"sources/mill-letter.md": "the miller's letter names two wheels"}}
+  ```
 - `bible/canon/ledger.tsv`: columns `subject`, `attribute`, `value`, `tag`, `source`; one row per
   permanent fact. State that changes during a story is not canon.
 - `bible/canon/characters/<id>.md` and `bible/canon/places/<id>.md`: one sheet each.
