@@ -211,9 +211,14 @@ def write_mcp_config(path, servers=None):
                           encoding="utf-8")
 
 
-def environment(parent, settings, family, config_dir, token_fd):
-    """The worker's environment, built from an allowlist: nothing else of ``parent`` reaches it."""
+def environment(parent, settings, family, config_dir, token_fd, tmp_dir=None):
+    """The worker's environment, built from an allowlist: nothing else of ``parent`` reaches it.
+
+    With ``tmp_dir``, ``TMPDIR`` is that directory instead of the parent's.
+    """
     env = {key: parent[key] for key in ENV_COPIED if key in parent}
+    if tmp_dir is not None:
+        env["TMPDIR"] = str(tmp_dir)
     env["CLAUDE_CONFIG_DIR"] = str(config_dir)
     env["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"] = str(token_fd)
     if family == "other":

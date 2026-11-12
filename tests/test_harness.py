@@ -320,6 +320,15 @@ class EnvironmentTest(unittest.TestCase):
         self.assertEqual(sorted(env), ["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
                                        "CLAUDE_CONFIG_DIR", "PATH"])
 
+    def test_tmp_dir_is_the_workers_tmpdir(self):
+        env = harness.environment(invented_parent(), SETTINGS, "any", "/run/cfg", 3, tmp_dir="/run/tmp")
+        self.assertEqual(env["TMPDIR"], "/run/tmp")
+        self.assertEqual(sorted(env), ALLOWLIST)
+        env = harness.environment(invented_parent(), SETTINGS, "any", "/run/cfg", 3)
+        self.assertEqual(env["TMPDIR"], "/tmp/invented")
+        env = harness.environment({"PATH": "/bin"}, SETTINGS, "any", "/run/cfg", 3)
+        self.assertNotIn("TMPDIR", env)
+
 
 class AccountsTest(unittest.TestCase):
     def setUp(self):

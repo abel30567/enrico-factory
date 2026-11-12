@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""`sandboxed-harness` that first records what the worker can do, for tests.
+
+Before it runs the copy of `fake-harness`, it writes `probe.json` in the run directory (the parent of
+`CLAUDE_CONFIG_DIR`): the value of `TMPDIR`, `tempfile.gettempdir()`, the directory of a file made with
+`tempfile.mkstemp()`, and, for each path in `probe-paths.json` beside this file, `read` or the name of
+the exception that reading it raised. It never records content. `--version` runs the fake where it is.
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+def readable(path):
+    try:
+        Path(path).read_bytes()
+    except Exception as error:
+        return type(error).__name__
+    return "read"
+
+
+def probe(here, run_dir):
+    fd, made = tempfile.mkstemp()
+    os.close(fd)
+    os.unlink(made)
+    paths = json.loads((here / "probe-paths.json").read_text(encoding="utf-8"))
+    found = {"TMPDIR": os.environ.get("TMPDIR"), "gettempdir": tempfile.gettempdir(),
+             "mkstemp": os.path.dirname(made), "paths": {path: readable(path) for path in paths}}
+    (run_dir / "probe.json").write_text(json.dumps(found, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def main():
+    here = Path(sys.argv[0]).resolve().parent
+    fake = here / "fake-harness"
+    if "--version" not in sys.argv[1:]:
+        run_dir = Path(os.environ["CLAUDE_CONFIG_DIR"]).parent
+        probe(here, run_dir)
+        copy = run_dir / "fake"
+        copy.mkdir(exist_ok=True)
+        for name in ("fake-harness", "fake-harness.json"):
+            shutil.copy2(here / name, copy / name)
+        fake = copy / "fake-harness"
+    return subprocess.run([str(fake), *sys.argv[1:]], close_fds=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
