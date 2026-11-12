@@ -73,15 +73,15 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #44 (w2-10) launch prepare (merged in PR #52)
 - [x] #43 (w2-09) lint --post (merged in PR #48)
 - [x] #46 (w2-13) gate and ledger (merged in PR #51)
-- [ ] verified, waiting for the merge gate (one merge per wake): #55 braintrust vote (PR #58), #57 w2-19 story-room eval suites (PR #59)
+- [ ] verified, waiting for the merge gate (one merge per wake): #57 w2-19 story-room eval suites (PR #59), #60 w2-11 launch finish (PR #61)
 - [x] group D bodies reviewed against the built code: `body-11.md`, `body-14.md`, `body-19.md` in `~/.agent-orch/enrico-factory/inputs/wave2/`
-- [ ] #60 w2-11 launch finish: PR #61 is READY, verifier launched
 - [ ] #62 w2-14 the ten lock rules and `factory lock`: filed, builder launched
-- [ ] #55 a counting `[BRAINTRUST] VOTE` fills the `bible` stage's judge place (found in the group D review: on `main` a `bible` pull request can never become lockable). PR #58 is verified. Ruling: braintrust votes on every `bible` pull request; the tally is lock rule 6
+- [x] #55 a counting `[BRAINTRUST] VOTE` fills the `bible` stage's judge place (merged in PR #58). Ruling: braintrust votes on every `bible` pull request; the tally is lock rule 6
 - [x] rulings taken for group D (in the ticket bodies): Q7 to Q11, Q16, Q19 as recommended; the amendment is `bible/amendments/A-<n>.json` with a `class` key (the brief and `canon-keeper.md` over Q9's front matter); rule 6 applies to `amendment` stages and to `bible/**` changes outside the stage's own `paths`; a `LOCK` is posted as role `program:lock` with first line `[<ORCHESTRATOR ROLE ID>] LOCK`; `GATEWAY` and `RUN_TIMEOUT_MIN` stay in `production.env`, and `factory init` keeps writing `GATEWAY=on`, so a new production refuses launches until the gateway exists or it is set to `off` (fail closed; the w2-20 fixture sets `off`)
-- [ ] follow-ups filed: #53 (gate does not retry a failed push), #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0), #56 (canon-keeper does not tell the maker to write the amendment's `class`)
-- [ ] update `docs/harness.md` section 5 (Q14)
-- [ ] group E: w2-15 tick, then w2-20 end to end: review, file and launch as their dependencies merge
+- [ ] #53 gate retries the push on a rerun after a failed push: made a tracked ticket, builder launched
+- [ ] follow-ups filed: #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0), #56 (canon-keeper does not tell the maker to write the amendment's `class`; do after #62 merges)
+- [x] update `docs/harness.md` section 5 (Q14): the result keys `addressed`, `selected`, `vote`, the per-marker rules and `VOTE`, as built in `kit/lib/harness.py`
+- [ ] group E: w2-15 tick, then w2-20 end to end: review the w2-15 draft against the built code once the #62 pull request is open, then file and launch as their dependencies merge
 
 ## Review
 
