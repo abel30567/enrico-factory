@@ -20,7 +20,7 @@ from kit.lib import steps, tickets  # noqa: E402
 from test_tickets import FIX, World, pull_record, ticket_issue  # noqa: E402
 
 NOW = "2026-11-11T11:00:00Z"
-LATE = "2026-11-11T13:00:00Z"
+LATE = "2026-11-11T15:00:00Z"
 
 # step name -> (state, step, role, pull) for ticket #3
 BEATS = {
@@ -128,9 +128,16 @@ class BeatsChainTest(ChainCase):
     def test_timeout_of_a_maker_with_no_pull(self):
         self.until("launch-maker")
         self.assertEqual(short(self.next(LATE)), ("running", "timeout", "writer", None))
-        # launched at 10:01: 120 minutes is not older than 120 minutes, one second more is
-        self.assertEqual(short(self.next("2026-11-11T12:01:00Z")), ("running", "none", "writer", None))
-        self.assertEqual(short(self.next("2026-11-11T12:01:01Z")), ("running", "timeout", "writer", None))
+        # launched at 10:01: 2 * 120 + 10 = 250 minutes is not dead, one second more is
+        self.assertEqual(short(self.next("2026-11-11T14:11:00Z")), ("running", "none", "writer", None))
+        self.assertEqual(short(self.next("2026-11-11T14:11:01Z")), ("running", "timeout", "writer", None))
+
+    def test_dead_line_is_attempts_times_the_setting_plus_the_margin(self):
+        self.until("launch-maker")
+        # launched at 10:01: alive past RUN_TIMEOUT_MIN (12:01:01) and at 250 minutes, dead one second later
+        self.assertEqual(short(self.next("2026-11-11T12:01:01Z")), ("running", "none", "writer", None))
+        self.assertEqual(short(self.next("2026-11-11T14:11:00Z")), ("running", "none", "writer", None))
+        self.assertEqual(short(self.next("2026-11-11T14:11:01Z")), ("running", "timeout", "writer", None))
 
     def test_timeout_on_a_pull(self):
         self.until("relaunch-maker")

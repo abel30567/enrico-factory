@@ -16,6 +16,8 @@ from datetime import datetime
 from kit.lib import markers, production, tickets
 
 RUN_TIMEOUT_MIN = "120"
+RUN_ATTEMPTS = 2
+RUN_MARGIN_MIN = 10
 
 
 def _entry(state, step, role=None, pull=None, reason=""):
@@ -59,9 +61,10 @@ def _wake(p, ticket, state, pull, reason):
 
 
 def _running(p, launch, role, pull, now):
-    """Row 6 for a ``LAUNCH`` of ``role`` that no marker of that role follows."""
+    """Row 6 for a ``LAUNCH`` of ``role`` that no marker of that role follows. The run is dead only
+    after every attempt the supervisor may make, plus a margin for its post."""
     age = _minutes(launch["created_at"], now)
-    if age > _timeout(p):
+    if age > RUN_ATTEMPTS * _timeout(p) + RUN_MARGIN_MIN:
         return _entry("running", "timeout", role, pull,
                       f"{role} launched at {launch['created_at']} has run {int(age)} min")
     return _entry("running", "none", role, pull, f"{role} launched at {launch['created_at']}")

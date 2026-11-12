@@ -25,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 
 from kit.lib import cmd_launch, finish, gitstate, github, harness, launch, markers, production  # noqa: E402
 from kit.lib import sandbox, tickets  # noqa: E402
+from kit.lib import steps  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "finish"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -667,6 +668,42 @@ class Supervisor(unittest.TestCase):
         self.assertEqual(code, 3, out + err)
         self.assertIn("Missing: a valid result (setting ACCOUNTS_CHECKER is empty)\n", w.by(5, "critic")[0]["body"])
         self.assertEqual(w.calls(), [])
+
+
+class DeadRun(unittest.TestCase):
+    """ISSUE-81: the supervisor's attempts follow steps.RUN_ATTEMPTS; a removal that fails is logged."""
+
+    def test_removal_that_fails_is_logged(self):
+        w = World(self)
+        w.steps(approved())
+        run = launch.prepare(w.p, w.gh, w.root, "critic", 5, now=NOW)
+        out = io.StringIO()
+        seeded = gitstate.GitError("worktree", 128, "seeded")
+        with mock.patch.object(gitstate, "remove_worktree", side_effect=seeded), contextlib.redirect_stdout(out):
+            code = finish.supervise(w.p, w.gh, w.root, run)
+        self.assertEqual(code, 0)
+        self.assertEqual(out.getvalue(), "posted [CRITIC] APPROVED for launch 5-1\n")
+        self.assertEqual((run.dir / "supervisor.log").read_text(),
+                         "launch 5-1: worktree not removed: git worktree: exit 128\n")
+
+    def test_one_attempt_starts_one_worker(self):
+        w = World(self)
+        tokens = []
+        real = harness.start
+
+        def spy(argv, env, cwd, prompt_path, token_path, *rest, **kw):
+            tokens.append(Path(token_path).name)
+            return real(argv, env, cwd, prompt_path, token_path, *rest, **kw)
+
+        usage = {"type": "result", "subtype": "error_during_execution", "is_error": True,
+                 "result": "usage limit reached", "api_error_status": 429}
+        w.steps({"match": WRITER, "envelope": usage, "exit": 1}, ready())
+        with mock.patch.object(harness, "start", spy), mock.patch.object(steps, "RUN_ATTEMPTS", 1):
+            code, out, err = w.launch("writer", "3")
+        self.assertEqual(code, 3, out + err)
+        self.assertEqual(tokens, ["acct-one"])
+        self.assertEqual(sorted(json.loads((w.state / "accounts.json").read_text())), ["acct-one"])
+        self.assertIn("Missing: a valid result (account out of usage (exit 1))\n", w.by(3, "writer")[0]["body"])
 
 
 if __name__ == "__main__":

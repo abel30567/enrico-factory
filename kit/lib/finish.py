@@ -260,7 +260,7 @@ def _outcome(p, root, run) -> Outcome:
                               web=sandbox.web(role_meta), endpoints=_endpoints(settings, meta["family"]))
     sandbox.write(run.dir / "sandbox.sb", profile)
     argv = sandbox.apply(settings, argv, run.dir / "sandbox.sb")
-    for attempt in range(2):
+    for attempt in range(steps.RUN_ATTEMPTS):
         if attempt:
             account = _pick(settings, slot, state_dir, now)
             if account is None:
@@ -288,6 +288,16 @@ def _log(run, text) -> None:
         handle.write(text + "\n")
 
 
+def cleanup(root, run) -> None:
+    """Remove a checker's or judge's worktree; a removal that fails is logged, never raised."""
+    if run.meta["kind"] == "maker":
+        return
+    try:
+        launch.cleanup(root, run)
+    except GitError as error:
+        _log(run, f"launch {run.meta['id']}: worktree not removed: {describe(error)}")
+
+
 def supervise(p, gh, root, run) -> int:
     """Run the worker and post its marker: 0 a marker, 3 BLOCKED, 2 nothing could be posted."""
     try:
@@ -303,9 +313,5 @@ def supervise(p, gh, root, run) -> int:
         verb = markers.parse(comment["body"]).verb
         code = 3 if verb == "BLOCKED" else 0
         print(f"posted [{run.meta['actor']}] {verb} for launch {run.meta['id']}")
-    if run.meta["kind"] != "maker":
-        try:
-            launch.cleanup(root, run)
-        except GitError as error:
-            _log(run, f"launch {run.meta['id']}: worktree not removed: {describe(error)}")
+    cleanup(root, run)
     return code

@@ -162,7 +162,7 @@ class StatusTest(unittest.TestCase):
         self.assertEqual([line.split()[0] for line in ticket_lines(out)], ["#3", "#2"])
 
     def test_timeout_prints_the_role(self):
-        launch = {"id": 9, "created_at": "2026-11-11T08:00:00Z", "role": "chief",
+        launch = {"id": 9, "created_at": "2026-11-11T06:00:00Z", "role": "chief",
                   "body": "[CHIEF] LAUNCH editor PM-2-b\n"}
         self.w.write("comments/4.json", self.w.read("comments/4.json") + [launch])
         _, out, _ = self.w.run("status")
