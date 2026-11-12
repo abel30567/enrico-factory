@@ -2,8 +2,9 @@
 
 Companion to `docs/system-brief.md` (section 14). Built: the launch of section 3, logins and the account
 pool of section 4, the result object of section 5 and the sandbox of section 7, in `kit/lib/harness.py`,
-`launch.py`, `finish.py` and `sandbox.py`. Not built: the knowledge gateway of section 6, `factory run`
-and injected credentials of section 8, and forks of section 9.
+`launch.py`, `finish.py` and `sandbox.py`, and `factory run` of section 8 with its tool interface, in
+`kit/lib/cmd_run.py` and `kit/lib/tools/`. Not built: the knowledge gateway of section 6, any tool for
+`factory run` to call (none is installed yet), and forks of section 9.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 

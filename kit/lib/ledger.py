@@ -1,6 +1,8 @@
 """The spend ledger and the producer's decision (system brief sections 7, 9 and 11).
 
-``ledger/spend.tsv`` is append-only and written only by ``factory gate``, straight on the base branch.
+``ledger/spend.tsv`` is append-only and written only by ``factory gate`` and ``factory run``, straight on
+the base branch: the gate appends a ``job`` or ``lock`` row with its decision, the run a ``run`` row with
+a job's real cost.
 Money and compute are ``decimal.Decimal``. Nothing here prints or returns a setting's value other than
 a cap's name.
 """
@@ -18,8 +20,9 @@ PATH = "ledger/spend.tsv"
 COLUMNS = ("time", "kind", "hash", "ticket", "episode", "tool", "usd", "compute_min", "caller", "verdict",
            "cap")
 HEADER = "\t".join(COLUMNS)
-KINDS = ("job", "lock")
+KINDS = ("job", "lock", "run")
 VERDICTS = ("PASS", "STOP")
+RUN_VERDICTS = ("DONE", "FAILED")
 GATE_ROLE = "program:gate"
 GATE_ACTOR = "PRODUCER"
 
@@ -45,8 +48,13 @@ def _problem(row: dict) -> str | None:
         if any(c in value for c in "\t\n\r"):
             return f"{name} holds a tab or a newline"
     if row["kind"] not in KINDS:
-        return "kind is not job or lock"
-    if row["verdict"] not in VERDICTS:
+        return "kind is not job, lock or run"
+    if row["kind"] == "run":
+        if row["verdict"] not in RUN_VERDICTS:
+            return "verdict of a run is not DONE or FAILED"
+        if row["cap"] != "-":
+            return "cap of a run is not -"
+    elif row["verdict"] not in VERDICTS:
         return "verdict is not PASS or STOP"
     if row["cap"] != "-" and row["cap"] not in production.CAPS:
         return "cap is not a cap name or -"
@@ -96,10 +104,15 @@ def line(row: dict) -> str:
 
 
 def spent(rows: list, episode: str | None = None) -> dict:
-    """The sums of the PASS rows, of one episode or of the season (the whole file)."""
+    """What was spent, of one episode or of the season (the whole file), counting each hash once.
+
+    A hash with ``run`` rows counts their amounts, the real cost; any other counts its PASS rows.
+    """
     total = {"usd": Decimal(0), "compute_min": Decimal(0)}
+    ran = {row["hash"] for row in rows if row["kind"] == "run"}
     for row in rows:
-        if row["verdict"] == "PASS" and (episode is None or row["episode"] == episode):
+        counts = row["kind"] == "run" or (row["verdict"] == "PASS" and row["hash"] not in ran)
+        if counts and (episode is None or row["episode"] == episode):
             total["usd"] += Decimal(row["usd"])
             total["compute_min"] += Decimal(row["compute_min"])
     return total

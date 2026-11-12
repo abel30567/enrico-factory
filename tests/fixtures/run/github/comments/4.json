@@ -1,0 +1,20 @@
+[
+ {
+  "body": "[RENDERER] READY\nrender requested\n",
+  "created_at": "2026-11-01T11:00:00Z",
+  "id": 6,
+  "role": "renderer"
+ },
+ {
+  "body": "[LINT] PASS\nstructure: PASS\nreviewed head {head:4} manifest none\n",
+  "created_at": "2026-11-01T11:10:00Z",
+  "id": 7,
+  "role": "program:lint"
+ },
+ {
+  "body": "[INSPECTOR] APPROVED\nthe request matches the frames\nreviewed head {head:4} manifest none\n",
+  "created_at": "2026-11-01T11:20:00Z",
+  "id": 8,
+  "role": "inspector"
+ }
+]

@@ -1,0 +1,5 @@
+{
+ "compute_min": 20,
+ "outputs": {"shot-1.png": "the first frame\n", "shot-2.png": "the second frame, a little longer\n"},
+ "usd": 1.5
+}
