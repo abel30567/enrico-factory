@@ -99,7 +99,12 @@ def render(p, run, result, missing, dropped, head, manifest) -> str:
     if missing is None:
         lines += _result_lines(p, meta, result)
     else:
-        where = f"{meta['branch']} @ {head}" if meta["kind"] == "maker" else f"PR #{meta['pull']} @ {head}"
+        if meta["kind"] == "maker":
+            where = f"{meta['branch']} @ {head}"
+        elif meta["pull"] is None:
+            where = f"ticket #{meta['ticket']}"
+        else:
+            where = f"PR #{meta['pull']} @ {head}"
         lines += [f"Missing: {_line(missing)}", f"What was tried: launch {meta['id']}", f"Resume from: {where}"]
     if dropped is not None:
         lines.append("Dropped (outside writes): " + (", ".join(_line(d) for d in dropped) or "none"))
@@ -116,7 +121,24 @@ def _missing(meta, outcome):
     if outcome.status != "ok":
         return f"a valid result ({outcome.reason})"
     problems = harness.validate_result(meta["kind"], meta["actor"], outcome.result)
+    if not problems and meta["kind"] == "orchestrator":
+        problems = _judgment_problems(meta, outcome.result)
     return f"a valid result ({problems[0]})" if problems else None
+
+
+def _judgment_problems(meta, result):
+    """An orchestrator's result that does not answer its launch: a ruling on a pull request, a
+    selection among the launch's pitches on a ticket."""
+    marker = result["marker"]
+    if meta["pull"] is not None:
+        if marker == "SELECTED":
+            return ["result.marker: SELECTED does not answer a launch on a pull request"]
+        return []
+    if marker == "RULING":
+        return ["result.marker: RULING does not answer a launch on a ticket"]
+    if marker == "SELECTED" and result["selected"] not in meta["pulls"]:
+        return [f"result.selected: #{result['selected']} is not a pitch of this launch"]
+    return []
 
 
 def _ticket(gh, meta) -> dict:
@@ -166,6 +188,9 @@ def post(p, gh, root, run, outcome):
     if meta["kind"] == "maker":
         missing, dropped, head, number = _finish_maker(p, gh, root, run, result, missing)
         manifest = gitstate.manifest(root, meta["base_ref"], meta["branch"])
+    elif meta["kind"] == "orchestrator" and meta["pull"] is None:
+        # A judgment on a ticket reads no single head; nothing of the orchestrator's is committed.
+        dropped, head, number, manifest = None, "none", meta["number"], "none"
     else:
         # Nothing of a checker's or judge's is committed; the head under review is the one prepare read.
         dropped, head, number = None, meta["head_sha"], meta["pull"]
@@ -300,12 +325,13 @@ def _log(run, text) -> None:
 
 
 def cleanup(root, run) -> None:
-    """Remove a checker's or judge's worktree; a removal that fails is logged, never raised."""
+    """Remove a checker's, judge's or orchestrator's working directory; a removal that fails is logged,
+    never raised."""
     if run.meta["kind"] == "maker":
         return
     try:
         launch.cleanup(root, run)
-    except GitError as error:
+    except (GitError, OSError) as error:
         _log(run, f"launch {run.meta['id']}: worktree not removed: {describe(error)}")
 
 
