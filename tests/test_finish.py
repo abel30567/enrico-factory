@@ -992,5 +992,248 @@ class NoJudgment(Judgment, unittest.TestCase):
         self.assert_left_nothing()
 
 
+
+# -- a resource that is down (ISSUE-94)
+
+from kit.lib import down  # noqa: E402
+
+ENVELOPES = ROOT / "tests" / "fixtures" / "harness" / "envelopes"
+LOGIN_ENDED = {"match": CRITIC, "stdout": (ENVELOPES / "login-ended-status.stdout").read_text(), "exit": 1}
+PROXY_DOWN = {"match": CRITIC, "stdout": "", "stderr": (ENVELOPES / "proxy-down.stderr").read_text(), "exit": 1}
+DOWN_TEXT = ["Launches that need this resource skip a stopped login and wait when none is left.",
+             "To clear: renew the login or restart the proxy, then close this issue."]
+STOPPED_LINE = ("The stopped account is named in stopped.json in the state directory of the machine that ran "
+                "the launch.")
+
+
+class ResourceDown(unittest.TestCase):
+    """ISSUE-94, behaviours 1 to 5, 8 and 9: a dead login or proxy files one `resource:down` issue; a stopped
+    account is skipped, and a launch waits when none is left."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.tokens = []
+        real = harness.start
+
+        def spy(argv, env, cwd, prompt_path, token_path, *rest, **kw):
+            self.tokens.append(Path(token_path).name)
+            return real(argv, env, cwd, prompt_path, token_path, *rest, **kw)
+
+        patch = mock.patch.object(harness, "start", spy)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.outputs = []
+
+    def launch(self, *steps, role="critic", number="5"):
+        self.w.steps(*steps)
+        code, out, err = self.w.launch(role, number)
+        self.outputs.append(err)
+        return code, out, err
+
+    def down_issues(self):
+        return [i for i in self.w.gh.issues("open") if "resource:down" in i["labels"]]
+
+    def one_down_issue(self):
+        found = self.down_issues()
+        self.assertEqual(len(found), 1, "open resource:down issues")
+        return found[0]
+
+    def creates(self):
+        return [e for e in self.w.log() if e["op"] == "create_issue"]
+
+    def stopped(self):
+        path = self.w.state / "stopped.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def verbs(self):
+        return [markers.parse(c["body"]).verb for c in self.w.by(5, "critic")]
+
+    def other(self):
+        """`critic` as `family: other`, set up as in Sandbox.test_family_other_reaches_the_proxy."""
+        w = self.w
+        w.local(PROXY_URL="http://localhost:8317", MODEL_OTHER="other-model-1")
+        role = w.root / ".factory" / "roles" / "critic.md"
+        role.write_text(role.read_text().replace("family: any", "family: other"))
+        w.local()
+        (w.secrets / "proxy.client").write_text(TOKEN)
+        (w.secrets / "proxy.client").chmod(0o600)
+
+    def snapshot(self):
+        w = self.w
+        files = {path.relative_to(w.github).as_posix(): path.read_bytes()
+                 for path in sorted(w.github.rglob("*")) if path.is_file()}
+        runs = sorted(path.relative_to(w.state).as_posix() for path in (w.state / "runs").rglob("*"))
+        return files, w.git("for-each-ref", "--format=%(refname) %(objectname)"), runs
+
+    def assert_refused(self, resource, number):
+        before = self.snapshot()
+        started = len(self.tokens)
+        code, out, err = self.launch(approved())
+        self.assertEqual((code, out, err), (1, "", f"launch: resource {resource} is down (#{number})\n"))
+        self.assertEqual((len(self.tokens), self.w.calls()), (started, []))
+        self.assertEqual(self.snapshot(), before)
+
+    def assert_private(self):
+        """Behaviour 9. The orchestrator's LAUNCH records name the worktree by design and are left out."""
+        w = self.w
+        texts = {"issue " + str(i["number"]): i["title"] + "\n" + i["body"] for i in w.gh.issues("all")
+                 if "resource:down" in i["labels"]}
+        texts["log.jsonl"] = "\n".join(json.dumps(e) for e in w.log()
+                                       if not (e["op"] == "post" and " LAUNCH " in e["body"].split("\n")[0]))
+        texts["stderr"] = "".join(self.outputs)
+        for log in sorted(w.state.glob("runs/*/supervisor.log")):
+            texts[str(log)] = log.read_text()
+        for name, text in texts.items():
+            for secret in (*ACCOUNTS, TOKEN, SECRETS_NAME, str(w.state), str(w.root), str(Path.home())):
+                self.assertNotIn(secret, text, name)
+
+    # -- behaviour 1
+
+    def test_rotate_and_file(self):
+        w = self.w
+        code, out, err = self.launch(LOGIN_ENDED, approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.verbs(), ["APPROVED"])
+        self.assertEqual(self.tokens, ["acct-one", "acct-two"])
+        issue = self.one_down_issue()
+        self.assertEqual((issue["title"], issue["labels"]), ("[DOWN] inference.primary", ["resource:down"]))
+        self.assertEqual(issue["body"], "\n".join([
+            "Resource: inference.primary", "Cause: login expired or revoked", "Seen by: launch critic 5-1 on #5", "",
+            *DOWN_TEXT, STOPPED_LINE]) + "\n")
+        self.assertEqual(self.stopped(), {"acct-one": issue["number"]})
+        self.assertFalse((w.state / "accounts.json").exists())
+        code, out, err = self.launch(approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.tokens, ["acct-one", "acct-two", "acct-two"])
+        self.assertEqual(len(self.creates()), 1)
+        self.assert_private()
+
+    def test_rotate_and_file_clean_twin(self):
+        code, out, err = self.launch(approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.tokens, ["acct-one"])
+        self.assertEqual((self.creates(), self.stopped()), ([], None))
+
+    # -- behaviour 2
+
+    def every_account_ended(self):
+        code, out, err = self.launch(LOGIN_ENDED, dict(LOGIN_ENDED))
+        self.assertEqual(code, 3, out + err)
+        self.assertEqual(self.verbs(), ["BLOCKED"])
+        self.assertIn("Missing: a valid result (login expired or revoked (exit 1))\n", self.w.by(5, "critic")[0]["body"])
+        self.assertEqual(self.tokens, ["acct-one", "acct-two"])
+        issue = self.one_down_issue()
+        self.assertEqual(len(self.creates()), 1)
+        self.assertEqual(self.stopped(), {"acct-one": issue["number"], "acct-two": issue["number"]})
+        return issue["number"]
+
+    def test_every_account_ended(self):
+        number = self.every_account_ended()
+        self.assert_refused("inference.primary", number)
+        self.assert_private()
+
+    def test_every_account_stopped_after_prepare(self):
+        """Ruling 7: no account can be picked and every one is stopped; nothing more is filed."""
+        w = self.w
+        w.steps(approved())
+        run = launch.prepare(w.p, w.gh, w.root, "critic", 5, now=NOW)
+        for name in ACCOUNTS:
+            down.report(w.p, w.gh, down.PRIMARY, "login expired or revoked", "a test", name)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(finish.supervise(w.p, w.gh, w.root, run), 3)
+        self.assertIn("Missing: a valid result (every account's login has ended)\n", w.by(5, "critic")[-1]["body"])
+        self.assertEqual((w.calls(), len(self.creates())), ([], 1))
+
+    # -- behaviour 3
+
+    def test_the_proxy(self):
+        self.other()
+        code, out, err = self.launch(PROXY_DOWN)
+        self.assertEqual(code, 3, out + err)
+        self.assertIn("Missing: a valid result (model proxy unreachable (exit 1))\n", self.w.by(5, "critic")[0]["body"])
+        issue = self.one_down_issue()
+        self.assertEqual((issue["title"], issue["labels"]), ("[DOWN] inference.other", ["resource:down"]))
+        self.assertEqual(issue["body"], "\n".join([
+            "Resource: inference.other", "Cause: model proxy unreachable", "Seen by: launch critic 5-1 on #5", "",
+            *DOWN_TEXT]) + "\n")
+        self.assertIsNone(self.stopped())
+        self.assert_refused("inference.other", issue["number"])
+        code, out, err = self.launch(ready(), role="writer", number="3")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(len(self.creates()), 1)
+        self.assert_private()
+
+    def test_login_ended_in_slot_other(self):
+        self.other()
+        code, out, err = self.launch(LOGIN_ENDED)
+        self.assertEqual(code, 3, out + err)
+        issue = self.one_down_issue()
+        self.assertEqual(issue["title"], "[DOWN] inference.other")
+        self.assertIn("\nCause: login expired or revoked\n", issue["body"])
+        self.assertIsNone(self.stopped())
+
+    def test_login_ended_in_slot_other_while_its_issue_is_open(self):
+        w = self.w
+        self.other()
+        w.steps(LOGIN_ENDED)
+        run = launch.prepare(w.p, w.gh, w.root, "critic", 5, now=NOW)
+        number = down.report(w.p, w.gh, down.OTHER, "model proxy unreachable", "a test")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(finish.supervise(w.p, w.gh, w.root, run), 3)
+        self.assertEqual([i["number"] for i in self.down_issues()], [number])
+        self.assertEqual(len(self.creates()), 1)
+
+    # -- behaviour 4
+
+    def test_nothing_filed(self):
+        usage = {"match": CRITIC, "stdout": (ENVELOPES / "out-of-usage-status.stdout").read_text(), "exit": 1}
+        failed = {"match": CRITIC, "stdout": (ENVELOPES / "failed-error.stdout").read_text(), "exit": 1}
+        for steps_, code in (([PROXY_DOWN], 3), ([usage, approved()], 0), ([failed], 3)):
+            with self.subTest(step=steps_[0]["stdout"][:40]):
+                w = self.w = World(self)
+                found, out, err = self.launch(*steps_)
+                self.assertEqual(found, code, out + err)
+                self.assertEqual((self.creates(), self.stopped()), ([], None))
+                self.assertFalse((w.state / "down.lock").exists())
+        self.assertIn("Missing: a valid result (run failed (exit 1))\n", self.w.by(5, "critic")[0]["body"])
+
+    def test_proxy_down_in_slot_checker_is_blocked_as_on_main(self):
+        code, out, err = self.launch(PROXY_DOWN)
+        self.assertEqual(code, 3, out + err)
+        self.assertIn("Missing: a valid result (model proxy unreachable (exit 1))\n", self.w.by(5, "critic")[0]["body"])
+        self.assertEqual(self.tokens, ["acct-one"])
+
+    # -- behaviour 5
+
+    def test_closed(self):
+        w = self.w
+        old = self.every_account_ended()
+        w.gh.close_issue(old)
+        code, out, err = self.launch(LOGIN_ENDED, approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.tokens, ["acct-one", "acct-two", "acct-one", "acct-two"])
+        issue = self.one_down_issue()
+        self.assertNotEqual(issue["number"], old)
+        self.assertEqual(len(self.creates()), 2)
+        self.assertEqual(self.stopped(), {"acct-one": issue["number"]})
+
+    # -- behaviour 8
+
+    def test_a_filing_that_fails(self):
+        w = self.w
+        seeded = github.GitHubError("create_issue: exit 1")
+        with mock.patch.object(github.Recorded, "create_issue", side_effect=seeded):
+            code, out, err = self.launch(LOGIN_ENDED, dict(LOGIN_ENDED))
+        self.assertEqual(code, 3, out + err)
+        self.assertEqual(self.verbs(), ["BLOCKED"])
+        self.assertIn("Missing: a valid result (login expired or revoked (exit 1))\n", w.by(5, "critic")[0]["body"])
+        self.assertEqual((w.run_dir("critic-5-1") / "supervisor.log").read_text(),
+                         "launch 5-1: resource inference.primary not reported: create_issue: exit 1\n")
+        self.assertEqual(self.tokens, ["acct-one"])
+        self.assertIsNone(self.stopped())
+        self.assertEqual(self.down_issues(), [])
+        self.assert_private()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -987,5 +987,46 @@ class Judgment(Case):
         self.assertEqual(len(w.ops("post")), 1)
 
 
+
+class ResourceDown(Case):
+    """ISSUE-94, behaviour 7: a launch step whose role must wait is a WAIT line, and no launch is started."""
+
+    def test_the_launch_waits_while_the_issue_is_open(self):
+        w = self.world((19, 20))
+        envelope = ROOT / "tests" / "fixtures" / "harness" / "envelopes" / "login-ended-status.stdout"
+        ended = {"match": "You are the inspector", "stdout": envelope.read_text(), "exit": 1}
+        w.steps(ended, dict(ended))
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 launch inspector on PR #20"])
+        found = [(c["role"], c["body"].split("\n")[0]) for c in w.comments(20)][1:]
+        self.assertEqual(found, [("foreman", "[FOREMAN] LAUNCH inspector 20-1"), ("inspector", "[INSPECTOR] BLOCKED")])
+        found = [i for i in w.gh.issues("open") if i["title"] == "[DOWN] inference.primary"]
+        self.assertEqual(len(found), 1, "open [DOWN] inference.primary issues")
+        issue = found[0]
+        self.assertEqual(issue["labels"], ["resource:down"])
+        self.assertIn("\nSeen by: launch inspector 20-1 on #20\n", issue["body"])
+        before = w.snapshot()
+        wait = f"WAIT #19 review resource inference.primary is down (#{issue['number']})"
+        for args in ((), ("--apply",)):
+            out = self.ticked(w, *args)
+            self.assertEqual(lines(out), [wait])
+            self.assertTrue(out.endswith("tick: 0 steps, 0 need, 1 wait, 0 failed\n"), out)
+            self.assertEqual(w.snapshot(), before)
+        w.gh.close_issue(issue["number"])
+        self.assertEqual(lines(self.ticked(w)), ["STEP #19 launch inspector on PR #20"])
+
+    def test_one_read_of_the_open_issues(self):
+        w = self.world((18, 19, 20))
+        calls = []
+        real = github.Recorded.issues
+
+        def counted(gh, state="open"):
+            calls.append(state)
+            return real(gh, state)
+
+        with mock.patch.object(github.Recorded, "issues", counted):
+            self.ticked(w)
+        self.assertEqual(calls.count("open"), 2)  # the freeze check, and one for every launch step
+
+
 if __name__ == "__main__":
     unittest.main()
