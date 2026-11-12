@@ -78,7 +78,7 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #62 (w2-14) the eleven lock rules and `factory lock` (merged in PR #64)
 - [ ] verified, waiting for the merge gate (one merge per wake): #53 gate push retry (PR #63; the hold is removed)
 - [ ] #67 w2-15 `factory tick`: filed, builder launched
-- [ ] #56 the amendment's `class` in the canon-keeper and canon-reviewer role files: made a tracked ticket (`inputs/ISSUE-56.md`); launch `orch launch builder ISSUE-56 amendment-class` when the load allows (it was 9.01 at 21:40)
+- [ ] #56 the amendment's `class` in the canon-keeper and canon-reviewer role files: made a tracked ticket, builder launched
 - [x] group D bodies reviewed against the built code: `body-11.md`, `body-14.md`, `body-19.md` in `~/.agent-orch/enrico-factory/inputs/wave2/`
 - [x] #55 a counting `[BRAINTRUST] VOTE` fills the `bible` stage's judge place (merged in PR #58). Ruling: braintrust votes on every `bible` pull request; the tally is lock rule 6
 - [x] rulings taken for group D (in the ticket bodies): Q7 to Q11, Q16, Q19 as recommended; the amendment is `bible/amendments/A-<n>.json` with a `class` key (the brief and `canon-keeper.md` over Q9's front matter); rule 6 applies to `amendment` stages and to `bible/**` changes outside the stage's own `paths`; a `LOCK` is posted as role `program:lock` with first line `[<ORCHESTRATOR ROLE ID>] LOCK`; `GATEWAY` and `RUN_TIMEOUT_MIN` stay in `production.env`, and `factory init` keeps writing `GATEWAY=on`, so a new production refuses launches until the gateway exists or it is set to `off` (fail closed; the w2-20 fixture sets `off`)
