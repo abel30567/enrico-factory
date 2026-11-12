@@ -5,7 +5,9 @@ import copy
 import io
 import json
 import os
+import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -21,6 +23,10 @@ from kit.lib import cmd_doctor, resources  # noqa: E402
 FIXTURES = ROOT / "tests" / "fixtures" / "doctor"
 FIXTURE_REGISTER = FIXTURES / "register.json"
 STUB = {"secrets_dir_setting": "SECRETS_DIR"}
+SHIPPED = ROOT / "kit" / "resources.json"
+FAKE_HARNESS = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
+VERSION_PATTERN = r"^[0-9]+\.[0-9]+\.[0-9]+ \([^()]+\)"
+NEW_KINDS = {"accounts": "accounts", "connect": "connect", "directory": "directory"}
 
 
 def fixture_register():
@@ -32,6 +38,19 @@ def resource(*checks, **fields):
              "rooms": ["all"], "wave": 1, "setup": "agent", "checks": list(checks)}
     entry.update(fields)
     return entry
+
+
+def shipped(rid):
+    """The resource `rid` of the shipped register, and the register."""
+    register = json.loads(SHIPPED.read_text(encoding="utf-8"))
+    return next(r for r in register["resources"] if r["id"] == rid), register
+
+
+def free_port():
+    """A loopback port nothing listens on."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 class TempDir(unittest.TestCase):
@@ -537,6 +556,436 @@ class NoValues(Production):
                      "  setting MODE is not one of: fast, slow"):
             self.assertIn(line, text)
 
+    ACCOUNT = "zq-account-name-7731"
+    URL_PATH = "zq-url-path-8842"
+    DIR_NAME = "zq-dir-name-9953"
+
+    def test_no_value_from_accounts_connect_or_directory(self):
+        kit = self.tmp / "copy" / "kit"
+        (kit / "lib").mkdir(parents=True)
+        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/cmd_doctor.py"):
+            shutil.copy(ROOT / "kit" / name, kit / name)
+        register = fixture_register()
+        register["check_kinds"].update(NEW_KINDS)
+        register["resources"].append(resource({"kind": "accounts", "settings": ["LEAK_ACCOUNTS"], "secret": "leak.pool"},
+                                              id="leak.accounts"))
+        register["resources"].append(resource({"kind": "connect", "setting": "LEAK_URL"}, id="leak.connect"))
+        register["resources"].append(resource({"kind": "directory", "setting": "LEAK_DIR"}, id="leak.directory"))
+        (kit / "resources.json").write_text(json.dumps(register), encoding="utf-8")
+        (self.tmp / self.DIR_NAME).write_text("a file, not a directory", encoding="utf-8")
+        url = f"http://127.0.0.1:{free_port()}/{self.URL_PATH}"
+        self.write_local(LEAK_ACCOUNTS=self.ACCOUNT, LEAK_URL=url, LEAK_DIR=str(self.tmp / self.DIR_NAME))
+
+        for extra in ([], ["--json"]):
+            done = subprocess.run([sys.executable, str(kit / "lib" / "cmd_doctor.py"), "--root", str(self.root),
+                                   *extra], capture_output=True, text=True, cwd=self.tmp)
+            self.assertEqual(done.returncode, 1, done.stderr)
+            for value in (self.ACCOUNT, url, self.URL_PATH, self.DIR_NAME, str(self.tmp)):
+                self.assertNotIn(value, done.stdout)
+                self.assertNotIn(value, done.stderr)
+            if not extra:
+                for line in ("missing\tleak.accounts\t", "  account 1 of LEAK_ACCOUNTS: missing",
+                             "missing\tleak.connect\t", "  setting LEAK_URL: nothing accepts a connection there",
+                             "missing\tleak.directory\t", "  setting LEAK_DIR is not a directory"):
+                    self.assertIn(line, done.stdout)
+
+
+class Parser(TempDir):
+    """`resources.settings`: inline comments, and `~` expanded for the register's path settings only."""
+
+    def read(self, text, register, local=None):
+        (self.tmp / "production.env").write_text(text, encoding="utf-8")
+        if local is not None:
+            (self.tmp / "production.local.env").write_text(local, encoding="utf-8")
+        with mock.patch.dict(os.environ, {"HOME": "/home/demo"}):
+            return resources.settings(self.tmp, register)
+
+    def path_register(self):
+        register = fixture_register()
+        register["path_settings"] = ["HARNESS", "SECRETS_DIR", "STATE_DIR"]
+        return register
+
+    def test_each_line_gives_its_value(self):
+        rows = [
+            ("A=one # note", "A", "one"),
+            ("B=one#two", "B", "one#two"),
+            ("C='two words' # note", "C", "two words"),
+            ('D="x #y"', "D", '"x'),
+            ("E= # only", "E", ""),
+            ("E=#x", "E", "#x"),
+            ("F=a\t# tab", "F", "a"),
+            ("K = v ", "K", "v"),
+            ("STATE_DIR=~/s", "STATE_DIR", "/home/demo/s"),
+            ("SECRETS_DIR=~", "SECRETS_DIR", "/home/demo"),
+            ("HARNESS='~/bin/h' # pinned", "HARNESS", "/home/demo/bin/h"),
+            ("STATE_DIR=~user/x", "STATE_DIR", "~user/x"),
+            ("OTHER=~/keep", "OTHER", "~/keep"),
+            ("G=x~/y", "G", "x~/y"),
+        ]
+        for line, key, value in rows:
+            with self.subTest(line=line):
+                self.assertEqual(self.read(line + "\n", self.path_register()), {key: value})
+
+    def test_both_files_are_expanded_and_the_later_wins(self):
+        values = self.read("A=one # note\nSTATE_DIR=~/s\nHARNESS='~/bin/h' # pinned\nOTHER=~/keep\nG=x~/y\n",
+                           self.path_register(), local="STATE_DIR=~user/x\nSECRETS_DIR=~ # home\n")
+        self.assertEqual(values, {"A": "one", "STATE_DIR": "~user/x", "HARNESS": "/home/demo/bin/h",
+                                  "OTHER": "~/keep", "G": "x~/y", "SECRETS_DIR": "/home/demo"})
+
+    def test_shipped_register_expands_every_path_setting(self):
+        values = self.read("UNREAL_EDITOR=~/ue # note\nTRANSCRIBE_MODEL=\"~/m\"\nSTATE_DIR=~/s\nOTHER=~/keep\n", None)
+        self.assertEqual(values, {"UNREAL_EDITOR": "/home/demo/ue", "TRANSCRIBE_MODEL": "/home/demo/m",
+                                  "STATE_DIR": "/home/demo/s", "OTHER": "~/keep"})
+
+    def test_register_without_path_settings_expands_nothing(self):
+        self.assertEqual(self.read("STATE_DIR=~/s\nHARNESS=~/bin/h\n", fixture_register()),
+                         {"STATE_DIR": "~/s", "HARNESS": "~/bin/h"})
+
+    def test_expand(self):
+        with mock.patch.dict(os.environ, {"HOME": "/home/demo"}):
+            for value, expected in (("~", "/home/demo"), ("~/a", "/home/demo/a"), ("~user/x", "~user/x"),
+                                    ("x~/y", "x~/y"), ("/abs", "/abs"), ("", "")):
+                with self.subTest(value=value):
+                    self.assertEqual(resources.expand(value), expected)
+
+
+class ShippedHarness(TempDir):
+    """The shipped `harness` resource: the version, the state directory and the sandbox setting."""
+
+    def setUp(self):
+        super().setUp()
+        self.resource, self.register = shipped("harness")
+        self.root = self.tmp / "production"
+        self.root.mkdir()
+
+    def run_harness(self, *root, **changes):
+        values = {"HARNESS": str(FAKE_HARNESS), "STATE_DIR": str(self.tmp / "state"), "SANDBOX": "on"}
+        values.update(changes)
+        values = {key: value for key, value in values.items() if value is not None}
+        return resources.check(self.resource, values, self.register, *root)
+
+    def test_fake_harness_passes(self):
+        self.assertEqual(self.run_harness(), (True, []))
+
+    def harness_at_home(self, harness):
+        """The fake harness copied to `<home>/bin/h`, read through the parser as `HARNESS=<harness>`."""
+        home = self.tmp / "home"
+        (home / "bin").mkdir(parents=True)
+        shutil.copy(FAKE_HARNESS, home / "bin" / "h")
+        (self.root / "production.local.env").write_text(
+            f"HARNESS={harness.format(home=home)}\nSTATE_DIR={self.tmp / 'state'}\nSANDBOX=on\n", encoding="utf-8")
+        with mock.patch.dict(os.environ, {"HOME": str(home)}):
+            values = resources.settings(self.root)
+            return resources.check(self.resource, values, self.register)
+
+    def test_home_in_harness_is_expanded_by_the_parser(self):
+        self.assertEqual(self.harness_at_home("~/bin/h"), (True, []))
+
+    def test_absolute_harness_passes(self):
+        self.assertEqual(self.harness_at_home("{home}/bin/h"), (True, []))
+
+    def test_a_program_that_is_not_a_harness_fails(self):
+        self.assertEqual(self.run_harness(HARNESS=sys.executable), (False, [f"pattern not found: {VERSION_PATTERN}"]))
+
+    def test_version_pattern(self):
+        self.assertEqual(self.resource["checks"][0]["match_all"], [VERSION_PATTERN])
+        pattern = self.resource["checks"][0]["match_all"][0]
+        for text in ("2.1.290 (hbar)", "0.0.0 (fake)"):
+            with self.subTest(text=text):
+                self.assertTrue(re.search(pattern, text))
+        for text in ("git version 2.39.5 (Apple Git-154)", "Python 3.13.1", "v2.1.290 (x)", "2.1 (x)"):
+            with self.subTest(text=text):
+                self.assertIsNone(re.search(pattern, text))
+
+    def test_state_dir_is_checked(self):
+        self.assertEqual(self.run_harness(STATE_DIR=""), (False, ["setting STATE_DIR is empty"]))
+        self.assertEqual(self.run_harness(self.root, STATE_DIR=str(self.root / "state")),
+                         (False, ["setting STATE_DIR is inside the production"]))
+
+    def test_sandbox_setting(self):
+        self.assertEqual(self.run_harness(SANDBOX="on"), (True, []))
+        self.assertEqual(self.run_harness(SANDBOX="off"), (True, []))
+        self.assertEqual(self.run_harness(SANDBOX="maybe"), (False, ["setting SANDBOX is not one of: on, off"]))
+        self.assertEqual(self.run_harness(SANDBOX=None), (False, ["setting SANDBOX is empty"]))
+
+
+class DirectoryCheck(TempDir):
+    CHECK = {"kind": "directory", "setting": "STATE_DIR"}
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.tmp / "production"
+        self.root.mkdir()
+
+    def run_dir(self, value, root=True):
+        values = {} if value is None else {"STATE_DIR": str(value)}
+        return resources.check(resource(self.CHECK), values, STUB, self.root if root else None)
+
+    def locked(self, name, mode):
+        path = self.tmp / name
+        path.mkdir()
+        path.chmod(mode)
+        self.addCleanup(path.chmod, 0o700)
+        return path
+
+    def test_existing_writable_directory_passes(self):
+        (self.tmp / "state").mkdir()
+        self.assertEqual(self.run_dir(self.tmp / "state"), (True, []))
+
+    def test_missing_directory_under_a_writable_one_passes_and_is_not_created(self):
+        self.assertEqual(self.run_dir(self.tmp / "new" / "state"), (True, []))
+        self.assertFalse((self.tmp / "new").exists())
+
+    def test_each_defect(self):
+        (self.tmp / "file").write_text("x", encoding="utf-8")
+        rows = [
+            (None, "setting STATE_DIR is empty"),
+            ("", "setting STATE_DIR is empty"),
+            ("state", "setting STATE_DIR is not an absolute path"),
+            (self.root, "setting STATE_DIR is inside the production"),
+            (self.root / "state", "setting STATE_DIR is inside the production"),
+            (self.tmp / "file", "setting STATE_DIR is not a directory"),
+            (self.tmp / "file" / "state", "setting STATE_DIR is not a directory"),
+            (self.locked("readonly", 0o500), "setting STATE_DIR is not writable"),
+            (self.locked("sealed", 0o555) / "state", "setting STATE_DIR cannot be created"),
+        ]
+        for value, reason in rows:
+            with self.subTest(value=value):
+                self.assertEqual(self.run_dir(value), (False, [reason]))
+        self.assertFalse((self.root / "state").exists())
+
+    def test_without_a_root_the_production_rule_is_not_checked(self):
+        self.assertEqual(self.run_dir(self.root / "state", root=False), (True, []))
+
+    def test_home_is_expanded(self):
+        with mock.patch.dict(os.environ, {"HOME": str(self.tmp)}):
+            self.assertEqual(self.run_dir("~/state"), (True, []))
+            self.assertEqual(self.run_dir("~/production/state"), (False, ["setting STATE_DIR is inside the production"]))
+
+
+class AccountsCheck(TempDir):
+    CHECK = {"kind": "accounts", "settings": ["ACCOUNTS_MAKER", "ACCOUNTS_CHECKER"], "secret": "inference.primary"}
+
+    def setUp(self):
+        super().setUp()
+        self.pool = self.tmp / "inference.primary"
+        self.pool.mkdir()
+        self.token("alpha")
+        self.token("beta")
+
+    def token(self, name, content="invented\n", mode=0o600):
+        path = self.pool / name
+        path.write_text(content, encoding="utf-8")
+        path.chmod(mode)
+
+    def run_accounts(self, **changes):
+        values = {"SECRETS_DIR": str(self.tmp), "ACCOUNTS_MAKER": "alpha,beta", "ACCOUNTS_CHECKER": "beta, alpha ,"}
+        values.update(changes)
+        values = {key: value for key, value in values.items() if value is not None}
+        return resources.check(resource(self.CHECK), values, STUB)
+
+    def test_good_lists_pass(self):
+        self.assertEqual(self.run_accounts(), (True, []))
+
+    def test_account_without_a_file(self):
+        self.assertEqual(self.run_accounts(ACCOUNTS_MAKER="alpha,gamma"),
+                         (False, ["account 2 of ACCOUNTS_MAKER: missing"]))
+
+    def test_empty_lists(self):
+        self.assertEqual(self.run_accounts(ACCOUNTS_MAKER="", ACCOUNTS_CHECKER=" , "),
+                         (False, ["setting ACCOUNTS_MAKER is empty", "setting ACCOUNTS_CHECKER is empty"]))
+        self.assertEqual(self.run_accounts(ACCOUNTS_MAKER=None), (False, ["setting ACCOUNTS_MAKER is empty"]))
+
+    def test_unusable_files_and_names(self):
+        self.token("open", mode=0o644)
+        self.token("void", content="")
+        (self.pool / "dir").mkdir()
+        self.assertEqual(self.run_accounts(ACCOUNTS_MAKER="open,void,dir,../x,alpha"), (False, [
+            "account 1 of ACCOUNTS_MAKER: readable by others", "account 2 of ACCOUNTS_MAKER: empty",
+            "account 3 of ACCOUNTS_MAKER: not a file", "account 4 of ACCOUNTS_MAKER: not a file name"]))
+
+    def test_no_secrets_dir(self):
+        self.assertEqual(self.run_accounts(SECRETS_DIR=None), (False, ["setting SECRETS_DIR is empty"]))
+
+    def test_shipped_resource_reads_the_account_lists(self):
+        primary, register = shipped("inference.primary")
+        values = {"SECRETS_DIR": str(self.tmp), "ACCOUNTS_MAKER": "gamma", "ACCOUNTS_CHECKER": "alpha"}
+        self.assertEqual(resources.check(primary, values, register), (False, ["account 1 of ACCOUNTS_MAKER: missing"]))
+
+
+class ConnectCheck(TempDir):
+    CHECK = {"kind": "connect", "setting": "PROXY_URL"}
+    DEAD = "setting PROXY_URL: nothing accepts a connection there"
+
+    def run_connect(self, value):
+        values = {} if value is None else {"PROXY_URL": value}
+        return resources.check(resource(self.CHECK), values, STUB)
+
+    def test_host_and_port_are_connected_to(self):
+        for url, address in (("http://proxy.invented:4000", ("proxy.invented", 4000)),
+                             ("http://proxy.invented", ("proxy.invented", 80)),
+                             ("https://proxy.invented", ("proxy.invented", 443)),
+                             ("https://proxy.invented:4001/v1?x=y", ("proxy.invented", 4001))):
+            with self.subTest(url=url), mock.patch.object(resources.socket, "create_connection") as connect:
+                self.assertEqual(self.run_connect(url), (True, []))
+                connect.assert_called_once_with(address, timeout=resources.CONNECT_TIMEOUT)
+                connect.return_value.close.assert_called_once_with()
+
+    def test_nothing_accepts(self):
+        for error in (ConnectionRefusedError, TimeoutError):
+            with self.subTest(error=error), mock.patch.object(resources.socket, "create_connection",
+                                                              side_effect=error) as connect:
+                self.assertEqual(self.run_connect("http://proxy.invented:4000"), (False, [self.DEAD]))
+                connect.assert_called_once()
+
+    def test_malformed_urls_are_not_connected_to(self):
+        for url in ("127.0.0.1:1", "http://", "http://127.0.0.1:notaport", "ftp://127.0.0.1"):
+            with self.subTest(url=url), mock.patch.object(resources.socket, "create_connection") as connect:
+                self.assertEqual(self.run_connect(url), (False, ["setting PROXY_URL names no host and port"]))
+                connect.assert_not_called()
+
+    def test_empty(self):
+        self.assertEqual(self.run_connect(""), (False, ["setting PROXY_URL is empty"]))
+        self.assertEqual(self.run_connect(None), (False, ["setting PROXY_URL is empty"]))
+
+    def test_real_listener_receives_nothing(self):
+        other, register = shipped("inference.other")
+        client = self.tmp / "proxy.client"
+        client.write_text("invented\n", encoding="utf-8")
+        client.chmod(0o600)
+        listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(5)
+        values = {"SECRETS_DIR": str(self.tmp), "PROXY_URL": f"http://127.0.0.1:{listener.getsockname()[1]}/v1"}
+        self.assertEqual(resources.check(other, values, register), (True, []))
+        listener.settimeout(2)
+        peer, _ = listener.accept()
+        self.addCleanup(peer.close)
+        peer.settimeout(2)
+        self.assertEqual(peer.recv(1024), b"")
+        listener.close()
+        self.assertEqual(resources.check(other, values, register), (False, [self.DEAD]))
+
+    def test_shipped_resource_with_a_closed_port(self):
+        other, register = shipped("inference.other")
+        client = self.tmp / "proxy.client"
+        client.write_text("invented\n", encoding="utf-8")
+        client.chmod(0o600)
+        values = {"SECRETS_DIR": str(self.tmp), "PROXY_URL": f"http://127.0.0.1:{free_port()}"}
+        self.assertEqual(resources.check(other, values, register), (False, [self.DEAD]))
+
+
+class NewKindsValidation(unittest.TestCase):
+    def problems(self, check=None, **top):
+        register = fixture_register()
+        register["check_kinds"].update(NEW_KINDS)
+        if check is not None:
+            register["resources"].append(resource(check, id="new.kind"))
+        register.update(top)
+        return resources.validate(register)
+
+    def test_valid_checks_and_path_settings(self):
+        self.assertEqual(self.problems(path_settings=["HARNESS", "STATE_DIR"]), [])
+        self.assertEqual(self.problems(path_settings=[]), [])
+        for check in ({"kind": "accounts", "settings": ["A", "B"], "secret": "pool"},
+                      {"kind": "connect", "setting": "URL"}, {"kind": "directory", "setting": "DIR"}):
+            with self.subTest(check=check):
+                self.assertEqual(self.problems(check), [])
+
+    def test_each_problem(self):
+        rows = [
+            ({"kind": "accounts", "secret": "pool"}, "accounts check has no settings"),
+            ({"kind": "accounts", "settings": [], "secret": "pool"},
+             "accounts check settings is not a non-empty list of setting names"),
+            ({"kind": "accounts", "settings": ["A", 3], "secret": "pool"},
+             "accounts check settings is not a non-empty list of setting names"),
+            ({"kind": "accounts", "settings": ["A"]}, "accounts check has no secret"),
+            ({"kind": "accounts", "settings": ["A"], "secret": ""}, "accounts check secret is not a non-empty string"),
+            ({"kind": "connect"}, "connect check has no setting"),
+            ({"kind": "directory"}, "directory check has no setting"),
+            ({"kind": "accounts", "settings": ["A"], "secret": "pool", "name": "x"}, "accounts check has unknown key name"),
+            ({"kind": "connect", "setting": "URL", "port": 1}, "connect check has unknown key port"),
+            ({"kind": "directory", "setting": "DIR", "mode": "0700"}, "directory check has unknown key mode"),
+        ]
+        for check, problem in rows:
+            with self.subTest(check=check):
+                self.assertEqual(self.problems(check), [f"new.kind: check 1: {problem}"])
+
+    def test_path_settings_must_be_a_list_of_names(self):
+        for value in ("HARNESS", ["HARNESS", ""], ["HARNESS", 3], None):
+            with self.subTest(value=value):
+                self.assertEqual(self.problems(path_settings=value),
+                                 ["register: path_settings is not a list of setting names"])
+
+
+class GatewayOff(Production):
+    TITLE = "A resource behind the gateway"
+
+    def gated(self, holder="gateway", wave=1, failing=False):
+        register = fixture_register()
+        marker = self.tmp / "ran"
+        check = ({"kind": "setting", "name": "GATED_URL"} if failing else
+                 {"kind": "command", "argv": ["{PY}", "-c", f"open({str(marker)!r}, 'w').close()"]})
+        register["resources"].append(resource(check, id="gated.tool", title=self.TITLE, holder=holder, wave=wave))
+        return register, marker
+
+    def test_gateway_off_skips_without_running_checks(self):
+        register, marker = self.gated()
+        self.write_local(GATEWAY="off")
+        code, out, err = self.doctor(register=register)
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn(f"skipped\tgated.tool\t{self.TITLE}\n  GATEWAY=off\n", out)
+        # mode.pick of the fixture register is held by the gateway too.
+        self.assertIn("skipped\tmode.pick\tA setting from a fixed list\n  GATEWAY=off\n", out)
+        self.assertTrue(out.endswith("doctor: 6 ok, 0 missing, 0 absent, 2 skipped\n"))
+        code, out, _ = self.doctor("--json", register=register)
+        self.assertEqual(code, 0)
+        self.assertIn({"id": "gated.tool", "reasons": ["GATEWAY=off"], "state": "skipped"},
+                      json.loads(out)["resources"])
+        self.assertFalse(marker.exists())
+
+    def test_gateway_off_does_not_fail_on_a_gateway_resource(self):
+        register, _ = self.gated(failing=True)
+        self.write_local(GATEWAY="off")
+        self.assertEqual(self.doctor(register=register)[0], 0)
+        self.write_local(GATEWAY="on")
+        code, out, _ = self.doctor(register=register)
+        self.assertEqual(code, 1)
+        self.assertIn(f"missing\tgated.tool\t{self.TITLE}\n  setting GATED_URL is empty\n", out)
+
+    def test_any_other_gateway_value_checks_it(self):
+        register, marker = self.gated()
+        for value in ("on", None, "OFF"):
+            with self.subTest(value=value):
+                if value is None:
+                    self.local.pop("GATEWAY", None)
+                    self.write_local()
+                else:
+                    self.write_local(GATEWAY=value)
+                code, out, _ = self.doctor(register=register)
+                self.assertEqual(code, 0)
+                self.assertIn(f"ok\tgated.tool\t{self.TITLE}\n", out)
+                self.assertTrue(marker.exists())
+                marker.unlink()
+
+    def test_another_holder_is_checked(self):
+        register, marker = self.gated(holder="launcher")
+        self.write_local(GATEWAY="off")
+        code, out, _ = self.doctor(register=register)
+        self.assertEqual(code, 0)
+        self.assertIn(f"ok\tgated.tool\t{self.TITLE}\n", out)
+        self.assertTrue(marker.exists())
+
+    def test_skipped_by_wave_has_no_reason(self):
+        register, marker = self.gated(wave=4)
+        self.write_local(GATEWAY="off")
+        _, out, _ = self.doctor("--wave", "3", register=register)
+        self.assertIn(f"skipped\tgated.tool\t{self.TITLE}\n", out)
+        self.assertNotIn("GATEWAY=off", out)
+        _, out, _ = self.doctor("--wave", "3", "--json", register=register)
+        self.assertIn({"id": "gated.tool", "reasons": [], "state": "skipped"}, json.loads(out)["resources"])
+        self.assertFalse(marker.exists())
 
 if __name__ == "__main__":
     unittest.main()

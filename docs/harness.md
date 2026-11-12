@@ -1,6 +1,9 @@
 # Harness: how a role runs
 
-Companion to `docs/system-brief.md` (section 14). Design, 2026-11-11: nothing here is built yet.
+Companion to `docs/system-brief.md` (section 14). Built: the launch of section 3, logins and the account
+pool of section 4, the result object of section 5 and the sandbox of section 7, in `kit/lib/harness.py`,
+`launch.py`, `finish.py` and `sandbox.py`. Not built: the knowledge gateway of section 6, `factory run`
+and injected credentials of section 8, and forks of section 9.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 
@@ -18,6 +21,14 @@ way a build treats a compiler:
 
 All harness-specific code is one adapter, `kit/lib/harness.py`: it turns a role file and a ticket into
 a command line and reads the result back. Nothing else in the kit knows which harness runs.
+
+The setting `HARNESS` names the pinned build's executable itself, by absolute path or with a leading
+`~/`, never a wrapper script. The launcher builds the worker's environment from an allowlist and sets
+the configuration directory, the token's file descriptor and, for the second family, the endpoint; a
+wrapper that sets or clears any of them undoes that, and `--version` cannot show it. `factory doctor`
+checks that `{HARNESS} --version` exits 0 and prints a version of the form `<n>.<n>.<n> (<name>)`, that
+the state directory `STATE_DIR` is an absolute path outside the production that is or can be made a
+writable directory, and that `SANDBOX` is `on` or `off`. That check cannot tell a wrapper from the build.
 
 ## 2. What the factory needs from a harness
 
@@ -85,6 +96,10 @@ exit status. A missing result is never read as approval.
   holds that vendor's subscription login and speaks the harness's API, and the adapter points the
   harness at it. When no second family is logged in, the launch records `family: same` in `LAUNCH`
   and the lab's judge-calibration loop is told, since same-family judging is a known weakness.
+  The setting `PROXY_URL` in `production.local.env` is the proxy's URL: the adapter gives it to the
+  harness as its endpoint for a role with `family: other`, the sandbox allows that port, and the
+  proxy's client key is the file `proxy.client` in the secrets directory. There is no account list for
+  this family. `factory doctor` connects to the URL's host and port and sends nothing.
 - **Failure states the launcher must tell apart:** out of usage (wait or rotate), token expired or
   revoked (stop that account, raise a `resource:down` issue for the owner), proxy down (same).
 
@@ -230,7 +245,8 @@ Then:
   noise, and logs every experiment.
 - The fork tracks upstream: it merges each new primitive build and re-runs the eval. When the
   primitive passes the eval by itself, the fork is retired and the process moves back.
-- A production names a fork per role in `production.env` (`HARNESS_<ROLE>`); the default is the primitive.
+- No per-role setting such as `HARNESS_<ROLE>` is read today: `HARNESS` is the one harness of every
+  role. A setting that names a fork per role comes with the first fork.
 
 A fix that would help every process is not a fork: it is an issue on the harness's own repository,
 handled by that project's own loop.

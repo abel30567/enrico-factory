@@ -8,8 +8,10 @@ import importlib.util
 import json
 import os
 import re
+import socket
 import stat
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 REGISTER = Path(__file__).resolve().parent.parent / "resources.json"
@@ -26,8 +28,12 @@ CHECK_FIELDS = {
     "secret": (("name",), ("min",)),
     "setting": (("name",), ("one_of",)),
     "path": (("setting",), ()),
+    "accounts": (("settings", "secret"), ()),
+    "connect": (("setting",), ()),
+    "directory": (("setting",), ()),
 }
 TIMEOUT = 20
+CONNECT_TIMEOUT = 3
 PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -64,9 +70,13 @@ def _check_problems(check):
                         re.compile(pattern)
                     except re.error:
                         problems.append(f"command check pattern does not compile: {pattern}")
-    for key in ("name", "setting"):
+    for key in ("name", "setting", "secret"):
         if key in required and key in check and not _is_text(check[key]):
             problems.append(f"{kind} check {key} is not a non-empty string")
+    if kind == "accounts" and "settings" in check:
+        names = check["settings"]
+        if not (isinstance(names, list) and names and all(_is_text(n) for n in names)):
+            problems.append("accounts check settings is not a non-empty list of setting names")
     if kind == "secret" and "min" in check and not (_is_int(check["min"]) and check["min"] >= 1):
         problems.append("secret check min is not an integer of at least 1")
     if kind == "setting" and "one_of" in check:
@@ -131,6 +141,10 @@ def validate(register):
         problems.append("register: settings_files is not a list of file names")
     if not _is_text(register.get("secrets_dir_setting")):
         problems.append("register: secrets_dir_setting is not a setting name")
+    if "path_settings" in register:
+        names = register["path_settings"]
+        if not (isinstance(names, list) and all(_is_text(n) for n in names)):
+            problems.append("register: path_settings is not a list of setting names")
     kinds = register.get("check_kinds")
     if not isinstance(kinds, dict):
         problems.append("register: check_kinds is not an object")
@@ -174,8 +188,16 @@ def _shipped():
 
 
 def settings(root, register=None):
-    """Read the register's settings files from `root`, in order; a later file wins."""
+    """Read the register's settings files from `root`, in order; a later file wins.
+
+    A line is `NAME=value`; blank lines, lines starting with `#` and lines without `=` are skipped. In a
+    value, the first whitespace character followed by `#` starts a comment, which is dropped with it;
+    a `#` with no whitespace before it is part of the value, and quotes do not protect one. The value
+    is then stripped and one pair of matching quotes is removed. Only the values of the settings the
+    register names in `path_settings` are expanded, by `expand`.
+    """
     register = register or _shipped()
+    paths = set(register.get("path_settings", []))
     values = {}
     for name in register["settings_files"]:
         try:
@@ -188,15 +210,16 @@ def settings(root, register=None):
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            key, value = key.strip(), value.strip()
+            key, value = key.strip(), re.sub(r"\s#.*", "", value, count=1).strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
                 value = value[1:-1]
-            values[key] = value
+            values[key] = expand(value) if key in paths else value
     return values
 
 
-def _expand(value):
-    return os.path.expanduser(value) if value.startswith("~/") else value
+def expand(value):
+    """`value` with a leading `~` or `~/` replaced by the home directory; any other value unchanged."""
+    return os.path.expanduser(value) if value == "~" or value.startswith("~/") else value
 
 
 def _empty(name):
@@ -243,7 +266,7 @@ def _check_secret(check, values, dir_setting):
     base = values.get(dir_setting)
     if not base:
         return [_empty(dir_setting)]
-    path = os.path.join(_expand(base), name)
+    path = os.path.join(expand(base), name)
     try:
         if os.path.isdir(path):
             least = check.get("min", 1)
@@ -287,13 +310,85 @@ def _check_path(check, values):
     value = values.get(name)
     if not value:
         return [_empty(name)]
-    if not os.path.exists(_expand(value)):
+    if not os.path.exists(expand(value)):
         return [f"setting {name} names nothing that exists"]
     return []
 
 
-def check(resource, settings, register=None):
-    """Run every check of `resource` against `settings`. Returns (passed, reasons)."""
+def _check_accounts(check, values, dir_setting):
+    base = values.get(dir_setting)
+    if not base:
+        return [_empty(dir_setting)]
+    folder = os.path.join(expand(base), check["secret"])
+    reasons = []
+    for name in check["settings"]:
+        accounts = [item.strip() for item in (values.get(name) or "").split(",") if item.strip()]
+        if not accounts:
+            reasons.append(_empty(name))
+        for position, account in enumerate(accounts, 1):
+            if "/" in account or account in (".", ".."):
+                defect = "not a file name"
+            else:
+                try:
+                    defect = _usable(os.path.join(folder, account))
+                except FileNotFoundError:
+                    defect = "missing"
+                except (OSError, ValueError):
+                    defect = "cannot be read"
+            if defect:
+                reasons.append(f"account {position} of {name}: {defect}")
+    return reasons
+
+
+def _check_connect(check, values):
+    """Open a TCP connection to the host and port of a URL and close it at once; nothing is sent."""
+    name = check["setting"]
+    value = values.get(name)
+    if not value:
+        return [_empty(name)]
+    try:
+        url = urllib.parse.urlsplit(value)
+        host, port = url.hostname, url.port
+    except ValueError:
+        host = port = None
+    else:
+        if port is None:
+            port = {"http": 80, "https": 443}.get(url.scheme)
+    if not host or not port:
+        return [f"setting {name} names no host and port"]
+    try:
+        socket.create_connection((host, port), timeout=CONNECT_TIMEOUT).close()
+    except OSError:
+        return [f"setting {name}: nothing accepts a connection there"]
+    return []
+
+
+def _check_directory(check, values, root):
+    """A directory that exists and is writable, or could be created; nothing is created."""
+    name = check["setting"]
+    value = values.get(name)
+    if not value:
+        return [_empty(name)]
+    path = expand(value)
+    if not os.path.isabs(path):
+        return [f"setting {name} is not an absolute path"]
+    path = os.path.realpath(path)
+    if root is not None:
+        top = os.path.realpath(root)
+        if path == top or path.startswith(top.rstrip(os.sep) + os.sep):
+            return [f"setting {name} is inside the production"]
+    nearest = path
+    while not os.path.exists(nearest):
+        nearest = os.path.dirname(nearest)
+    if not os.path.isdir(nearest):
+        return [f"setting {name} is not a directory"]
+    if not os.access(nearest, os.W_OK | os.X_OK):
+        return [f"setting {name} is not writable" if nearest == path else f"setting {name} cannot be created"]
+    return []
+
+
+def check(resource, settings, register=None, root=None):
+    """Run every check of `resource` against `settings`; `root` is the production. Returns (passed, reasons)."""
     register = register or _shipped()
     reasons = []
     for item in resource["checks"]:
@@ -308,4 +403,10 @@ def check(resource, settings, register=None):
             reasons += _check_setting(item, settings)
         elif kind == "path":
             reasons += _check_path(item, settings)
+        elif kind == "accounts":
+            reasons += _check_accounts(item, settings, register["secrets_dir_setting"])
+        elif kind == "connect":
+            reasons += _check_connect(item, settings)
+        elif kind == "directory":
+            reasons += _check_directory(item, settings, root)
     return not reasons, reasons

@@ -3,11 +3,15 @@
   "about": "Every resource a production run needs. docs/resources.md explains each one. `factory doctor` reads this file and prints a name and a state per resource, never a value.",
   "settings_files": ["production.env", "production.local.env"],
   "secrets_dir_setting": "SECRETS_DIR",
+  "path_settings": ["HARNESS", "SECRETS_DIR", "STATE_DIR", "TRANSCRIBE_MODEL", "UNREAL_EDITOR"],
   "check_kinds": {
     "command": "argv runs and exits 0; with `match_all`, every pattern is found in its output. `{NAME}` is replaced by setting NAME.",
     "module": "the Python module `name` can be imported",
     "secret": "`<secrets dir>/<name>` is a non-empty file readable by its owner only, or a directory holding at least `min` such files",
     "setting": "setting `name` is not empty; with `one_of`, its value is in the list",
+    "accounts": "each setting in `settings` lists at least one account, comma-separated, and each account is a non-empty file readable by its owner only at `<secrets dir>/<secret>/<account>`",
+    "connect": "setting `setting` is a URL, and a TCP connection to its host and port is accepted; nothing is sent",
+    "directory": "setting `setting` is an absolute path outside the production that is a writable directory, or could be created as one; nothing is created",
     "path": "setting `setting` names a file or directory that exists"
   },
   "resources": [
@@ -20,7 +24,11 @@
       "rooms": ["all"],
       "wave": 2,
       "setup": "agent",
-      "checks": [{"kind": "command", "argv": ["{HARNESS}", "--version"], "match_all": ["[0-9]+\\.[0-9]+"]}]
+      "checks": [
+        {"kind": "command", "argv": ["{HARNESS}", "--version"], "match_all": ["^[0-9]+\\.[0-9]+\\.[0-9]+ \\([^()]+\\)"]},
+        {"kind": "directory", "setting": "STATE_DIR"},
+        {"kind": "setting", "name": "SANDBOX", "one_of": ["on", "off"]}
+      ]
     },
     {
       "id": "inference.primary",
@@ -32,7 +40,7 @@
       "wave": 2,
       "setup": "owner",
       "renew": "one long-lived inference-only token per account, renewed yearly",
-      "checks": [{"kind": "secret", "name": "inference.primary", "min": 1}]
+      "checks": [{"kind": "accounts", "settings": ["ACCOUNTS_MAKER", "ACCOUNTS_CHECKER"], "secret": "inference.primary"}]
     },
     {
       "id": "inference.other",
@@ -45,7 +53,7 @@
       "setup": "owner",
       "optional": true,
       "renew": "the proxy refreshes; the owner logs in again when the refresh fails",
-      "checks": [{"kind": "setting", "name": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}]
+      "checks": [{"kind": "connect", "setting": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}]
     },
     {
       "id": "knowledge.fermi",
