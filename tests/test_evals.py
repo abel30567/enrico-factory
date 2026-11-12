@@ -70,6 +70,10 @@ READY = {"marker": "READY", "summary": "s",
          "evidence": [{"criterion": "page", "result": "written", "command": "ls pages"}]}
 
 
+BLOCKED = {"marker": "BLOCKED", "summary": "s",
+           "blocked": {"missing": "m", "tried": "t", "resume_from": "r"}}
+
+
 def prefers(side):
     return {"marker": f"PREFERS {side}", "summary": "s", "prefers": {"choice": side, "cited": ["p1"]}}
 
@@ -199,6 +203,22 @@ class GradeTest(KitCopy):
         alarm = self.grade("clean-01", notes(note("B1", "Blocker", "Wrong.")))
         self.assertEqual((alarm["pass"], alarm["detail"]), (False, "false alarm: 1 Blocker(s)"))
 
+    def test_blocked_fails_every_kind(self):
+        blocked = self.grade("clean-01", BLOCKED)
+        self.assertEqual(blocked, {"case": "clean-01", "kind": "clean", "marker": "BLOCKED",
+                                   "pass": False, "detail": "blocked: marker BLOCKED"})
+        self.assertTrue(self.grade("clean-01", approved())["pass"])
+        alarm = self.grade("clean-01", notes(note("B1", "Blocker", "Wrong.")))
+        self.assertEqual((alarm["pass"], alarm["detail"]), (False, "false alarm: 1 Blocker(s)"))
+        seeded = self.grade("seeded-01", BLOCKED)
+        self.assertEqual((seeded["pass"], seeded["detail"]), (False, "not caught: marker BLOCKED"))
+        replay = self.grade("replay-01", BLOCKED, run_dir=self.replay_dir(None))
+        self.assertEqual((replay["pass"], replay["detail"]), (False, "marker BLOCKED, not READY"))
+        self.add_judge()
+        [case] = evals.load(self.kit, "umpire")
+        pair = evals.grade(case, BLOCKED)
+        self.assertEqual((pair["pass"], pair["detail"]), (False, "marker BLOCKED, no preference given"))
+
     def replay_dir(self, page):
         run_dir = Path(self.tmp.name) / "run"
         shutil.rmtree(run_dir, ignore_errors=True)
@@ -267,13 +287,28 @@ class MetricsNoiseTest(unittest.TestCase):
     def test_checker(self):
         graded = self.graded("seeded", True, False, True, True) + self.graded("clean", True, False, True)
         self.assertEqual(evals.metrics("checker", graded),
-                         {"catch_rate": 0.75, "false_alarm_rate": 0.3333, "score": 0.4167})
+                         {"blocked": 0, "catch_rate": 0.75, "false_alarm_rate": 0.3333, "score": 0.4167})
 
     def test_maker_and_judge(self):
         self.assertEqual(evals.metrics("maker", self.graded("replay", True, True, False)),
-                         {"lint_pass_rate": 0.6667, "score": 0.6667})
+                         {"blocked": 0, "lint_pass_rate": 0.6667, "score": 0.6667})
         self.assertEqual(evals.metrics("judge", self.graded("pair", True, False)),
-                         {"agreement": 0.5, "score": 0.5})
+                         {"agreement": 0.5, "blocked": 0, "score": 0.5})
+
+    def test_blocked_is_counted_and_is_no_alarm(self):
+        def graded(kind, passed, marker):
+            return {"kind": kind, "pass": passed, "marker": marker}
+        checker = [graded("seeded", True, "NOTES"), graded("seeded", False, "BLOCKED"),
+                   graded("clean", False, "BLOCKED"), graded("clean", False, "NOTES"),
+                   graded("clean", True, "APPROVED")]
+        self.assertEqual(evals.metrics("checker", checker),
+                         {"blocked": 2, "catch_rate": 0.5, "false_alarm_rate": 0.3333, "score": 0.1667})
+        maker = [graded("replay", True, "READY"), graded("replay", False, "BLOCKED")]
+        self.assertEqual(evals.metrics("maker", maker),
+                         {"blocked": 1, "lint_pass_rate": 0.5, "score": 0.5})
+        judge = [graded("pair", True, "PREFERS A"), graded("pair", False, "BLOCKED")]
+        self.assertEqual(evals.metrics("judge", judge), {"agreement": 0.5, "blocked": 1, "score": 0.5})
+        self.assertEqual(evals.metrics("judge", self.graded("pair", True, False))["blocked"], 0)
 
     def test_zero_denominator_has_no_score(self):
         with self.assertRaisesRegex(EvalError, "false_alarm_rate is null"):
@@ -399,10 +434,52 @@ class CommandTest(unittest.TestCase):
         done = self.eval("scribe", "--root", str(PROD), "--out", str(self.out))
         self.assertEqual(done.returncode, 0, done.stderr)
         summary = json.loads((self.out / "summary.json").read_text())
-        self.assertEqual(summary["per_run"], [{"lint_pass_rate": 1.0, "score": 1.0}])
+        self.assertEqual(summary["per_run"], [{"blocked": 0, "lint_pass_rate": 1.0, "score": 1.0}])
         self.assertEqual(summary["noise"], {"runs": 1, "mean": 1.0, "floor": None, "measured": False})
         self.assertIn("noise floor: null over 1 runs (not measured)", done.stdout)
         self.assertFalse((KIT / "evals" / "scribe" / "replay-01" / "tree" / "pages").exists())
+
+    def test_run_directory_is_a_production_without_the_suite(self):
+        listing = self.dir / "listing.txt"
+        lister = self.dir / "lister"
+        lister.write_text(f"""#!/bin/sh
+if [ "$(basename "$PWD")" = run ]; then find . -type f | sort > '{listing}'; fi
+exec '{self.bin / "fake-harness"}' "$@"
+""")
+        os.chmod(lister, 0o755)
+        self.steps([{"match": r"eval replay-01\b", "result": READY}])
+        env = {k: v for k, v in os.environ.items() if k not in ("FACTORY_LIVE", "FACTORY_FAKE_HARNESS")}
+        env["FACTORY_FAKE_HARNESS"] = str(lister)
+        done = subprocess.run([sys.executable, str(FACTORY), "eval", "scribe", "--root", str(PROD),
+                               "--out", str(self.out)], env=env, cwd=ROOT, capture_output=True,
+                              text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        files = listing.read_text().splitlines()
+        self.assertIn("./.factory/roles/scribe.md", files)
+        self.assertIn("./notes/brief.md", files)
+        self.assertEqual([f for f in files if f.startswith("./.factory/evals") or f.endswith("case.json")],
+                         [])
+
+    def test_blocked_is_counted_and_printed(self):
+        steps = json.loads((FIX / "fake-harness.json").read_text())[:3]
+        steps[0]["result"] = BLOCKED  # clean-01
+        self.steps(steps)
+        done = self.eval("proofer", "--root", str(PROD), "--out", str(self.out))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        clean = next(r for r in self.results() if r["case"] == "clean-01")
+        self.assertEqual((clean["pass"], clean["marker"], clean["detail"]),
+                         (False, "BLOCKED", "blocked: marker BLOCKED"))
+        summary = json.loads((self.out / "summary.json").read_text())
+        self.assertEqual(summary["per_run"],
+                         [{"blocked": 1, "catch_rate": 1.0, "false_alarm_rate": 0.0, "score": 1.0}])
+        self.assertEqual(done.stdout.splitlines()[:2], ["run 1: score 1.0", "run 1: 1 blocked"])
+
+        again = self.dir / "again"
+        self.steps(json.loads((FIX / "fake-harness.json").read_text())[:3])
+        done = self.eval("proofer", "--root", str(PROD), "--out", str(again))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("blocked", done.stdout)
+        self.assertEqual(json.loads((again / "summary.json").read_text())["per_run"][0]["blocked"], 0)
 
     def test_suite_without_a_score_stops_before_running(self):
         done = self.eval("proofer", "--cases", "seeded-*", "--root", str(PROD), "--out", str(self.out))

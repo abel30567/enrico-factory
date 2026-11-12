@@ -128,14 +128,17 @@ def _pipeline(path: Path, rooms: list[str], warn) -> str | None:
     return "[\n" + ",\n".join(" " + json.dumps(e, ensure_ascii=False) for e in kept) + "\n]\n"
 
 
-def _install(source: Path, dest: Path, rooms: list[str], warn) -> int:
-    """Copy the kit at `source` into the new directory `dest` for `rooms`. Returns the number of files."""
+def _install(source: Path, dest: Path, rooms: list[str], warn, evals: bool = True) -> int:
+    """Copy the kit at `source` into the new directory `dest` for `rooms`, without `evals/` when `evals`
+    is false. Returns the number of files."""
     roles = _role_ids(source, rooms, warn)
     count = 0
     for dirpath, dirnames, filenames in os.walk(source):
         here = Path(dirpath)
         rel = here.relative_to(source)
         dirnames[:] = sorted(d for d in dirnames if not _skipped(d))
+        if rel == Path(".") and not evals:
+            dirnames[:] = [d for d in dirnames if d != "evals"]
         if rel == Path("evals"):
             dirnames[:] = [d for d in dirnames if d in roles]
         (dest / rel).mkdir(exist_ok=True)
@@ -201,6 +204,14 @@ def _layout(root: Path, rooms: list[str]) -> list[str]:
     for directory in DIRECTORIES + tuple(r for r in ROOM_DIRECTORIES if r in rooms):
         _create(root, f"{directory}/.gitkeep", "", created)
     return created
+
+
+def install(root: Path, source: Path, rooms: list[str], evals: bool) -> None:
+    """Write into the empty or missing directory `root` what `factory init` writes, with the kit at
+    `source` (without `evals/` when `evals` is false), printing nothing."""
+    root.mkdir(parents=True, exist_ok=True)
+    _install(source, root / KIT_DIR, rooms, lambda message: None, evals)
+    _layout(root, rooms)
 
 
 def _env_rooms(path: Path) -> str | None:
