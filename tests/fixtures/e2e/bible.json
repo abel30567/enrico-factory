@@ -1,0 +1,1 @@
+{"room": "story", "stage": "bible", "unit": "amendment", "after": "", "maker": "canon-keeper", "lint": [], "checker": "canon-reviewer", "judge": "", "blind": false, "pitches": 1, "paths": ["bible/charter.md", "bible/canon/**", "bible/amendments/**"]}
