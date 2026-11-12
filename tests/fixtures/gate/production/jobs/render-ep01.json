@@ -1,0 +1,7 @@
+{
+ "caller": "renderer",
+ "expected": {"compute_min": 30, "usd": 2.5},
+ "inputs": [{"path": "frames/ep01/shot-1.md", "sha256": "abd090b68c5619e1d26964b6638e0e855b0be9faf19d74a5e0503d1e9b2c95f6"}],
+ "ticket": 3,
+ "tool": "renderbox"
+}
