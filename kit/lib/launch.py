@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple
 
-from kit.lib import down, gitstate, harness, markers, production, prompt, steps, tickets
+from kit.lib import down, gateway, gitstate, harness, markers, production, prompt, steps, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -266,8 +266,9 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     elif pull is None and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
         raise LaunchError(f"ticket #{t} has no free pitch; give the pull request number")
     # Check 7
-    if p.settings.get("GATEWAY", "") == "on":
-        raise LaunchError("the knowledge gateway is not built; set GATEWAY=off")
+    reasons = gateway.check(p.settings, p.roles[role]["meta"].get("knowledge"))
+    if reasons:
+        raise LaunchError("the knowledge gateway is not usable: " + "; ".join(reasons))
     # Check 8
     if kind != "orchestrator" and pull is not None and _running(p, pull["comments"], role):
         raise LaunchError(f"{role} is already running on #{number}")

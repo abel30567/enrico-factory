@@ -303,9 +303,28 @@ class Refusals(unittest.TestCase):
     def test_maker_given_a_ticket_with_no_free_pitch(self):
         self.refused("ticket #6 has no free pitch; give the pull request number", "drafter", 6)
 
+    def gateway_key(self):
+        secrets = self.w.tmp / "secrets"
+        secrets.mkdir()
+        (secrets / "knowledge.fermi").write_text("fermi-key-" + SEED + "\n")
+        (secrets / "knowledge.fermi").chmod(0o600)
+        return {"GATEWAY": "on", "SECRETS_DIR": str(secrets), "FERMI_URL": "https://fermi.invalid/mcp"}
+
     def test_gateway_on(self):
+        """Gateway behaviour 11: the knowledge gateway's checks refuse a launch with nothing created."""
+        prefix = "the knowledge gateway is not usable: "
         self.w.local(GATEWAY="on")
-        self.refused("the knowledge gateway is not built; set GATEWAY=off", "drafter", 5)
+        self.refused(prefix + "setting FERMI_URL is empty; secret knowledge.fermi: missing", "drafter", 5)
+        good = self.gateway_key()
+        self.w.local(**{**good, "FERMI_URL": "http://example.invalid/mcp"})
+        self.refused(prefix + "setting FERMI_URL is not an https URL", "drafter", 5)
+        self.w.local(**{**good, "REPO": ""})
+        self.refused(prefix + "setting REPO is empty", "drafter", 5)
+
+    def test_gateway_on_twin(self):
+        self.w.local(**self.gateway_key())
+        run = self.w.prepare("drafter", 5)
+        self.assertEqual(json.loads((run.dir / "mcp.json").read_text()), {"mcpServers": {}})
 
     def test_already_running(self):
         self.w.comment(7, 30, "2026-11-10T10:00:00Z", "showlead", "[SHOWLEAD] LAUNCH reviewer 7-1\n")
