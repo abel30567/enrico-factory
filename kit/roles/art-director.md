@@ -47,6 +47,11 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   palette with its values, each in a file the boards can cite.
 - Every image is referenced as `media:<id>` and is in `media/manifest.tsv`; every relative link
   resolves. Palette values are written out, never only shown in an image.
+- A model sheet or a design image of a new subject is asked for in `bible/style/requests/<id>.json`:
+  `{for, prompt, refs}`, `for` the sheet, `prompt` the whole prompt text, `refs` reference images,
+  each `media:<id>`. The media wrangler turns it into a job. A request that shows a character or a
+  place names at least one reference image of it. Once the image exists you are launched again to
+  cite its `media:<id>` in the sheet.
 - A change to a locked style lock while an episode is in work needs an amendment the task names.
 
 Lints this stage must pass: `references`, `media`. Run `.factory/factory lint`

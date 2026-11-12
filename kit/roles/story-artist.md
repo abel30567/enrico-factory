@@ -48,7 +48,12 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   `panel: media:<id>`. `duration` is seconds, above zero. Each character is a file
   `bible/canon/characters/<id>.md` and the set a file `bible/canon/places/<id>.md`.
 - Every scene of the sequence and every beat it carries has at least one shot.
-- A panel is only an image already in `media/manifest.tsv`. You do not generate or upload media.
+- A panel is only an image already in `media/manifest.tsv`. A panel that does not exist yet is
+  asked for in `episodes/<ep>/sequences/<Q>/shots/requests/<id>.json`: `{for, prompt, refs}`, `for`
+  the shot id, `prompt` the whole prompt text, `refs` reference images, each `media:<id>`. The media
+  wrangler turns it into a job. A request that shows a character or a place names at least one
+  reference image of it; a subject with no reference is designed in the `style` stage first. Once
+  the image exists you are launched again to cite its `media:<id>` as the shot's `panel`.
 
 Lints this stage must pass: `structure`, `provenance`, `references`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.

@@ -30,8 +30,8 @@ CHECKERS = ("fact-checker", "canon-reviewer", "story-editor", "continuity-superv
 MAKERS = ("story-writer", "script-writer", "head-of-story", "story-artist", "editorial")
 JUDGES = ("pitch-judge",)
 NO_SUITE = ("showrunner", "devils-advocate", "retro-agent", "researcher", "canon-keeper", "art-director",
-            "trend-scout", "audience-analyst", "render-reviewer", "braintrust", "audience-sim",
-            "distinctiveness-judge", "held-out-judge")
+            "media-wrangler", "trend-scout", "audience-analyst", "render-reviewer", "braintrust",
+            "audience-sim", "distinctiveness-judge", "held-out-judge")
 CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
 SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
