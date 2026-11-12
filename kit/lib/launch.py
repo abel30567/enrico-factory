@@ -26,7 +26,6 @@ from kit.lib.production import ProductionError
 from kit.lib.prompt import PromptError
 
 REFUSED_KINDS = {
-    "orchestrator": "an orchestrator is not launched by factory launch",
     "operator": "gated launches are not built in wave 2",
     "analyst": "analyst launches are not built in wave 2",
 }
@@ -68,13 +67,14 @@ def _check_open(state, ticket, pull):
         raise LaunchError(f"pull request #{pull['number']} is not open")
 
 
-def _running(p, pull, role):
-    """Whether the pull's newest ``LAUNCH <role>`` has no later marker of the role's actor."""
-    marked = [markers.parse(c["body"]) for c in sorted(pull["comments"], key=_order)]
+def _running(p, comments, role):
+    """Whether the newest ``LAUNCH <role>`` in ``comments`` has no later marker of the role's actor
+    other than a ``LAUNCH``."""
+    marked = [markers.parse(c["body"]) for c in sorted(comments, key=_order)]
     launched = [i for i, m in enumerate(marked) if m and m.verb == "LAUNCH" and m.args[0] == role]
     if not launched:
         return False
-    return not any(m and m.actor == p.actors[role] for m in marked[launched[-1] + 1:])
+    return not any(m and m.actor == p.actors[role] and m.verb != "LAUNCH" for m in marked[launched[-1] + 1:])
 
 
 def _body(pull, entry):
@@ -82,7 +82,61 @@ def _body(pull, entry):
     return next(c["body"] for c in pull["comments"] if c["id"] == entry["id"])
 
 
-def _default_task(kind, ticket, pull):
+def _ruling(p, state, ticket, pull):
+    """The body of the newest ``RULING`` of the room's orchestrator on the pull or the ticket, or None."""
+    actor = p.actors[production.orchestrator(p, ticket["room"])]
+    comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
+    found = None
+    for comment in sorted(comments, key=_order):
+        m = markers.parse(comment["body"])
+        if m and m.verb == "RULING" and m.actor == actor:
+            found = comment["body"]
+    return found
+
+
+def _joined(parts):
+    return "\n\n".join(part.rstrip("\n") for part in parts)
+
+
+def _judged(state, ticket, pull):
+    """The pull requests a judgment of the orchestrator reads: the pull given, else the ticket's open ones."""
+    if pull is not None:
+        return [pull]
+    found = [x for x in tickets.pulls_of(state, ticket["number"]) if x["state"] == "open"]
+    return sorted(found, key=lambda x: x["number"])
+
+
+def _orchestrator_task(p, ticket, pull, judged):
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    if pull is not None:
+        n = pull["number"]
+        parts = [f"Judgment 1, a ruling after three rounds of notes, on pull request #{n} at head "
+                 f"{pull['git']['head']}. Its files are in pr-{n}/."]
+        actors = {p.actors[r] for key in ("maker", "checker") for r in production.stage_roles(entry, key)}
+        orchestrator = p.actors[production.orchestrator(p, ticket["room"])]
+        for comment in sorted(pull["comments"], key=_order):
+            m = markers.parse(comment["body"])
+            if m and (m.actor in actors or m.actor == orchestrator and m.verb == "RULING"):
+                parts.append(comment["body"])
+        return _joined(parts)
+    numbers = ", ".join(f"#{x['number']}" for x in judged)
+    parts = [f"Judgment 2, a pitch selection, on ticket #{ticket['number']}. "
+             f"The pitches are the pull requests {numbers}."]
+    for x in judged:
+        n, summary = x["number"], x["summary"]
+        parts.append(f"Pull request #{n} at head {x['git']['head']}. Its files are in pr-{n}/.")
+        if summary["maker"]:
+            parts.append(_body(x, summary["maker"]))
+        for key in ("checkers", "judges"):
+            for role in sorted(summary[key]):
+                if summary[key][role]:
+                    parts.append(_body(x, summary[key][role]))
+    return _joined(parts)
+
+
+def _default_task(p, state, kind, ticket, pull, judged):
+    if kind == "orchestrator":
+        return _orchestrator_task(p, ticket, pull, judged)
     if kind == "maker" and pull is None:
         return f"Do the stage {ticket['stage']} for unit {ticket['unit']}."
     n = pull["number"]
@@ -95,7 +149,10 @@ def _default_task(kind, ticket, pull):
             verdict = summary["checkers"][role]
             if verdict and verdict["verb"] == "NOTES":
                 parts.append(_body(pull, verdict))
-        return "\n\n".join(part.rstrip("\n") for part in parts)
+        ruling = _ruling(p, state, ticket, pull)
+        if ruling is not None:
+            parts.append(ruling)
+        return _joined(parts)
     if kind == "checker":
         return f"Review pull request #{n} at head {pull['git']['head']}."
     return f"Judge pull request #{n}."
@@ -141,9 +198,12 @@ def _write(path, data):
         handle.write(data)
 
 
-def _undo(root, run_dir, worktree, branch):
-    """Remove what one ``prepare`` created: its worktree, its new branch and its run directory."""
-    if worktree is not None:
+def _undo(root, run_dir, worktree, branch, plain=False):
+    """Remove what one ``prepare`` created: its worktree (or plain working directory), its new branch
+    and its run directory."""
+    if worktree is not None and plain:
+        shutil.rmtree(worktree, ignore_errors=True)
+    elif worktree is not None:
         with contextlib.suppress(GitError):
             gitstate.remove_worktree(root, worktree)
     if branch is not None:
@@ -176,24 +236,40 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     ticket, pull = _target(state, number)
     t = ticket["number"]
     _check_open(state, ticket, pull)
-    # Check 4: the kinds left are maker, checker and judge, each the stage key it may fill.
+    # Check 4: an orchestrator is its room's; the other kinds are maker, checker and judge, each the
+    # stage key it may fill.
     entry = production.stage(p, ticket["room"], ticket["stage"])
-    if role not in production.stage_roles(entry, kind):
+    if kind == "orchestrator":
+        if role != production.orchestrator(p, ticket["room"]):
+            raise LaunchError(f"{role} is not the orchestrator of room {ticket['room']}")
+    elif role not in production.stage_roles(entry, kind):
         raise LaunchError(f"stage {ticket['stage']} does not name {role}")
     # Check 5
     ok, reason = tickets.upstream(p, state, ticket, root)
     if not ok:
         raise LaunchError(reason)
+    # Checks 8 and 6 for an orchestrator: not running on the number given, and a judgment is due there.
+    if kind == "orchestrator":
+        comments = pull["comments"] if pull is not None else state.ticket_comments.get(t, [])
+        if _running(p, comments, role):
+            raise LaunchError(f"{role} is already running on #{number}")
+        if pull is not None:
+            found = [e for e in steps.all_steps(p, state, ticket, root, now) if e["pull"] == number]
+            due = bool(found) and found[0]["state"] == "ruling"
+        else:
+            due = steps.next_step(p, state, ticket, root, now)["state"] == "selection"
+        if not due:
+            raise LaunchError(f"no judgment is due on #{number}")
     # Check 6
-    if pull is None and kind != "maker":
+    elif pull is None and kind != "maker":
         raise LaunchError("give the pull request number")
-    if pull is None and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
+    elif pull is None and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
         raise LaunchError(f"ticket #{t} has no free pitch; give the pull request number")
     # Check 7
     if p.settings.get("GATEWAY", "") == "on":
         raise LaunchError("the knowledge gateway is not built; set GATEWAY=off")
     # Check 8
-    if pull is not None and _running(p, pull, role):
+    if kind != "orchestrator" and pull is not None and _running(p, pull["comments"], role):
         raise LaunchError(f"{role} is already running on #{number}")
     if pair_dir is not None:
         if kind != "judge":
@@ -213,6 +289,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     base = production.base(p)
     head = pull["git"]["head"] if pull is not None else None
     branch = None
+    judged = _judged(state, ticket, pull) if kind == "orchestrator" else []
     if kind == "maker":
         branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
         if pull is None and _branch_exists(root, branch):
@@ -225,7 +302,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         except (OSError, UnicodeDecodeError):
             raise LaunchError("cannot read the task file") from None
     else:
-        task = _default_task(kind, ticket, pull)
+        task = _default_task(p, state, kind, ticket, pull, judged)
     issue = gh.issue(t)
     values = {
         "REPO": production.setting(p, "REPO"),
@@ -236,7 +313,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     }
     if kind == "maker":
         values["BRANCH"] = branch
-    else:
+    elif kind != "orchestrator":
         values["PR"] = str(number)
     try:
         text = prompt.render(p.roles[role]["body"], values)
@@ -246,6 +323,11 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         text += "\n"
     if kind == "checker" and pull["summary"]["maker"]:
         text += "\n## Maker's report\n\n" + _body(pull, pull["summary"]["maker"])
+        if not text.endswith("\n"):
+            text += "\n"
+    ruling = _ruling(p, state, ticket, pull) if kind == "checker" else None
+    if ruling is not None:
+        text += "\n## Ruling\n\n" + ruling
         if not text.endswith("\n"):
             text += "\n"
     data = text.encode("utf-8")
@@ -280,7 +362,22 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
 
     _mkdirs(run_dir.parent)
     created = None
-    if pair_dir is None:
+    plain = kind == "orchestrator"
+    if plain:
+        _mkdirs(trees)
+        try:
+            workdir.mkdir(mode=0o700)
+            created = workdir
+            os.chmod(workdir, 0o700)
+            for x in judged:
+                gitstate.export(root, x["git"]["head"], workdir / f"pr-{x['number']}")
+        except GitError as error:
+            _undo(root, run_dir, created, None, plain)
+            raise LaunchError(f"worktree: {error}") from None
+        except OSError as error:
+            _undo(root, run_dir, created, None, plain)
+            raise LaunchError(f"worktree: {error.strerror}") from None
+    elif pair_dir is None:
         _mkdirs(trees)
         try:
             for path in stale:
@@ -313,7 +410,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         done = True
     finally:
         if not done:
-            _undo(root, run_dir, created, new_branch)
+            _undo(root, run_dir, created, new_branch, plain)
 
     meta = {
         "id": run_id, "role": role, "kind": kind, "actor": p.actors[role], "number": number,
@@ -323,6 +420,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         "model": model, "family": family, "harness_version": version, "prompt_sha256": digest,
         "started_at": now, "launch_comment": comment["id"],
     }
+    if plain:
+        meta["pulls"] = [x["number"] for x in judged]
     _write(run_dir / "run.json", (json.dumps(meta, indent=2, sort_keys=True) + "\n").encode("utf-8"))
     return Run(run_dir, workdir, meta)
 
@@ -334,7 +433,11 @@ def load_run(run_dir) -> Run:
 
 
 def cleanup(root, run: Run) -> None:
-    """Remove the run's worktree; a blind run's pair directory is not a worktree and is left alone."""
+    """Remove the run's worktree; a blind run's pair directory is not a worktree and is left alone, and
+    an orchestrator's plain working directory is removed with its content."""
     if run.meta["blind"]:
+        return
+    if run.meta["kind"] == "orchestrator":
+        shutil.rmtree(run.worktree)
         return
     gitstate.remove_worktree(root, run.worktree)

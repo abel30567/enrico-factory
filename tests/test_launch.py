@@ -24,6 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 from kit.lib import gitstate, github, launch, lint, production  # noqa: E402
 from kit.lib.launch import LaunchError  # noqa: E402
+from kit.lib import prompt  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "launch"
 PRODUCTION = FIX / "production"
@@ -251,8 +252,8 @@ class Refusals(unittest.TestCase):
     def test_no_role(self):
         self.refused("no role ghost", "ghost", 5)
 
-    def test_orchestrator(self):
-        self.refused("an orchestrator is not launched by factory launch", "showlead", 5)
+    def test_orchestrator_with_no_judgment_due(self):
+        self.refused("no judgment is due on #5", "showlead", 5)
 
     def test_operator(self):
         self.refused("gated launches are not built in wave 2", "runner", 5)
@@ -558,6 +559,370 @@ class Source(unittest.TestCase):
         self.assertIsNone(re.search(r"--(model|tools|mcp-config|json-schema|permission-mode)", source))
         self.assertNotIn("{{", source)
         self.assertGreaterEqual(source.count("prompt.render"), 1)
+
+
+# -- the orchestrator role (ISSUE-89)
+
+PULL_REF = "beats/BT-2-drafter-1"
+PITCHES = (8, 9, 10)
+
+
+def rounds(w, count=3):
+    """Pull #7 with `count` rounds of the reviewer's NOTES: the fixture's one, then for each more round the
+    drafter's LAUNCH and ADDRESSED and the reviewer's LAUNCH and NOTES. Returns the ids added."""
+    ids = []
+    for r in range(2, count + 1):
+        at = f"2026-11-10T1{r - 2}"
+        for i, (minute, role, body) in enumerate([
+                ("00", "showlead", f"[SHOWLEAD] LAUNCH drafter 7-{r}\n"),
+                ("10", "drafter", f"[DRAFTER] ADDRESSED\nB1 is answered, round {r}.\n"),
+                ("20", "showlead", f"[SHOWLEAD] LAUNCH reviewer 7-{r}\n"),
+                ("30", "reviewer", f"[REVIEWER] NOTES\nB1 driftwood-note the flood still has no cause, round {r}\n"
+                                   "reviewed head {head:7} manifest none\n")]):
+            ids.append(10 * r + i)
+            w.comment(7, ids[-1], f"{at}:{minute}:00Z", role, body)
+    return ids
+
+
+def pitches(w, judged=PITCHES):
+    """Stage beats with `pitches` 3; ticket #5 with the open pulls 8, 9 and 10, each with a READY, a [LINT]
+    PASS and an APPROVED, and the assessor's verdict on the pulls in `judged`; and the closed pull 11."""
+    with open(w.root / ".git" / "info" / "exclude", "a") as handle:
+        handle.write("production.local.env\n")
+    for n in PITCHES + (11,):
+        w.set_pull(n, title="Work for #5", body="Ticket: #5\n", state="open" if n != 11 else "closed",
+                   labels=[], head_ref=f"beats/BT-1-pitch-{n}", base_ref="trunk", ticket=5,
+                   created_at="2026-11-04T09:00:00Z", merged_at=None)
+    for n in PITCHES:
+        w.comment(n, 100 + 10 * n, "2026-11-05T09:00:00Z", "drafter", f"[DRAFTER] READY\nMaker report: pitch {n}.\n")
+        w.comment(n, 101 + 10 * n, "2026-11-05T09:05:00Z", "program:lint",
+                  f"[LINT] PASS\nreviewed head {{head:{n}}} manifest none\n")
+        w.comment(n, 102 + 10 * n, "2026-11-05T09:10:00Z", "reviewer",
+                  f"[REVIEWER] APPROVED\nPitch {n} holds.\nreviewed head {{head:{n}}} manifest none\n")
+        if n in judged:
+            w.comment(n, 103 + 10 * n, "2026-11-05T09:15:00Z", "assessor",
+                      f"[ASSESSOR] NO PREFERENCE\nPitch {n} assessed.\nreviewed head {{head:{n}}} manifest none\n")
+    path = w.root / ".factory" / "pipeline.json"
+    old = '"pitches": 1, "paths": ["episodes/*/beats.md"]'
+    assert old in path.read_text()
+    path.write_text(path.read_text().replace(old, '"pitches": 3, "paths": ["episodes/*/beats.md"]'))
+    w.local()
+
+
+def other_room(w):
+    """A second orchestrator, `cutlead`, of the room `post`."""
+    role = (w.root / ".factory" / "roles" / "showlead.md").read_text()
+    role = role.replace("role: showlead", "role: cutlead").replace("room: story", "room: post")
+    (w.root / ".factory" / "roles" / "cutlead.md").write_text(role.replace("the showlead", "the cutlead"))
+    w.local()
+
+
+def body_of(w, number, id):
+    return next(c["body"] for c in w.gh.comments(number) if c["id"] == id)
+
+
+def task_of(text):
+    """The rendered TASK of a prompt whose role file has `Task: {{TASK}}` and then `Rules:`."""
+    return text.split("\nTask: ", 1)[1].split("\n\nRules:\n", 1)[0]
+
+
+def stated_sha(body):
+    return next(line.split(": ", 1)[1] for line in body.split("\n") if line.startswith("prompt sha256: "))
+
+
+def tree(path):
+    """Every file under `path`, relative, with its content."""
+    return {p.relative_to(path).as_posix(): p.read_text() for p in sorted(path.rglob("*")) if p.is_file()}
+
+
+def files_at(w, ref):
+    names = w.git("ls-tree", "-r", "--name-only", ref).split("\n")
+    return {name: w.git("show", f"{ref}:{name}") for name in names if name}
+
+
+class OrchestratorRefusal:
+    """A refused launch creates nothing and posts nothing."""
+
+    def refused(self, w, message, role, number):
+        before = w.snapshot()
+        with self.assertRaises(LaunchError) as caught:
+            w.prepare(role, number)
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(w.snapshot(), before)
+        self.assertFalse(w.state.exists())
+
+
+class RulingLaunch(OrchestratorRefusal, unittest.TestCase):
+    """Behaviour 1: a ruling launch on a pull request with three rounds of notes and no ruling."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.added = rounds(self.w)
+
+    def test_ruling_launch(self):
+        w = self.w
+        before = len(w.gh.comments(7))
+        run = w.prepare("showlead", 7)
+        head = w.head(PULL_REF)
+        comments = w.gh.comments(7)
+        self.assertEqual(len(comments), before + 1)
+        record = comments[-1]
+        self.assertEqual(record["role"], "showlead")
+        self.assertTrue(record["body"].startswith("[SHOWLEAD] LAUNCH showlead 7-1\n"), record["body"])
+        self.assertIn(f"\nhead: {head}\n", record["body"])
+        text = (run.dir / "prompt.md").read_text()
+        self.assertEqual(fenced(record["body"])[0], text)
+        self.assertEqual(stated_sha(record["body"]), hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+    def test_working_directory(self):
+        w = self.w
+        run = w.prepare("showlead", 7)
+        workdir = w.state / "worktrees" / "showlead-7-1"
+        self.assertEqual(run.worktree, workdir)
+        self.assertTrue(workdir.is_dir())
+        self.assertFalse(os.path.lexists(workdir / ".git"))
+        self.assertEqual(mode(workdir), 0o700)
+        self.assertEqual(sorted(p.name for p in workdir.iterdir()), ["pr-7"])
+        self.assertEqual(tree(workdir / "pr-7"), files_at(w, PULL_REF))
+        self.assertEqual((workdir / "pr-7" / "work" / "beats-BT-2-drafter-1.md").read_text(), PULL_REF + "\n")
+        self.assertNotIn("showlead-7-1", w.worktrees())
+        launch.cleanup(w.root, run)
+        self.assertFalse(workdir.exists())
+
+    def test_run_json(self):
+        w = self.w
+        run = w.prepare("showlead", 7)
+        meta = run.meta
+        self.assertEqual(set(meta), RUN_KEYS | {"pulls"})
+        self.assertEqual(launch.load_run(run.dir), run)
+        self.assertEqual(meta, {
+            "id": "7-1", "role": "showlead", "kind": "orchestrator", "actor": "SHOWLEAD", "number": 7, "ticket": 6,
+            "pull": 7, "room": "story", "stage": "beats", "unit": "ep02", "branch": None,
+            "worktree": str(w.state / "worktrees" / "showlead-7-1"), "blind": False, "base_ref": "trunk",
+            "base_sha": w.head("trunk"), "head_sha": w.head(PULL_REF), "model": "maker-model-1", "family": "any",
+            "harness_version": "0.0.0 (fake)", "prompt_sha256": meta["prompt_sha256"], "started_at": NOW,
+            "launch_comment": w.gh.comments(7)[-1]["id"], "pulls": [7]})
+
+    def test_prompt_and_task(self):
+        w = self.w
+        run = w.prepare("showlead", 7)
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIsNone(re.search(r"\{\{", text))
+        head = w.head(PULL_REF)
+        quoted = [2, 4] + [i for i in self.added if body_of(w, 7, i).startswith(("[DRAFTER]", "[REVIEWER]"))]
+        self.assertEqual(len(quoted), 6)
+        parts = [f"Judgment 1, a ruling after three rounds of notes, on pull request #7 at head {head}. "
+                 "Its files are in pr-7/."] + [body_of(w, 7, i).rstrip("\n") for i in quoted]
+        self.assertEqual(task_of(text), "\n\n".join(parts))
+        self.assertNotIn("[LINT]", text)
+        self.assertNotIn("] LAUNCH ", text)
+        self.assertNotIn("Pull request:", text)
+        self.assertNotIn("Branch:", text)
+
+    def test_two_rounds_twin(self):
+        w = World(self)
+        rounds(w, 2)
+        self.refused(w, "no judgment is due on #7", "showlead", 7)
+        self.assertFalse((w.state / "runs").exists())
+        self.assertFalse((w.state / "worktrees").exists())
+
+
+class SelectionLaunch(OrchestratorRefusal, unittest.TestCase):
+    """Behaviour 2: a selection launch on a ticket whose three pitches are lockable."""
+
+    def test_selection_launch(self):
+        w = World(self)
+        pitches(w)
+        before = len(w.gh.comments(5))
+        run = w.prepare("showlead", 5)
+        comments = w.gh.comments(5)
+        self.assertEqual(len(comments), before + 1)
+        record = comments[-1]
+        self.assertTrue(record["body"].startswith("[SHOWLEAD] LAUNCH showlead 5-1\n"), record["body"])
+        self.assertIn("\nhead: none\n", record["body"])
+        for n in PITCHES:
+            self.assertFalse(any(" LAUNCH " in c["body"].split("\n")[0] for c in w.gh.comments(n)))
+        workdir = w.state / "worktrees" / "showlead-5-1"
+        self.assertEqual(run.worktree, workdir)
+        self.assertFalse(os.path.lexists(workdir / ".git"))
+        self.assertEqual(sorted(p.name for p in workdir.iterdir()), ["pr-10", "pr-8", "pr-9"])
+        for n in PITCHES:
+            self.assertEqual(tree(workdir / f"pr-{n}"), files_at(w, f"beats/BT-1-pitch-{n}"))
+        meta = json.loads((run.dir / "run.json").read_text())
+        self.assertEqual((meta["kind"], meta["number"], meta["ticket"], meta["pull"], meta["head_sha"],
+                          meta["branch"], meta["blind"], meta["pulls"]),
+                         ("orchestrator", 5, 5, None, None, None, False, [8, 9, 10]))
+        text = (run.dir / "prompt.md").read_text()
+        self.assertEqual(fenced(record["body"])[0], text)
+        self.assertIsNone(re.search(r"\{\{", text))
+        parts = ["Judgment 2, a pitch selection, on ticket #5. The pitches are the pull requests #8, #9, #10."]
+        for n in PITCHES:
+            parts += [f"Pull request #{n} at head {w.head(f'beats/BT-1-pitch-{n}')}. Its files are in pr-{n}/."]
+            parts += [body_of(w, n, 100 + 10 * n + k).rstrip("\n") for k in (0, 2, 3)]
+        self.assertEqual(task_of(text), "\n\n".join(parts))
+        self.assertNotIn("#11", text)
+        self.assertNotIn("pr-11", text)
+        self.assertNotIn("[LINT]", text)
+
+    def test_a_pitch_without_a_counting_verdict_twin(self):
+        w = World(self)
+        pitches(w, judged=(8, 10))
+        self.refused(w, "no judgment is due on #5", "showlead", 5)
+
+
+class OrchestratorWhoAndWhen(OrchestratorRefusal, unittest.TestCase):
+    """Behaviour 3: only the room's orchestrator, and not while its LAUNCH is unanswered on the number."""
+
+    def test_orchestrator_of_another_room(self):
+        w = World(self)
+        rounds(w)
+        other_room(w)
+        self.refused(w, "cutlead is not the orchestrator of room story", "cutlead", 7)
+
+    def test_running_on_a_pull(self):
+        w = World(self)
+        rounds(w)
+        w.comment(7, 90, "2026-11-10T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 7-1\n")
+        self.refused(w, "showlead is already running on #7", "showlead", 7)
+
+    def test_running_on_a_ticket(self):
+        w = World(self)
+        pitches(w)
+        w.comment(5, 90, "2026-11-06T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 5-1\n")
+        self.refused(w, "showlead is already running on #5", "showlead", 5)
+
+    def test_a_later_launch_of_a_maker_does_not_answer(self):
+        w = World(self)
+        rounds(w)
+        w.comment(7, 90, "2026-11-10T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 7-1\n")
+        w.comment(7, 91, "2026-11-10T16:00:00Z", "showlead", "[SHOWLEAD] LAUNCH drafter 7-4\n")
+        self.refused(w, "showlead is already running on #7", "showlead", 7)
+
+    def test_a_later_launch_of_a_maker_on_the_ticket_does_not_answer(self):
+        w = World(self)
+        pitches(w)
+        w.comment(5, 90, "2026-11-06T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 5-1\n")
+        w.comment(5, 91, "2026-11-06T16:00:00Z", "showlead", "[SHOWLEAD] LAUNCH drafter 5-1\n")
+        self.refused(w, "showlead is already running on #5", "showlead", 5)
+
+    def test_blocked_ends_the_run_on_a_pull_twin(self):
+        w = World(self)
+        rounds(w)
+        w.comment(7, 90, "2026-11-10T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 7-1\n")
+        w.comment(7, 91, "2026-11-10T16:00:00Z", "showlead", "[SHOWLEAD] BLOCKED\nno charter\n")
+        self.assertEqual(w.prepare("showlead", 7).meta["id"], "7-2")
+
+    def test_blocked_ends_the_run_on_a_ticket_twin(self):
+        w = World(self)
+        pitches(w)
+        w.comment(5, 90, "2026-11-06T15:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 5-1\n")
+        w.comment(5, 91, "2026-11-06T16:00:00Z", "showlead", "[SHOWLEAD] BLOCKED\nno charter\n")
+        self.assertEqual(w.prepare("showlead", 5).meta["id"], "5-2")
+
+
+class OrchestratorPostFails(unittest.TestCase):
+    """Behaviour 4: a LAUNCH that cannot be posted leaves no run directory and no working directory."""
+
+    def failed(self, w, number):
+        w.gh = FailingPost(w.dir)
+        before = w.snapshot()
+        with self.assertRaisesRegex(LaunchError, rf"^could not post LAUNCH on #{number}$"):
+            w.prepare("showlead", number)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(list((w.state / "runs").iterdir()), [])
+        self.assertEqual(list((w.state / "worktrees").iterdir()), [])
+
+    def test_ruling(self):
+        w = World(self)
+        rounds(w)
+        self.failed(w, 7)
+
+    def test_selection(self):
+        w = World(self)
+        pitches(w)
+        self.failed(w, 5)
+
+
+class RulingPassedOn(unittest.TestCase):
+    """Behaviour 5: the newest RULING of the room's orchestrator reaches the maker's task and the checker's
+    prompt; without one both prompts are those `main` builds."""
+
+    RULING = "[SHOWLEAD] RULING\n\nThe flood keeps no cause; B1 is set aside.\n\nLaunch: 7-1\n"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def main_prompt(self, role, run):
+        """The prompt `main` builds for the drafter or the reviewer on pull #7, as `main`'s launch.py does."""
+        w = self.w
+        values = {"REPO": "example/tide-show", "WORKTREE": str(run.worktree), "RULES": production.rules_text(w.p),
+                  "TICKET": "#6 [BT-2] Beats for ep02\n\nLay out the beats of episode two: the harbour floods.\n"}
+        if role == "drafter":
+            values.update(BRANCH=PULL_REF, TASK="\n\n".join(
+                ["Address every open note on pull request #7."] + [body_of(w, 7, i).rstrip("\n") for i in (3, 4)]))
+        else:
+            values.update(PR="7", TASK=f"Review pull request #7 at head {w.head(PULL_REF)}.")
+        text = prompt.render(w.p.roles[role]["body"], values)
+        if not text.endswith("\n"):
+            text += "\n"
+        if role == "reviewer":
+            text += "\n## Maker's report\n\n" + body_of(w, 7, 2)
+        return text
+
+    def launched(self, role):
+        run = self.w.prepare(role, 7)
+        record = self.w.gh.comments(7)[-1]["body"]
+        self.assertTrue(record.startswith(f"[SHOWLEAD] LAUNCH {role} "), record)
+        text = (run.dir / "prompt.md").read_text()
+        self.assertEqual(stated_sha(record), hashlib.sha256(text.encode("utf-8")).hexdigest())
+        return run, text, stated_sha(record)
+
+    def test_maker_task_ends_with_the_ruling(self):
+        self.w.comment(7, 50, "2026-11-10T12:00:00Z", "showlead", self.RULING)
+        run, text, sha = self.launched("drafter")
+        self.assertTrue(task_of(text).endswith("\n\n" + self.RULING.rstrip("\n")), text)
+        self.assertNotEqual(sha, hashlib.sha256(self.main_prompt("drafter", run).encode("utf-8")).hexdigest())
+
+    def test_checker_prompt_ends_with_the_ruling(self):
+        self.w.comment(7, 50, "2026-11-10T12:00:00Z", "showlead", self.RULING)
+        run, text, sha = self.launched("reviewer")
+        self.assertTrue(text.endswith("\n## Maker's report\n\n" + body_of(self.w, 7, 2) + "\n## Ruling\n\n" + self.RULING),
+                        text)
+        self.assertEqual(text, self.main_prompt("reviewer", run) + "\n## Ruling\n\n" + self.RULING)
+
+    def test_the_newer_of_two_rulings(self):
+        older = "[SHOWLEAD] RULING\n\nAn older ruling, overruled.\n"
+        self.w.comment(7, 50, "2026-11-10T12:00:00Z", "showlead", older)
+        self.w.comment(7, 51, "2026-11-10T13:00:00Z", "showlead", self.RULING)
+        run, text, _ = self.launched("drafter")
+        self.assertTrue(task_of(text).endswith("\n\n" + self.RULING.rstrip("\n")), text)
+        self.assertNotIn("An older ruling", text)
+        run, text, _ = self.launched("reviewer")
+        self.assertTrue(text.endswith("\n## Ruling\n\n" + self.RULING), text)
+        self.assertNotIn("An older ruling", text)
+
+    def test_a_ruling_on_the_ticket(self):
+        self.w.comment(6, 50, "2026-11-10T12:00:00Z", "showlead", self.RULING)
+        run, text, _ = self.launched("drafter")
+        self.assertTrue(task_of(text).endswith("\n\n" + self.RULING.rstrip("\n")), text)
+        run, text, _ = self.launched("reviewer")
+        self.assertTrue(text.endswith("\n## Ruling\n\n" + self.RULING), text)
+
+    def test_no_ruling_twin(self):
+        for role in ("drafter", "reviewer"):
+            with self.subTest(role=role):
+                run, text, sha = self.launched(role)
+                self.assertEqual(sha, hashlib.sha256(self.main_prompt(role, run).encode("utf-8")).hexdigest())
+                self.assertNotIn("## Ruling", text)
+
+    def test_ruling_of_another_actor_twin(self):
+        other_room(self.w)
+        self.w.comment(7, 50, "2026-11-10T12:00:00Z", "cutlead", self.RULING.replace("SHOWLEAD", "CUTLEAD"))
+        for role in ("drafter", "reviewer"):
+            with self.subTest(role=role):
+                run, text, sha = self.launched(role)
+                self.assertEqual(sha, hashlib.sha256(self.main_prompt(role, run).encode("utf-8")).hexdigest())
+                self.assertNotIn("RULING", text)
 
 
 if __name__ == "__main__":

@@ -814,5 +814,183 @@ class DeadRun(unittest.TestCase):
         self.assertIn("Missing: a valid result (account out of usage (exit 1))\n", w.by(3, "writer")[0]["body"])
 
 
+# -- the orchestrator role (ISSUE-89)
+
+KEEPER = "You are the keeper"
+PITCH_PULLS = (6, 7, 8)
+
+
+def add_comment(w, number, id, created_at, role, body):
+    path = w.github / "comments" / f"{number}.json"
+    found = json.loads(path.read_text()) if path.is_file() else []
+    path.write_text(json.dumps(found + [{"id": id, "created_at": created_at, "role": role, "body": body}],
+                               indent=1, sort_keys=True) + "\n")
+
+
+def three_rounds(w):
+    """Pull #5 after the writer's READY: the critic's NOTES, then twice the writer's ADDRESSED and NOTES."""
+    head = w.head("outline/OL-3-writer-1")
+    for r in range(3):
+        if r:
+            add_comment(w, 5, 10 * r + 10, f"2026-11-10T1{r}:00:00Z", "writer", f"[WRITER] ADDRESSED\nRound {r}.\n")
+        add_comment(w, 5, 10 * r + 11, f"2026-11-10T1{r}:30:00Z", "critic",
+                    f"[CRITIC] NOTES\nB1 the dam is never shown, round {r + 1}\nreviewed head {head} manifest none\n")
+
+
+def three_pitches(w):
+    """Stage outline with `pitches` 3; ticket #3 with the open pulls 6, 7 and 8, each with the writer's READY,
+    the critic's APPROVED and the weigher's verdict."""
+    for n in PITCH_PULLS:
+        ref = f"outline/OL-2-pitch-{n}"
+        w.branch(ref)
+        (w.github / "pulls" / f"{n}.json").write_text(json.dumps({
+            "base_ref": "trunk", "body": "Ticket: #3\n", "created_at": "2026-11-04T09:00:00Z", "head_ref": ref,
+            "labels": [], "merged_at": None, "number": n, "state": "open", "ticket": 3, "title": "Work for #3"},
+            indent=1, sort_keys=True) + "\n")
+        reviewed = f"reviewed head {w.head(ref)} manifest none\n"
+        add_comment(w, n, 10 * n, "2026-11-05T09:00:00Z", "writer", f"[WRITER] READY\nPitch {n}.\n")
+        add_comment(w, n, 10 * n + 1, "2026-11-05T09:10:00Z", "critic", f"[CRITIC] APPROVED\nFine.\n{reviewed}")
+        add_comment(w, n, 10 * n + 2, "2026-11-05T09:20:00Z", "weigher", f"[WEIGHER] NO PREFERENCE\nEven.\n{reviewed}")
+    path = w.root / ".factory" / "pipeline.json"
+    assert '"pitches": 1' in path.read_text()
+    path.write_text(path.read_text().replace('"pitches": 1', '"pitches": 3'))
+    w.local()
+
+
+class Judgment:
+    """A keeper run through `launch.prepare` and `finish.supervise`."""
+
+    def supervise(self, number, *steps):
+        w = self.w
+        self.refs = w.git("for-each-ref", "--format=%(refname) %(objectname)")
+        self.pulls = len(w.gh.pulls("all"))
+        w.steps(*steps)
+        self.run_ = launch.prepare(w.p, w.gh, w.root, "keeper", number, now=NOW)
+        self.assertTrue(self.run_.worktree.is_dir())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = finish.supervise(w.p, w.gh, w.root, self.run_)
+        posted = [c for c in w.by(number, "keeper") if markers.parse(c["body"]).verb != "LAUNCH"]
+        self.assertEqual(len(posted), 1, posted)
+        self.assertEqual(len([c for c in w.posted("keeper") if " LAUNCH " not in c["body"].split("\n")[0]]), 1)
+        return code, posted[0]["body"]
+
+    def assert_left_nothing(self):
+        w = self.w
+        self.assertFalse(self.run_.worktree.exists())
+        self.assertEqual(w.git("for-each-ref", "--format=%(refname) %(objectname)"), self.refs)
+        self.assertEqual(len(w.gh.pulls("all")), self.pulls)
+        self.assertEqual([e for e in w.log() if e["op"] in ("push", "open_pull")], [])
+
+    def assert_blocked(self, body, missing, where, last):
+        lines = body.rstrip("\n").split("\n")
+        self.assertEqual(lines[0], "[KEEPER] BLOCKED")
+        self.assertIn(f"Missing: {missing}", lines)
+        self.assertIn(f"Resume from: {where}", lines)
+        self.assertNotIn("Dropped", body)
+        self.assertEqual(lines[-1], last)
+
+
+class RulingPosted(Judgment, unittest.TestCase):
+    """Behaviour 6: a ruling is posted on the pull request, by the role, and nothing is committed."""
+
+    EVIDENCE = [{"criterion": "critic B1", "result": "acted on", "command": "bible/charter.md:3"}]
+
+    def setUp(self):
+        self.w = World(self)
+        three_rounds(self.w)
+        self.head = self.w.head("outline/OL-3-writer-1")
+        self.manifest = gitstate.manifest(self.w.root, "trunk", self.head)
+
+    def test_ruling(self):
+        code, body = self.supervise(5, result_step(KEEPER, {"marker": "RULING", "summary": "The dam stays off screen.",
+                                                            "evidence": self.EVIDENCE}))
+        self.assertEqual(code, 0)
+        self.assertEqual(body, "\n".join([
+            "[KEEPER] RULING", "", "The dam stays off screen.", "",
+            "| Criterion | Result | Command |", "|---|---|---|", "| critic B1 | acted on | bible/charter.md:3 |",
+            "Launch: 5-1", f"head {self.head} manifest {self.manifest}"]) + "\n")
+        self.assertEqual(markers.parse(body), markers.Marker("KEEPER", "RULING", ()))
+        self.assertEqual(self.w.by(4, "keeper"), [])
+        self.assert_left_nothing()
+
+    def test_selected_on_a_pull_twin(self):
+        code, body = self.supervise(5, result_step(KEEPER, {"marker": "SELECTED", "summary": "Pick this.",
+                                                            "selected": 5, "evidence": self.EVIDENCE}))
+        self.assertEqual(code, 3)
+        self.assert_blocked(body, "a valid result (result.marker: SELECTED does not answer a launch on a pull request)",
+                            f"PR #5 @ {self.head}", f"head {self.head} manifest {self.manifest}")
+        self.assert_left_nothing()
+
+
+class SelectionPosted(Judgment, unittest.TestCase):
+    """Behaviour 7: a selection is posted on the ticket, and `tickets.selected` reads it."""
+
+    def setUp(self):
+        self.w = World(self)
+        three_pitches(self.w)
+
+    def selected(self, chosen=None, marker="SELECTED"):
+        result = {"marker": marker, "summary": "Pitch seven holds best.",
+                  "evidence": [{"criterion": f"#{n}", "result": "approved", "command": f"pr-{n}/"} for n in PITCH_PULLS]}
+        if chosen is not None:
+            result["selected"] = chosen
+        return self.supervise(3, result_step(KEEPER, result))
+
+    def test_selected(self):
+        code, body = self.selected(7)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.run_.meta["pulls"], [6, 7, 8])
+        lines = body.rstrip("\n").split("\n")
+        self.assertEqual(lines[0], "[KEEPER] SELECTED #7")
+        self.assertEqual(lines[-2:], ["Launch: 3-1", "head none manifest none"])
+        self.assertEqual(tickets.selected(self.w.state_now(), 3), 7)
+        for n in PITCH_PULLS:
+            self.assertEqual(self.w.by(n, "keeper"), [])
+        self.assert_left_nothing()
+
+    def test_selected_outside_the_pitches(self):
+        code, body = self.selected(99)
+        self.assertEqual(code, 3)
+        self.assert_blocked(body, "a valid result (result.selected: #99 is not a pitch of this launch)",
+                            "ticket #3", "head none manifest none")
+        self.assertIsNone(tickets.selected(self.w.state_now(), 3))
+        self.assert_left_nothing()
+
+    def test_ruling_on_a_ticket(self):
+        code, body = self.selected(marker="RULING")
+        self.assertEqual(code, 3)
+        self.assert_blocked(body, "a valid result (result.marker: RULING does not answer a launch on a ticket)",
+                            "ticket #3", "head none manifest none")
+        self.assertIsNone(tickets.selected(self.w.state_now(), 3))
+        self.assert_left_nothing()
+
+
+class NoJudgment(Judgment, unittest.TestCase):
+    """Behaviour 8: a harness that exits without a result posts the launcher's BLOCKED on the number given.
+    Clean twins: RulingPosted.test_ruling and SelectionPosted.test_selected."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def test_on_a_pull(self):
+        three_rounds(self.w)
+        head = self.w.head("outline/OL-3-writer-1")
+        code, body = self.supervise(5)
+        self.assertEqual(code, 3)
+        self.assert_blocked(body, "a valid result (run failed (exit 3))", f"PR #5 @ {head}",
+                            f"head {head} manifest {gitstate.manifest(self.w.root, 'trunk', head)}")
+        self.assertIn("\n\n" + finish.LAUNCHER_SUMMARY + "\n\n", body)
+        self.assert_left_nothing()
+
+    def test_on_a_ticket(self):
+        three_pitches(self.w)
+        code, body = self.supervise(3)
+        self.assertEqual(code, 3)
+        self.assert_blocked(body, "a valid result (run failed (exit 3))", "ticket #3", "head none manifest none")
+        self.assertIn("\n\n" + finish.LAUNCHER_SUMMARY + "\n\n", body)
+        self.assert_left_nothing()
+
+
 if __name__ == "__main__":
     unittest.main()

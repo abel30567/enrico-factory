@@ -155,8 +155,8 @@ class Tick:
             return
         state = self.state
         lines = [self.say(self.entry(state, ticket, entry, first)) for entry in entries]
-        if first["step"] == "wake" and first not in entries:
-            lines.append(self.say(f"NEED #{n} {first['state']} {first['reason']}"))
+        if first not in entries:
+            lines.append(self.say(self.entry(state, ticket, first, first)))
         if self.apply:
             self.label(ticket, lines)
             if any(line.startswith(f"STEP #{n} lock ") for line in lines):

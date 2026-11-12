@@ -401,8 +401,13 @@ class Pitches(Case):
         self.assertEqual(lines(out), [
             "WAIT #15 lockable PR #16 is not the ticket's next step",
             "WAIT #15 lockable PR #17 is not the ticket's next step",
+            "STEP #15 launch keeper on #15"])
+        out = self.ticked(w, "--apply")
+        self.assertEqual(lines(out), [
+            "WAIT #15 lockable PR #16 is not the ticket's next step",
+            "WAIT #15 lockable PR #17 is not the ticket's next step",
             "NEED #15 selection every pitch of #15 is lockable and none is selected"])
-        self.assertEqual([e["op"] for e in w.log()], ["add_label"])
+        self.assertEqual([e["op"] for e in w.log()], ["post", "post", "add_label"])
         self.assertEqual({w.record("pulls", n)["state"] for n in (16, 17)}, {"open"})
 
     def test_only_the_selected_pitch_gets_a_lock_line(self):
@@ -478,6 +483,7 @@ class Wake(Case):
 
     def test_ruling(self):
         w = self.world((22, 23))
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #22 launch foreman on PR #23"])
         for _ in range(2):
             out = self.ticked(w, "--apply")
             self.assertEqual(lines(out), ["NEED #22 ruling three rounds of notes on #23 and no ruling"])
@@ -527,16 +533,16 @@ class Whole(Case):
             "STEP #18 launch painter on #18",
             "STEP #19 launch inspector on PR #20",
             "WAIT #21 waiting upstream stage frames is not locked for ep05",
-            "NEED #22 ruling three rounds of notes on #23 and no ruling",
+            "STEP #22 launch foreman on PR #23",
             "STEP #3 blind PR #4",
             "STEP #5 lint PR #6",
             "STEP #7 gate PR #8",
             "STEP #13 lock PR #14",
             "WAIT #15 lockable PR #16 is not the ticket's next step",
             "WAIT #15 lockable PR #17 is not the ticket's next step",
-            "NEED #15 selection every pitch of #15 is lockable and none is selected",
+            "STEP #15 launch keeper on #15",
         ])
-        self.assertEqual(first[1].splitlines()[-1], "tick: 7 steps, 2 need, 4 wait, 0 failed")
+        self.assertEqual(first[1].splitlines()[-1], "tick: 9 steps, 0 need, 4 wait, 0 failed")
 
     def test_room(self):
         code, out, err = self.w.tick("--room", "production")
@@ -874,6 +880,111 @@ class SyncBase(Case):
                                       "STEP #13 lock PR #14"])
         self.assertEqual(w.snapshot(), before)
         self.assertEqual(gh.synced, [])
+
+
+FOREMAN_RULING = step("You are the foreman", {
+    "marker": "RULING", "summary": "The sky may wait for the next episode.",
+    "evidence": [{"criterion": "inspector B1", "result": "rejected", "command": "production/ep06/frames.md:1"}]})
+PITCHES_WAIT = ["WAIT #15 lockable PR #16 is not the ticket's next step",
+                "WAIT #15 lockable PR #17 is not the ticket's next step"]
+
+
+def keeper_selected(number):
+    return step("You are the keeper", {
+        "marker": "SELECTED", "summary": "The second pitch sinks the ferry.", "selected": number,
+        "evidence": [{"criterion": f"PR #{n}", "result": "selected" if n == number else "approved",
+                      "command": "episodes/ep01/pitch.md"} for n in (16, 17)]})
+
+
+def firsts(comments):
+    return [(c["role"], c["body"].split("\n")[0]) for c in comments]
+
+
+class Judgment(Case):
+    """ISSUE-89 behaviours 12 to 14: tick starts the room's orchestrator for a ruling and a selection."""
+
+    def at(self, minutes):
+        os.environ["FACTORY_NOW"] = later(minutes)
+
+    # -- behaviour 12: a ruling through tick
+
+    def test_ruling_through_tick(self):
+        w = self.world((22, 23))
+        w.steps(FOREMAN_RULING)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #22 launch foreman on PR #23"])
+        self.assertEqual(firsts(w.comments(23))[4:], [("foreman", "[FOREMAN] LAUNCH foreman 23-1"),
+                                                      ("foreman", "[FOREMAN] RULING")])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #22 launch painter on PR #23"])
+        self.assertEqual(w.ops("add_label"), [])
+
+    def test_ruling_with_no_answer(self):
+        w = self.world((22, 23))
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #22 launch foreman on PR #23"])
+        self.assertEqual(firsts(w.comments(23))[4:], [("foreman", "[FOREMAN] LAUNCH foreman 23-1"),
+                                                      ("foreman", "[FOREMAN] BLOCKED")])
+        for _ in range(2):
+            self.assertEqual(lines(self.ticked(w, "--apply")),
+                             ["NEED #22 ruling three rounds of notes on #23 and no ruling"])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(22, LABEL)])
+        self.assertEqual([b for _, b in firsts(w.comments(23)) if " LAUNCH foreman " in b],
+                         ["[FOREMAN] LAUNCH foreman 23-1"])
+
+    # -- behaviour 13: a selection through tick
+
+    def test_selection_through_tick(self):
+        w = self.world((15, 16, 17))
+        w.steps(keeper_selected(17))
+        self.assertEqual(lines(self.ticked(w, "--apply")), PITCHES_WAIT + ["STEP #15 launch keeper on #15"])
+        self.assertEqual(firsts(w.comments(15)), [("keeper", "[KEEPER] LAUNCH keeper 15-1"),
+                                                  ("keeper", "[KEEPER] SELECTED #17")])
+        self.assertEqual(lines(self.ticked(w, "--apply")), PITCHES_WAIT[:1] + ["STEP #15 lock PR #17"])
+        self.assertEqual(w.ops("add_label"), [])
+        self.assertEqual([w.record("pulls", n)["state"] for n in (16, 17)], ["open", "merged"])
+
+    def test_selection_outside_the_pitches(self):
+        w = self.world((15, 16, 17))
+        w.steps(keeper_selected(99))
+        self.assertEqual(lines(self.ticked(w, "--apply")), PITCHES_WAIT + ["STEP #15 launch keeper on #15"])
+        found = w.comments(15)
+        self.assertEqual(firsts(found), [("keeper", "[KEEPER] LAUNCH keeper 15-1"), ("keeper", "[KEEPER] BLOCKED")])
+        self.assertIn("Missing: a valid result (result.selected: #99 is not a pitch of this launch)",
+                      found[1]["body"].splitlines())
+        self.assertEqual(lines(self.ticked(w, "--apply")), PITCHES_WAIT + [
+            "NEED #15 selection every pitch of #15 is lockable and none is selected"])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(15, LABEL)])
+        self.assertIn(LABEL, w.record("issues", 15)["labels"])
+        self.assertEqual(w.ops("merge"), [])
+        self.assertEqual([w.record("pulls", n)["state"] for n in (16, 17)], ["open", "open"])
+
+    # -- behaviour 14: a dead selection run
+
+    def selection_run(self):
+        w = self.world((15, 16, 17))
+        p = w.p()
+        run = launch.prepare(p, w.gh, p.root, "keeper", 15)
+        self.assertTrue(run.dir.is_dir())
+        return w, run
+
+    def test_dead_selection_run(self):
+        w, run = self.selection_run()
+        self.at(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), PITCHES_WAIT + ["STEP #15 timeout keeper 15-1"])
+        found = w.comments(15)
+        self.assertEqual(firsts(found), [("keeper", "[KEEPER] LAUNCH keeper 15-1"), ("keeper", "[KEEPER] BLOCKED")])
+        self.assertEqual(found[1]["created_at"], later(251))
+        body = found[1]["body"].splitlines()
+        self.assertIn("Missing: a valid result (timed out)", body)
+        self.assertIn("Resume from: ticket #15", body)
+        self.assertEqual(len(w.ops("post")), 2)
+
+    def test_live_selection_run(self):
+        w, _ = self.selection_run()
+        self.at(1)
+        before = w.snapshot()
+        self.assertEqual(lines(self.ticked(w, "--apply")),
+                         PITCHES_WAIT + [f"WAIT #15 running keeper launched at {NOW}"])
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(len(w.ops("post")), 1)
 
 
 if __name__ == "__main__":
