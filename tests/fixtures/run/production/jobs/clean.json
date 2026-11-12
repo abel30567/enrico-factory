@@ -1,0 +1,7 @@
+{
+ "caller": "renderer",
+ "expected": {"compute_min": 30, "usd": 2.5},
+ "inputs": [{"path": "scripts/clean.json", "sha256": "c6351de87dc84c28908c055835052b8e04e396eb43721eb29c80c4b4a7f88fcc"}],
+ "ticket": 3,
+ "tool": "fake"
+}
