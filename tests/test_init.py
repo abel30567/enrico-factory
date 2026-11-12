@@ -156,6 +156,18 @@ class TreeTest(InitTest):
         self.assertTrue(os.access(target / ".factory/factory", os.X_OK))
         self.assertIn("ROOMS=story,distribution\n", (target / "production.env").read_text())
 
+    def test_install_without_evals_is_init_less_evals_and_prints_nothing(self):
+        kit = self.source_kit()
+        target, _ = self.production(kit)
+        built = self.tempdir() / "run"
+        done = python("-c", "import sys; from pathlib import Path; from kit.lib import cmd_init; "
+                            "cmd_init.install(Path(sys.argv[1]), Path(sys.argv[2]), ['story'], evals=False)",
+                      built, kit)
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "", ""))
+        expected = {p: v for p, v in tree(target).items() if p != "." and not p.startswith(".factory/evals")}
+        self.assertTrue(any(p.startswith(".factory/evals") for p in tree(target)))
+        self.assertEqual({p: v for p, v in tree(built).items() if p != "."}, expected)
+
     def test_layout_contents(self):
         target, _ = self.production(self.source_kit(), "--rooms", "story")
         self.assertEqual((target / ".gitignore").read_text(), "production.local.env\n__pycache__/\n")

@@ -55,6 +55,19 @@ wave that first needs the resource (`docs/system-brief.md`, section 17).
 | `store.media` | Bucket with public URLs for every media file | key | partly | 3 | A public bucket exists. No command-line client is configured for it and no key file is set aside for the factory. Instagram also needs it: a Reel is published from a public URL. |
 | `local.ffmpeg` | ffmpeg and ffprobe with loudness, similarity and detection filters | none | have | 3 | Every filter the checks name is present. The installed build is not native to the machine's processor, so it runs slower than it could. |
 
+### Story room: other people's videos
+
+Added 2026-11-12 (owner request: trend research and external video ingestion). The evidence is in
+`docs/research/07-external-trends-and-ingestion.md`. These four are not in `kit/resources.json` yet:
+the item that builds each tool adds its row.
+
+| Id | What | Kind | State | Wave | Note |
+|---|---|---|---|---|---|
+| `external.youtube` | Public videos by topic, with counts, the author's other videos and comments | grant | missing | 6 | The project of step 3 is enough, and an API key in it would do without the upload grant. Free. 100 searches a day; other reads share 10,000 units a day. Counts of other people's videos may be kept 30 days at most. This project must never scrape YouTube or receive scraped YouTube data. |
+| `external.instagram` | Views, likes, comments and followers for a watch list of named professional accounts | grant | missing | 6 | Only with the Meta app on Facebook Login and a linked Page (R10). No trending list by topic exists. A hashtag search gives likes and comments only, for 30 hashtags in 7 days, and needs one more feature that may need app review. |
+| `external.tiktok` | Rising hashtags, and the ordered top 20 videos per hashtag with no counts | grant | missing | 6 | The posting app gives nothing here. Needs a TikTok For Business account, a Business API app and an ad account (step 8), the same account and app as `platform.tiktok.insights`. Free. |
+| `external.provider` | Per-video counts for TikTok and Instagram from a paid scraper | key | missing | 6 | Optional, and only after decision D6. $1.50 to $1.70 per 1,000 results. Never for YouTube data. |
+
 ### Production room
 
 | Id | What | Kind | State | Wave | Note |
@@ -104,6 +117,7 @@ Everything else an agent can do. Start the long ones in wave 4, as the build ord
 | 5 | Epic account, linked GitHub account | an hour plus the download | all production work |
 | 6 | Key files for the factory: image, 3D, voice, media store, asset store | minutes each | generation, storage |
 | 7 | Logins: a yearly token per inference account; the proxy logins when they end | minutes each | inference, Grok Imagine |
+| 8 | TikTok For Business account, a Business API app and an ad account | not verified | TikTok trend reads, and the optional watch-through |
 
 ## 4. TikTok
 
@@ -134,6 +148,10 @@ Reversible choices are taken here so the build does not wait. The owner can over
 | R4 | Generated engine binaries live in a bucket by content hash, not in git | LFS on a public repository spends the owner's bandwidth on every clone, and every changed binary counts in full | use LFS or Perforce |
 | R5 | TikTok starts in `inbox` mode | it works without the audit | change `TIKTOK_POSTING` |
 | R6 | Fermi is reached through the local knowledge gateway | it needs no change to the live server | D2 |
+| R7 | Other people's videos are read through the platforms' official APIs only, YouTube first | it is the one complete official route and needs nothing new from the owner | D5, D6 |
+| R8 | Platform data that must expire never enters git. Counts live in the state directory with a read time and are refreshed or deleted within 30 days; the repository keeps the link, our notes and the rank at read time | YouTube's policy allows 30 days, and git history cannot forget | none while the policy stands |
+| R9 | The factory does not fetch other people's video files, frames, audio or thumbnails | no official route delivers them and every other fetch breaks the sites' terms | D5 |
+| R10 | The Meta app is built on Facebook Login with a linked Page | an app has one login type, and only this one reads other accounts | build it on Instagram Login; `external.instagram` is then not available |
 
 These need the owner. Each holds only the item it names.
 
@@ -143,6 +161,9 @@ These need the owner. Each holds only the item it names.
 | D2 | Add a scoped token to Fermi (memory, skills and search only, with a namespace per production)? | it changes the live Fermi server | nothing. The gateway is used until then |
 | D3 | Which render node: a cloud Windows node (about $1.00 to $1.20 an hour on AWS), a cheaper Linux node with Epic's container image ($0.35 to $0.90 an hour), or a machine the owner buys | money and a new account | wave 4 renders |
 | D4 | Confirm the platform accounts the sample production posts from, and that each may carry AI-disclosed content | accounts and publishing | wave 5 uploads |
+| D5 | May the factory fetch other people's video files to analyse a temporary copy (transcript, cut rate, opening hook, on-screen text) and delete it? | it breaks all three sites' terms, and for YouTube it breaks the developer policies that bind the project the production uploads with | only the analysis of a temporary copy. Until then: links, counts and comments |
+| D6 | Pay a data provider for TikTok and Instagram counts? Under $10 a month at 500 results a week per platform | money, and the data is scraped | per-video counts on those two platforms |
+| D7 | Which works may the sample production draw on, and on what basis (own, licence, permission, public domain)? (#276) | rights are the owner's to state, and only the owner writes `sources/rights.tsv` | only the first public upload of the sample. Until then the material the owner supplied counts as cleared inside the private repository |
 
 ## 6. Rough running cost at list price
 
@@ -156,6 +177,8 @@ Only where a price was read. Inference is the flat cost of the subscriptions.
 | One 3D model with a rig | $0.45 to $0.85 |
 | Render node | $0.35 to $1.20 an hour |
 | YouTube, TikTok, Instagram | free |
+| Other people's videos, official routes | free |
+| Other people's videos, a provider (D6) | $1.50 to $1.70 per 1,000 results |
 
 ## 7. Not verified
 

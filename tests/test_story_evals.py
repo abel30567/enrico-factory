@@ -3,7 +3,9 @@
 Hand-written results stand in for the roles: nothing here runs a model.
 """
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import re
@@ -15,6 +17,7 @@ import unittest
 from pathlib import Path
 
 from kit.lib import evals, frontmatter, harness, lint, production
+from kit.lib import cmd_eval, cmd_init
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
@@ -33,6 +36,10 @@ CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
 SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
 TREES = ("tree", "old", "new")
+READ_FIRST = re.compile(r"(?ms)^## Read first\n(.*?)(?=^## |\Z)")
+INSTALLED = ("bible/", "media/", "registry/", ".factory/")
+# Not decided by ISSUE-247: no program reads or writes registry/posts.tsv and nothing defines its columns.
+NOT_PROVIDED = {("canon-reviewer", "registry/posts.tsv")}
 
 
 def cases(role):
@@ -81,6 +88,190 @@ def reaches_evals(role_text):
     meta, _ = frontmatter.parse(role_text)
     writes = frontmatter.as_list(meta.get("writes"))
     return any(production.matches(path, writes) for path in ("kit/evals/x", ".factory/evals/x"))
+
+
+def files(path):
+    return sorted(p.relative_to(path).as_posix() for p in Path(path).rglob("*") if p.is_file())
+
+
+def read_first(kit, role):
+    """The installed paths ``## Read first`` of the role file names, less the ones not provided."""
+    section = READ_FIRST.search((kit / "roles" / f"{role}.md").read_text(encoding="utf-8")).group(1)
+    named = {path for path in re.findall(r"`([^`]+)`", section)
+             if path.startswith(INSTALLED) and not set(path) & set("<>*")}
+    return sorted(named - {path for name, path in NOT_PROVIDED if name == role})
+
+
+def checked_lints(kit, case):
+    """The lints a built run directory must pass: a replay case's own, else its checker stages'."""
+    if case.kind == "replay":
+        return case.spec["lint"]
+    pipeline = json.loads((kit / "pipeline.json").read_text(encoding="utf-8"))
+    return sorted({check for entry in pipeline if case.role in production.stage_roles(entry, "checker")
+                   for check in entry["lint"]})
+
+
+def completeness(kit, case, run_dir):
+    """What the run directory built for ``case`` from ``kit`` lacks against the role's own file."""
+    where = f"{case.role}/{case.id}"
+    problems = []
+    for name in TREES:
+        if (case.path / name).is_dir() and any(f.startswith(".factory/") for f in files(case.path / name)):
+            problems.append(f"d: {where}: {name}/ holds a path under .factory/")
+    cmd_eval.build_run_dir(kit, case, 1, run_dir)
+    built = files(run_dir)
+    if (run_dir / ".factory" / "evals").exists() or any(f.split("/")[-1] == "case.json" for f in built):
+        problems.append(f"d: {where}: the run directory holds an answer")
+    if case.kind == "pair":
+        if sorted(p.name for p in run_dir.iterdir()) != ["A", "B"]:
+            problems.append(f"{where}: the run directory is not A/ and B/")
+        if any(".factory" in Path(f).parts for f in built):
+            problems.append(f"{where}: a side holds .factory")
+        roots = [run_dir / "A", run_dir / "B"]
+    else:
+        ids = checked_lints(kit, case)
+        done = subprocess.run([sys.executable, str(run_dir / ".factory" / "factory"), "lint", "--only",
+                               ",".join(ids)], cwd=run_dir, capture_output=True, text=True, timeout=120)
+        if done.returncode != 0:
+            problems.append(f"a: {where}: lint exits {done.returncode}: {done.stdout}")
+        formats = files(kit / "formats")
+        if files(run_dir / ".factory" / "formats") != formats:
+            problems.append(f"c: {where}: .factory/formats/ is not the kit's formats/")
+        for premise in sorted(run_dir.glob("episodes/**/premise.md")):
+            meta, _ = frontmatter.parse(premise.read_text(encoding="utf-8"))
+            name = meta.get("format")
+            if f"{name}.md" not in formats:
+                problems.append(f"c: {where}: {premise.relative_to(run_dir)} names format {name!r}")
+        roots = [run_dir]
+    for root in roots:
+        side = "" if root == run_dir else f"{root.name}/"
+        for path in read_first(kit, case.role):
+            if not (root / path).is_file():
+                problems.append(f"b: {where}: {side}{path} is missing")
+    return problems
+
+
+class BuildRunDirTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def build(self, role, case_id, run=1, kit=KIT):
+        case = next(c for c in evals.load(kit, role) if c.id == case_id)
+        run_dir = self.dir / f"{role}-{case_id}-{run}" / "run"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            cmd_eval.build_run_dir(kit, case, run, run_dir)
+        self.assertEqual(out.getvalue(), "")
+        return case, run_dir
+
+    def test_a_tree_case_is_a_production(self):
+        case, run_dir = self.build("story-writer", "01-tide-bell")
+        built = files(run_dir)
+        for path in (".factory/factory", ".factory/formats/short-four-act.md",
+                     ".factory/roles/story-writer.md", "bible/charter.md", "bible/canon/ledger.tsv",
+                     "media/manifest.tsv", "production.env"):
+            self.assertIn(path, built)
+        tree = files(case.path / "tree")
+        self.assertEqual(len(tree), 3)
+        for path in tree:
+            self.assertEqual((run_dir / path).read_bytes(), (case.path / "tree" / path).read_bytes(), path)
+
+    def test_no_answer_in_the_run_directory(self):
+        _, run_dir = self.build("story-writer", "01-tide-bell")
+        self.assertFalse((run_dir / ".factory" / "evals").exists())
+        self.assertEqual([f for f in files(run_dir) if f.endswith("case.json")], [])
+        self.assertTrue((run_dir / ".factory" / "lib" / "evals.py").is_file())
+        init = self.dir / "init"
+        init.mkdir()
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cmd_init.main([str(init)]), 0)
+        self.assertTrue((init / ".factory/evals/story-writer/01-tide-bell/case.json").is_file())
+
+    def test_a_tree_file_wins(self):
+        case, run_dir = self.build("canon-reviewer", "01-lamplighters")
+        for path in ("bible/charter.md", "bible/canon/ledger.tsv"):
+            self.assertEqual((run_dir / path).read_bytes(), (case.path / "tree" / path).read_bytes(), path)
+            self.assertNotEqual((run_dir / path).read_text(), cmd_init.FILES[path], path)
+        case, run_dir = self.build("fact-checker", "02-salt-road")
+        for path in ("bible/charter.md", "bible/canon/ledger.tsv"):
+            self.assertFalse((case.path / "tree" / path).exists(), path)
+            self.assertEqual((run_dir / path).read_text(encoding="utf-8"), cmd_init.FILES[path], path)
+
+    def test_a_pair_case_is_two_sides_with_the_same_bible(self):
+        for case in cases("pitch-judge"):
+            for run in (1, 2):
+                _, run_dir = self.build("pitch-judge", case.id, run)
+                where = f"{case.id} run {run}"
+                self.assertEqual(sorted(p.name for p in run_dir.iterdir()), ["A", "B"], where)
+                self.assertEqual([f for f in files(run_dir) if ".factory" in Path(f).parts], [], where)
+                for path in ("bible/charter.md", "bible/canon/ledger.tsv"):
+                    self.assertTrue((run_dir / "A" / path).is_file(), f"{where}: {path}")
+                    self.assertEqual((run_dir / "A" / path).read_bytes(), (run_dir / "B" / path).read_bytes(),
+                                     f"{where}: {path}")
+                for side, version in evals.sides(case.id, run).items():
+                    for path in files(case.path / version):
+                        self.assertEqual((run_dir / side / path).read_bytes(),
+                                         (case.path / version / path).read_bytes(), f"{where}: {side}/{path}")
+
+
+class CompletenessTest(unittest.TestCase):
+    """Every case's run directory holds what its role file names (ISSUE-247 ruling 6)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def problems(self, kit, role, case_id):
+        case = next(c for c in evals.load(kit, role) if c.id == case_id)
+        return completeness(kit, case, self.dir / f"{role}-{case_id}" / "run")
+
+    def test_every_case_is_complete(self):
+        count = 0
+        for role in CHECKERS + MAKERS + JUDGES:
+            for case in cases(role):
+                count += 1
+                self.assertEqual(completeness(KIT, case, self.dir / f"{role}-{case.id}" / "run"), [])
+        self.assertEqual(count, 64)
+        self.assertEqual(read_first(KIT, "look-reviewer"),
+                         ["bible/canon/ledger.tsv", "bible/charter.md", "media/manifest.tsv"])
+
+    def kit_copy(self):
+        kit = self.dir / "kit"
+        shutil.copytree(KIT, kit, ignore=shutil.ignore_patterns("__pycache__"))
+        return kit
+
+    def test_a_tree_under_factory_fails_d(self):
+        kit = self.kit_copy()
+        planted = kit / "evals" / "story-writer" / "01-tide-bell" / "tree" / ".factory" / "x"
+        planted.parent.mkdir()
+        planted.write_text("x\n")
+        self.assertIn("d: story-writer/01-tide-bell: tree/ holds a path under .factory/",
+                      self.problems(kit, "story-writer", "01-tide-bell"))
+
+    def test_a_path_the_run_lacks_fails_b(self):
+        kit = self.kit_copy()
+        role = kit / "roles" / "story-writer.md"
+        text = role.read_text(encoding="utf-8")
+        role.write_text(text.replace("## Read first\n\n", "## Read first\n\n0. `bible/absent.md`.\n", 1),
+                        encoding="utf-8")
+        self.assertIn("b: story-writer/01-tide-bell: bible/absent.md is missing",
+                      self.problems(kit, "story-writer", "01-tide-bell"))
+        self.assertEqual(self.problems(KIT, "story-writer", "02-fox-lane"), [])
+
+    def test_a_premise_with_no_format_file_fails_c(self):
+        kit = self.kit_copy()
+        premise = kit / "evals" / "head-of-story" / "03-tide-bell" / "tree" / "episodes" / "ep01" / "premise.md"
+        premise.write_text(premise.read_text(encoding="utf-8").replace("format: short-four-act",
+                                                                     "format: no-such-format"))
+        self.assertIn("c: head-of-story/03-tide-bell: episodes/ep01/premise.md names format 'no-such-format'",
+                      self.problems(kit, "head-of-story", "03-tide-bell"))
 
 
 class SuitesTest(unittest.TestCase):

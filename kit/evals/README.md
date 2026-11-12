@@ -11,12 +11,17 @@ written by the author of the prompt it measures measures nothing. No role's `wri
 ## Case format
 
 A case is the directory `evals/<role>/<case-id>/` holding `case.json`, `task.md` and `tree/`, the
-production the role works in (a `pair` case holds `old/` and `new/` in place of `tree/`).
+case's own files (a `pair` case holds `old/` and `new/` in place of `tree/`).
+
+`factory eval` builds the production around them: it writes what `factory init` writes, with the kit
+less `evals/`, and copies `tree/` over it, so a tree file wins and no answer is in the run directory.
+A pair case's run directory holds only `A/` and `B/`, each a version plus the init charter and canon
+ledger where the version has none, the same bytes on both sides.
 
 | Role kind | `case.json` | Passes when |
 |---|---|---|
 | checker | `{"kind": "seeded", "catches": [regex, ...]}` | NOTES, every regex in a Blocker |
-| checker | `{"kind": "clean"}` | no NOTES with a Blocker |
+| checker | `{"kind": "clean"}` | no NOTES with a Blocker, and not BLOCKED |
 | maker | `{"kind": "replay", "lint": [...], "expect_files": [glob, ...]}` | READY, files present, lints pass |
 | judge | `{"kind": "pair", "better": "old"}` or `"new"` | PREFERS the side that shows `better` |
 
