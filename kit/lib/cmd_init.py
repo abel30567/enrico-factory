@@ -65,6 +65,8 @@ FILES = {
     "production.local.env.example": LOCAL_ENV_EXAMPLE,
     "rules/production-rules.md": "# Production rules\n",
     "media/manifest.tsv": "id\tsha256\tbytes\tsource\n",
+    "bible/charter.md": "# Charter\n",
+    "bible/canon/ledger.tsv": "subject\tattribute\tvalue\ttag\tsource\n",
 }
 DIRECTORIES = ("sources", "research", "bible/canon", "bible/amendments", "bible/style", "playbook",
                "calibration", "registry", "rulebook", "ledger", "lab", "episodes")
