@@ -1,6 +1,8 @@
 """The lint framework: discovery, PASS/FAIL/ERROR, output, exit codes, the [LINT] marker."""
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -245,6 +247,126 @@ class FileSet(LintCase):
         results = lint.run(root, only=CHECKS)
         self.assertEqual({k: r.status for k, r in results.items()}, dict.fromkeys(CHECKS, lint.PASS))
 
+
+
+DEFECT = "[x](missing.md)\n"
+IN_KIT = ".factory/evals/x/tree/research/a.md"
+
+
+class InstalledKitSkipped(LintCase):
+    """`lint.walk` and `lint.files` never list the top-level `.factory/`, the installed kit."""
+
+    def references(self, root):
+        r = lint.run(root, only=["references"])["references"]
+        return r.status, [(f.path, f.line) for f in r.findings]
+
+    def assertNoKit(self, root):
+        self.assertEqual([p for p in lint.walk(root) if p.split("/")[0] == ".factory"], [])
+        self.assertEqual([p for p in lint.files(root) if p.parts[0] == ".factory"], [])
+
+    def test_outside_a_work_tree_factory_is_not_listed(self):
+        root = self.variant({IN_KIT: DEFECT})
+        self.assertNoKit(root)
+        self.assertEqual(self.references(root), (lint.PASS, []))
+
+    def test_outside_a_work_tree_same_file_outside_factory_is_a_finding(self):
+        root = self.variant({"research/a.md": DEFECT})
+        self.assertIn("research/a.md", lint.walk(root))
+        self.assertEqual(self.references(root), (lint.FAIL, [("research/a.md", 1)]))
+
+    def test_work_tree_untracked_factory_is_not_listed(self):
+        root = self.variant({IN_KIT: DEFECT})
+        self.git_init(root)
+        self.assertIn(IN_KIT, git(root, "ls-files", "--others"))
+        self.assertNoKit(root)
+        self.assertEqual(self.references(root), (lint.PASS, []))
+
+    def test_work_tree_tracked_factory_is_not_listed(self):
+        root = self.variant({IN_KIT: DEFECT})
+        self.git_init(root)
+        git(root, "add", "-A")
+        self.assertIn(IN_KIT, git(root, "ls-files", "--cached"))
+        self.assertNoKit(root)
+        self.assertEqual(self.references(root), (lint.PASS, []))
+
+    def test_work_tree_same_file_outside_factory_is_a_finding(self):
+        for add in (False, True):
+            with self.subTest(tracked=add):
+                root = self.variant({"research/a.md": DEFECT})
+                self.git_init(root)
+                if add:
+                    git(root, "add", "-A")
+                self.assertIn(Path("research/a.md"), lint.files(root))
+                self.assertEqual(self.references(root), (lint.FAIL, [("research/a.md", 1)]))
+
+    def test_only_the_top_level_directory_named_factory_is_skipped(self):
+        listed = [".factory-state/note.md", "episodes/ep01/.factory/a.md"]
+        for in_git in (False, True):
+            with self.subTest(git=in_git):
+                root = self.variant({rel: DEFECT for rel in listed})
+                (root / "episodes" / ".factory").write_text("a file named .factory\n")
+                if in_git:
+                    self.git_init(root)
+                for rel in [*listed, "episodes/.factory"]:
+                    self.assertIn(rel, lint.walk(root))
+                    self.assertIn(Path(rel), lint.files(root))
+                self.assertEqual(self.references(root), (lint.FAIL, [(rel, 1) for rel in listed]))
+
+    def test_top_level_file_named_factory_is_listed(self):
+        for in_git in (False, True):
+            with self.subTest(git=in_git):
+                root = self.variant({".factory": "a file, not the kit\n"})
+                if in_git:
+                    self.git_init(root)
+                self.assertIn(".factory", lint.walk(root))
+                self.assertIn(Path(".factory"), lint.files(root))
+
+    def test_walk_with_suffix_skips_factory(self):
+        root = self.variant({IN_KIT: DEFECT, ".factory-state/note.md": DEFECT,
+                             "episodes/ep01/.factory/a.md": DEFECT})
+        got = lint.walk(root, ".md")
+        self.assertNotIn(IN_KIT, got)
+        self.assertEqual([p for p in got if p.startswith(".factory/")], [])
+        self.assertIn(".factory-state/note.md", got)
+        self.assertIn("episodes/ep01/.factory/a.md", got)
+
+
+class FreshProduction(LintCase):
+    """A production `factory init` makes from this repository's kit, in a git work tree."""
+
+    def production(self):
+        from kit.lib import cmd_init
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "prod"
+        root.mkdir()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cmd_init.main([str(root)]), 0)
+        self.assertTrue((root / ".factory" / "evals").is_dir())
+        self.git_init(root)
+        return root
+
+    def summary(self, results):
+        return {cid: (r.status, len(r.findings), r.reason) for cid, r in results.items()}
+
+    def test_every_lint_passes(self):
+        results = lint.run(self.production())
+        bad = {cid: v for cid, v in self.summary(results).items() if v[0] in (lint.FAIL, lint.ERROR)}
+        self.assertEqual(bad, {}, lint.text(results)[:2000])
+        self.assertIn("kit", results)
+
+    def test_invalid_installed_role_is_a_kit_finding_only(self):
+        root = self.production()
+        role = root / ".factory" / "roles" / "fact-checker.md"
+        # A placeholder a checker may not have: roles.validate rejects it (a second `## Task` it does not).
+        role.write_text(role.read_text(encoding="utf-8") + "{{BRANCH}}\n", encoding="utf-8")
+        results = lint.run(root)
+        self.assertEqual(results["kit"].status, lint.FAIL, results["kit"].reason)
+        self.assertTrue(results["kit"].findings)
+        self.assertTrue(all(f.path.startswith(".factory/roles/") for f in results["kit"].findings),
+                        results["kit"].findings)
+        others = {cid: v for cid, v in self.summary(results).items() if cid != "kit" and v[0] != lint.PASS}
+        self.assertEqual(others, {})
 
 if __name__ == "__main__":
     unittest.main()
