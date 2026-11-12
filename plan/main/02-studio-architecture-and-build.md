@@ -86,7 +86,7 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [ ] follow-ups filed: #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0), #65 (a timeout BLOCKED can be posted while the worker is alive) and #66 (a merge that keeps failing posts a LOCK and a void note every tick), both found in the w2-15 review, do after w2-15 merges
 - [x] update `docs/harness.md` section 5 (Q14): the result keys `addressed`, `selected`, `vote`, the per-marker rules and `VOTE`, as built in `kit/lib/harness.py`
 - [ ] group E: #72 w2-20 end to end: draft reviewed against the built code (all eleven lock rules exercised offline in the review), filed, builder launched
-- [ ] kit gap found by that review: a `[BRAINTRUST] VOTE` posted by the launcher never counts (`finish.py` writes the `reviewed head` line only for `markers.ROLE_VERDICTS`), so tick relaunches braintrust every tick on the `bible` and `reel` stages; fix ticket body is being written, to file and launch
+- [ ] #73 a `[BRAINTRUST] VOTE` posted by the launcher never counts (`finish.py` writes the `reviewed head` line only for `markers.ROLE_VERDICTS`), so tick relaunches braintrust every tick on the `bible` and `reel` stages: ticket filed and ready, builder not launched yet (load over 10); the related drifts in the markers lint, lock rule 6 and the actor grammar are follow-up #74
 
 ## Review
 
