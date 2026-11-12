@@ -5,7 +5,8 @@
 `fake-harness.json` beside this file, takes the first unused step whose `match` is found in the
 prompt, writes the step's `files` under the current directory (null deletes), records the call in
 `fake-harness.calls.jsonl`, sleeps `sleep` seconds, prints `stdout`, `envelope` or a success
-envelope carrying `result`, and exits with `exit`. Used step indexes are kept in `fake-harness.used`.
+envelope carrying `result`, writes `stderr` (if given) to standard error, and exits with `exit`. Used
+step indexes are kept in `fake-harness.used`.
 With no matching step it prints nothing and exits 3.
 """
 
@@ -72,6 +73,8 @@ def main():
             "type": "result", "subtype": "success", "is_error": False, "result": "",
             "structured_output": step.get("result")}
         print(json.dumps(envelope, sort_keys=True))
+    if "stderr" in step:
+        sys.stderr.write(step["stderr"])
     return step.get("exit", 0)
 
 

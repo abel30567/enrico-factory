@@ -24,7 +24,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from kit.lib import blind, frontmatter, gitstate, harness, launch, markers, production, steps, tickets
+from kit.lib import blind, down, frontmatter, gitstate, harness, launch, markers, production, steps, tickets
 from kit.lib.github import GitHubError
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError, Outcome
@@ -254,8 +254,36 @@ def _exhaust(state_dir, account, now) -> None:
     os.replace(tmp, state_dir / ACCOUNTS)
 
 
-def _pick(settings, slot, state_dir, now):
-    return harness.pick(harness.accounts(settings, slot), _exhausted(state_dir), now)
+def _pick(settings, slot, state_dir, now, stopped):
+    names = [name for name in harness.accounts(settings, slot) if name not in stopped]
+    return harness.pick(names, _exhausted(state_dir), now)
+
+
+def _none_left(settings, slot, stopped) -> Outcome:
+    if all(name in stopped for name in harness.accounts(settings, slot)):
+        return Outcome("login_ended", None, "every account's login has ended")
+    return Outcome("out_of_usage", None, "every account is out of usage")
+
+
+def _resource(slot, status):
+    """The resource an outcome shows is down, or None."""
+    if slot == "OTHER" and status in ("login_ended", "proxy_down"):
+        return down.OTHER
+    if slot != "OTHER" and status == "login_ended":
+        return down.PRIMARY
+    return None
+
+
+def _report(p, gh, run, resource, outcome, account) -> bool:
+    """File or find the resource's issue; a filing that fails is logged and stops no account."""
+    meta = run.meta
+    seen_by = f"launch {meta['role']} {meta['id']} on #{meta['number']}"
+    try:
+        down.report(p, gh, resource, harness.PHRASES[outcome.status], seen_by, account)
+    except (GitHubError, OSError) as error:
+        _log(run, f"launch {meta['id']}: resource {resource} not reported: {describe(error)}")
+        return False
+    return True
 
 
 def _run_once(argv, env, run, token, timeout_min) -> Outcome:
@@ -272,7 +300,7 @@ def _run_once(argv, env, run, token, timeout_min) -> Outcome:
                         err.read_text(encoding="utf-8", errors="replace"))
 
 
-def _outcome(p, root, run) -> Outcome:
+def _outcome(p, gh, root, run) -> Outcome:
     settings, meta = p.settings, run.meta
     role_meta = p.roles[meta["role"]]["meta"]
     slot = "OTHER" if meta["family"] == "other" else role_meta["model"].upper()
@@ -284,9 +312,10 @@ def _outcome(p, root, run) -> Outcome:
         raise ProductionError("setting RUN_TIMEOUT_MIN is not a number") from None
     account = None
     if slot != "OTHER":
-        account = _pick(settings, slot, state_dir, now)
+        stopped = down.stopped(p, gh)
+        account = _pick(settings, slot, state_dir, now, stopped)
         if account is None:
-            return Outcome("out_of_usage", None, "every account is out of usage")
+            return _none_left(settings, slot, stopped)
     (run.dir / "tmp").mkdir(mode=0o700)
     env = harness.environment(os.environ, settings, meta["family"], run.dir / "config", TOKEN_FD,
                               tmp_dir=run.dir / "tmp")
@@ -298,13 +327,19 @@ def _outcome(p, root, run) -> Outcome:
     argv = sandbox.apply(settings, argv, run.dir / "sandbox.sb")
     for attempt in range(steps.RUN_ATTEMPTS):
         if attempt:
-            account = _pick(settings, slot, state_dir, now)
+            stopped = down.stopped(p, gh)
+            account = _pick(settings, slot, state_dir, now, stopped)
             if account is None:
-                return Outcome("out_of_usage", None, "every account is out of usage")
+                return _none_left(settings, slot, stopped)
         outcome = _run_once(argv, env, run, harness.token_path(settings, slot, account), timeout_min)
-        if outcome.status != "out_of_usage" or account is None:
+        resource = _resource(slot, outcome.status)
+        if resource is not None:
+            if not _report(p, gh, run, resource, outcome, account) or account is None:
+                return outcome
+        elif outcome.status != "out_of_usage" or account is None:
             return outcome
-        _exhaust(state_dir, account, now)
+        else:
+            _exhaust(state_dir, account, now)
     return outcome
 
 
@@ -338,8 +373,8 @@ def cleanup(root, run) -> None:
 def supervise(p, gh, root, run) -> int:
     """Run the worker and post its marker: 0 a marker, 3 BLOCKED, 2 nothing could be posted."""
     try:
-        outcome = _outcome(p, root, run)
-    except (HarnessError, SandboxError, ProductionError, OSError) as error:
+        outcome = _outcome(p, gh, root, run)
+    except (HarnessError, SandboxError, ProductionError, GitHubError, OSError) as error:
         outcome = Outcome("failed", None, describe(error))
     code = 2
     try:

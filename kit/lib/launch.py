@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple
 
-from kit.lib import gitstate, harness, markers, production, prompt, steps, tickets
+from kit.lib import down, gitstate, harness, markers, production, prompt, steps, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -276,6 +276,10 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             raise LaunchError("a pair directory is only for a judge")
         if not Path(pair_dir).is_dir():
             raise LaunchError("the pair directory is not an existing directory")
+    # Check 9: a resource the role needs is down.
+    found = down.blocking(p, gh.issues("open"), role)
+    if found is not None:
+        raise LaunchError(f"resource {found[0]} is down (#{found[1]})")
 
     n = tickets.launches(state, t, role) + 1
     run_id = f"{number}-{n}"

@@ -25,7 +25,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, finish, github, gitstate, harness, launch,  # noqa: E402
+from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, down, finish, github, gitstate, harness, launch,  # noqa: E402
                      ledger, lintpost, lockrules, markers, production, steps, tickets)
 
 LABEL = "needs:orchestrator"
@@ -118,6 +118,7 @@ class Tick:
         self.p, self.gh, self.apply, self.now = p, gh, apply, now
         self.counts = {"STEP": 0, "NEED": 0, "WAIT": 0, "FAIL": 0}
         self.locked_rooms = set()
+        self.open_issues = None
         self.state = tickets.load(p, gh, p.root)
 
     def say(self, line):
@@ -183,6 +184,12 @@ class Tick:
         if step == "lock":
             return self.lock(state, ticket, entry, first)
         if step == "launch":
+            try:
+                found = self.down(role)
+            except ERRORS as error:
+                return f"FAIL #{n} read: {_message(error)}"
+            if found is not None:
+                return f"WAIT #{n} {entry['state']} resource {found[0]} is down (#{found[1]})"
             target, on = (m, f"PR #{m}") if m is not None else (n, f"#{n}")
             argv = [role, str(target), "--root", str(self.p.root)]
             return self.take(n, "launch", f"STEP #{n} launch {role} on {on}",
@@ -196,6 +203,12 @@ class Tick:
         launch_id = _launch_id(comments, role)
         return self.take(n, "timeout", f"STEP #{n} timeout {role} {launch_id}",
                          lambda: self.timeout(role, launch_id))
+
+    def down(self, role):
+        """``down.blocking`` for ``role``; the open issues are read once per tick, at the first launch."""
+        if self.open_issues is None:
+            self.open_issues = self.gh.issues("open")
+        return down.blocking(self.p, self.open_issues, role)
 
     # -- the actions
 

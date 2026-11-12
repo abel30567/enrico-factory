@@ -925,5 +925,60 @@ class RulingPassedOn(unittest.TestCase):
                 self.assertNotIn("RULING", text)
 
 
+
+class ResourceDown(unittest.TestCase):
+    """ISSUE-94: a launch whose resource is down is refused before anything is created or posted."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def down_issue(self, resource, state="open"):
+        self.w.set_issue(20, title=f"[DOWN] {resource}", body="", state=state, labels=["resource:down"],
+                         created_at="2026-11-10T00:00:00Z")
+
+    def refused(self, message, role, number):
+        before = self.w.snapshot()
+        listing = sorted(os.listdir(self.w.state)) if self.w.state.exists() else None
+        with self.assertRaises(LaunchError) as caught:
+            self.w.prepare(role, number)
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(self.w.snapshot(), before)
+        return listing
+
+    def test_the_proxy(self):
+        """Behaviour 3: a role of family `other` waits while `inference.other` is down."""
+        self.w.local(PROXY_URL="http://localhost:8317", MODEL_OTHER="other-model-1")
+        self.down_issue("inference.other")
+        self.assertIsNone(self.refused("resource inference.other is down (#20)", "reviewer", 7))
+        self.assertFalse(self.w.state.exists())
+
+    def test_the_proxy_twins(self):
+        """A closed issue, and the same role when its family falls back to `same`, are not blocks."""
+        self.w.local(PROXY_URL="http://localhost:8317", MODEL_OTHER="other-model-1")
+        self.down_issue("inference.other", state="closed")
+        self.w.prepare("reviewer", 7)
+        w = World(self)
+        w.set_issue(20, title="[DOWN] inference.other", body="", state="open", labels=["resource:down"],
+                    created_at="2026-11-10T00:00:00Z")
+        w.prepare("reviewer", 7)
+
+    def stop_every_account(self):
+        self.w.state.mkdir(mode=0o700)
+        (self.w.state / "stopped.json").write_text(json.dumps({SEED: 20}))
+
+    def test_every_account_stopped(self):
+        """Behaviour 2: every account of the slot is stopped under an open issue."""
+        self.stop_every_account()
+        self.down_issue("inference.primary")
+        listing = self.refused("resource inference.primary is down (#20)", "drafter", 5)
+        self.assertEqual(listing, ["stopped.json"])
+        self.assertEqual(sorted(os.listdir(self.w.state)), listing)
+
+    def test_every_account_stopped_under_a_closed_issue_twin(self):
+        self.stop_every_account()
+        self.down_issue("inference.primary", state="closed")
+        self.w.prepare("drafter", 5)
+
+
 if __name__ == "__main__":
     unittest.main()
