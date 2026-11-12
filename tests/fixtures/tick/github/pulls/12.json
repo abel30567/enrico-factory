@@ -1,0 +1,12 @@
+{
+ "base_ref": "trunk",
+ "body": "Ticket: #11\n",
+ "created_at": "2026-11-02T09:00:00Z",
+ "head_ref": "frames/FR-2-painter-1",
+ "labels": [],
+ "merged_at": null,
+ "number": 12,
+ "state": "open",
+ "ticket": 11,
+ "title": "Work for #11"
+}
