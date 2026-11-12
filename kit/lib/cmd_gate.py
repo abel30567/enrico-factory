@@ -1,5 +1,6 @@
 """factory gate <job-file-or-pr> [--root DIR] [--apply]: the producer's gate on a job or a lock.
 
+With `--apply` it first brings the local base up to GitHub's.
 Prints one line: `gate <job|lock> <hash>: <PASS|STOP> cap <name or -> reason <reason>`. Without
 `--apply` it writes nothing. With it, it appends the ledger line on the base, pushes it, and posts
 `[PRODUCER] GATE PASS` or `GATE STOP` on the ticket (a job) or the pull (a lock). A decision already
@@ -204,6 +205,8 @@ def main(argv):
     try:
         p = production.load(production.find_root(args.root))
         gh = github.connect(p.settings)
+        if args.apply:
+            gh.sync_base(p.root, production.base(p))
         state = tickets.load(p, gh, p.root)
         if state.frozen:
             print("gate: frozen", file=sys.stderr)
