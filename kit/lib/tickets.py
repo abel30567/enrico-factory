@@ -143,16 +143,20 @@ def _format(p, root, unit: str) -> str | None:
     return meta.get("format") or None
 
 
+def skips(p, root, unit: str) -> list:
+    """The stages skipped by the format the unit's episode premise names on the base; empty when none."""
+    format_id = _format(p, root, unit)
+    return frontmatter.as_list(p.formats[format_id]["meta"].get("skips")) if format_id in p.formats else []
+
+
 def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     """Brief section 9 rule 4: the upstream stage of the same unit is locked, or the format skips it."""
     room, unit = ticket["room"], ticket["unit"]
     entry = production.stage(p, room, ticket["stage"])
     after = entry["after"]
-    skipped_by = None
-    format_id = _format(p, root, unit) if after else None
-    skips = frontmatter.as_list(p.formats[format_id]["meta"].get("skips")) if format_id in p.formats else []
-    while after and after in skips:
-        skipped_by = format_id
+    skipped = skips(p, root, unit) if after else []
+    skipped_by = _format(p, root, unit) if after and after in skipped else None
+    while after and after in skipped:
         after = production.stage(p, room, after)["after"]
     note = f"skipped by format {skipped_by}: " if skipped_by else ""
     if not after:
