@@ -229,6 +229,11 @@ made by the worker still runs; for GitHub the boundary is that the worker cannot
   a job with a gate PASS, and prefers a short-lived credential minted for the job.
 - Keys are files outside every repository, one per resource id in `kit/resources.json`.
   `factory doctor` checks that each exists and works, and prints names and states, never values.
+- **Whose comments count.** No worker holds the GitHub login, but anyone who can comment on the
+  repository can type a marker. The machine setting `GITHUB_LOGINS` in `production.local.env` names,
+  comma-separated, the logins whose comments the kit reads; a comment by any other author is left out
+  before a marker or a role is read from it. The setting must name the login the programs post as:
+  with it empty no command reaches GitHub, and a post made as an unnamed login is an error.
 
 ## 9. When a harness is forked
 
