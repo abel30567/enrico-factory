@@ -52,7 +52,7 @@ every role prompt, and the gates in sections 9 and 11 enforce the ones a program
 |---|---|---|
 | Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
-| Room orchestrator | Files tickets, launches workers, rules after three rounds of notes, locks in its own room | build, check, score, or lock in another room |
+| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks; a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
 | Lint | Deterministic checks: PASS, FAIL or ERROR | make a judgment call |
 | Checkers and judges | Judged review by an agent that did not make the work, from another model family where one is available | fix the work, see the maker's reasoning, lock |
