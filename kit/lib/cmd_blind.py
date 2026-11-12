@@ -20,6 +20,7 @@ def main(argv):
     try:
         p = production.load(production.find_root(args.root))
         gh = github.connect(p.settings)
+        gh.sync_base(p.root, production.base(p))
         state = tickets.load(p, gh, p.root)
         if state.frozen:
             print("blind: frozen", file=sys.stderr)
