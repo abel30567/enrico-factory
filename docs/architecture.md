@@ -113,7 +113,7 @@ Five facts hold the system together:
 |---|---|---|
 | Owner | One-time setup: accounts, logins, platform approvals, the caps, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer (`factory gate`, a program) | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
-| Room orchestrator | Files tickets, launches workers, rules after three rounds of notes, locks in its own room | build, check, score, or lock in another room |
+| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks; a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
 | Lint (`factory lint`) | Deterministic checks: PASS, FAIL or ERROR | make a judgment call |
 | Checkers and judges | Judged review by an agent that did not make the work, from another model family where one is available | fix the work, see the maker's reasoning, lock |
@@ -490,7 +490,7 @@ flowchart TD
 
 | GitHub object | Means | Written by |
 |---|---|---|
-| Issue `[KEY] summary`, labels `tracked`, `room:<room>`, `stage:<stage>`, `unit:<unit-id>` | a ticket: one unit at one stage in one room | the room's orchestrator |
+| Issue `[KEY] summary`, labels `tracked`, `room:<room>`, `stage:<stage>`, `unit:<unit-id>` | a ticket: one unit at one stage in one room | `factory tick`, when the stage before it locks; a person for the first ticket of a line of work |
 | Issue labelled `pivot`, class `P0`..`P3` | one entry in the pivot queue: what it touches and a hypothesis written before testing | researcher, trend-scout, audience-analyst |
 | Issue: story intent packet | hook, spoiler list, CTA prompts, tone, with every locked episode | story room |
 | Issue: platform notes | format limits, CTA results, audience theories, after every release | distribution room |
@@ -513,7 +513,7 @@ stateDiagram-v2
   state "Lint failed" as LintFailed
   state "In review" as InReview
   state "Notes given" as Notes
-  [*] --> Filed: orchestrator files the ticket
+  [*] --> Filed: factory tick files the ticket
   Filed --> Launched: LAUNCH maker
   Launched --> Ready: maker posts READY
   Launched --> Blocked: maker posts BLOCKED
@@ -545,7 +545,7 @@ sequenceDiagram
   participant GH as GitHub
   participant MK as story-writer
   participant CK as story-editor
-  SR->>GH: ticket KEY, labels tracked, room story, stage beats, unit ep01
+  FC->>GH: ticket BEATS-EP01, labels tracked, room story, stage beats, unit ep01, filed when the premise locks
   SR->>GH: SHOWRUNNER LAUNCH story-writer, with prompt, sha256, model, harness version, base commit
   SR->>MK: factory launch, a worktree and the rendered prompt
   MK->>GH: branch, pull request, STORY-WRITER READY with head SHA and lint table

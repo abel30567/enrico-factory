@@ -5,6 +5,11 @@ comment it causes is written by the module that owns it: ``LAUNCH`` by ``cmd_lau
 ``lintpost``, the gate's by ``cmd_gate``, ``LOCK`` by ``cmd_lock`` and a timed-out run's ``BLOCKED`` by
 ``finish``. A judgment is a ``NEED`` line and the label ``needs:orchestrator`` on the ticket.
 
+Before any ticket's step, the tick files the next stage's ticket of every locked ticket (``kit.lib.filing``):
+one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked ticket, and with ``--apply``
+a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
+step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
+
 With ``--apply`` it first brings the local base up to GitHub's (``sync_base``), so its gate, lock rules
 and launches read the base GitHub has. A lock whose merge succeeded but whose sync failed ends the tick:
 one ``FAIL -`` line, no step for any further ticket. Without ``--apply`` it prints the lines, writes
@@ -25,8 +30,8 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, down, finish, github, gitstate, harness, launch,  # noqa: E402
-                     ledger, lintpost, lockrules, markers, production, steps, tickets)
+from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, down, filing, finish, github, gitstate,  # noqa: E402
+                     harness, launch, ledger, lintpost, lockrules, markers, production, steps, tickets)
 
 LABEL = "needs:orchestrator"
 LOCK_DIR = "tick.lock"
@@ -141,6 +146,22 @@ class Tick:
         except ERRORS as error:
             return f"FAIL #{n} {word}: {_message(error)}"
         return instead or line
+
+    def file(self, rooms):
+        """One ``STEP #<n> file <stage> <unit>`` line per ticket due in ``rooms``; with ``--apply``, the issue."""
+        try:
+            due = filing.due(self.p, self.state, self.p.root)
+        except ERRORS as error:
+            self.say(f"FAIL - file: {_message(error)}")
+            return
+        for found in due:
+            if found["room"] not in rooms:
+                continue
+            n = found["from"]
+
+            def create(found=found):
+                self.gh.create_issue(found["title"], found["body"], found["labels"])
+            self.say(self.take(n, "file", f"STEP #{n} file {found['stage']} {found['unit']}", create))
 
     # -- one ticket
 
@@ -320,6 +341,7 @@ def _tick(p, gh, rooms, apply) -> int:
     tick = Tick(p, gh, apply, now)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
+    tick.file(rooms)
     try:
         for room in rooms:
             for number in sorted(tick.state.tickets):
