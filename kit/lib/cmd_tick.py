@@ -79,6 +79,19 @@ def _launch_id(comments, role):
     return found
 
 
+def _void(pull):
+    """A ``LOCK`` for the pull's current head and manifest was followed by ``cmd_lock.VOID``, both by
+    ``cmd_lock.ROLE``: the merge at this head failed, so the lock is not tried again by a tick."""
+    locked = f"locked head {pull['git']['head']} manifest {pull['git']['manifest']}"
+    posted = [c for c in sorted(pull["comments"], key=_order) if c["role"] == cmd_lock.ROLE]
+    for before, after in zip(posted, posted[1:]):
+        m = markers.parse(before["body"])
+        if (after["body"].rstrip() == cmd_lock.VOID and m is not None and m.verb == "LOCK"
+                and locked in (line.strip() for line in before["body"].splitlines())):
+            return True
+    return False
+
+
 def _take_lock(state_dir):
     """The lock directory this run made, or None when another tick holds it."""
     path = state_dir / LOCK_DIR
@@ -228,6 +241,8 @@ class Tick:
             if not contains and tickets.HOLD not in pull["labels"]:
                 return self.take(n, "sync", f"STEP #{n} sync PR #{m}", lambda: self.sync(n, pull))
             return f"NEED #{n} lock refused: rule {BASE_RULE} base"
+        if _void(pull):
+            return f"NEED #{n} lock refused: merge failed at {pull['git']['head'][:12]}"
         if room in self.locked_rooms:
             return f"WAIT #{n} lockable (one lock per room per tick)"
         line = self.take(n, "lock", f"STEP #{n} lock PR #{m}", lambda: self.merge(state, ticket, pull))
