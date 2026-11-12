@@ -163,6 +163,7 @@ These need the owner. Each holds only the item it names.
 | D4 | Confirm the platform accounts the sample production posts from, and that each may carry AI-disclosed content | accounts and publishing | wave 5 uploads |
 | D5 | May the factory fetch other people's video files to analyse a temporary copy (transcript, cut rate, opening hook, on-screen text) and delete it? | it breaks all three sites' terms, and for YouTube it breaks the developer policies that bind the project the production uploads with | only the analysis of a temporary copy. Until then: links, counts and comments |
 | D6 | Pay a data provider for TikTok and Instagram counts? Under $10 a month at 500 results a week per platform | money, and the data is scraped | per-video counts on those two platforms |
+| D7 | Which works may the sample production draw on, and on what basis (own, licence, permission, public domain)? (#276) | rights are the owner's to state, and only the owner writes `sources/rights.tsv` | only the first public upload of the sample. Until then the material the owner supplied counts as cleared inside the private repository |
 
 ## 6. Rough running cost at list price
 

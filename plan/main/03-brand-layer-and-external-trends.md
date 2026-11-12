@@ -64,3 +64,31 @@ What the research changed (2026-11-12):
 - YouTube is complete and free with #205: every ranking works. TikTok gives a commercial user rising
   hashtags and an ordered top 20 with no counts. Instagram gives views only for accounts named in
   advance, and only if the Meta app is on Facebook Login (R10, noted on #206 before the app exists).
+
+## Only our own characters (owner request, 2026-11-12, after the research)
+
+The trend reads put other people's characters in front of the researcher roles, and a generator
+draws a known character when a prompt names one. Measured at a6304af: no rule of power is about
+rights, no file says which works a production may draw on, a canon sheet does not say where its
+subject comes from, and nothing checks a speaker, a caption or a generation request for a name that
+is not ours.
+
+Rulings (reversible, on #273):
+
+1. Rule 8 of the rules of power: only characters, places, creatures, names and marks from a work in
+   the production's rights file, or designed in the production and cleared. The line lands in the
+   builder's pull, because a test holds the brief and `kit/rules-of-power.md` equal.
+2. Only the owner writes `sources/rights.tsv`. `factory init` creates it with the header only.
+3. A trend can be used, its character cannot. `researcher` records such names in `research/not-ours.tsv`.
+4. The list is checked where work reaches the audience or a generator, not in the charter, the
+   research or the sources.
+5. A name is linted; a likeness is judged (`canon-reviewer`, `look-reviewer`, `packaging-judge`).
+6. No new role and no new stage.
+
+- [ ] #273 (w3-26) the layer in the brief (orchestrator)
+- [ ] #274 (w3-27) the `rights` lint, rule 8, the refused generation request (builder; after #273, #235)
+- [ ] #275 (w3-28) role files and eval cases with a seeded third-party character (builder; after #273, #235; not beside #269)
+- [ ] owner: #276 D7, which works the sample may draw on and on what basis. Until answered the Primal
+      material counts as cleared inside the private repository; only the first public upload waits
+- [x] rulings posted on #235 (a sheet carries `origin`), #269 (the list), #164 (post-room roles);
+      #105 (bible lock) now depends on #274 and #275
