@@ -98,10 +98,28 @@ A worker's last message is one JSON object. The harness enforces the schema; the
   "summary": "one paragraph",
   "evidence": [{"criterion": "…", "result": "…", "command": "…"}],
   "notes": [{"id": "B1", "severity": "Blocker", "text": "…", "evidence": "…"}],
+  "addressed": [{"note": "B1", "by": "story-editor", "action": "changed", "text": "…"}],
   "prefers": {"choice": "A", "cited": ["panel 3"]},
+  "selected": 12,
+  "vote": {"for": 5, "against": 2, "reasons": ["…"]},
   "blocked": {"missing": "…", "tried": "…", "resume_from": "…"}
 }
 ```
+
+Only `marker` and `summary` are always required. No other key is allowed, and every key of a nested
+object is required. The schema is `RESULT_SCHEMA` in `kit/lib/harness.py`; `harness.validate_result`
+also applies these rules per marker:
+
+| Marker | Needs |
+|---|---|
+| `READY` | at least one `evidence` entry |
+| `ADDRESSED` | at least one `evidence` entry and one `addressed` entry (`action` is `changed` or `rebutted`) |
+| `NOTES`, `SYMPTOMS` | at least one note; a `B<n>` id is a `Blocker`, an `I<n>` id an `Issue`; no id twice |
+| `APPROVED` | no `Blocker` among its notes |
+| `PREFERS A`, `PREFERS B`, `NO PREFERENCE` | `prefers.choice` of `A`, `B` or `none` to match |
+| `SELECTED` | `selected`: the chosen pull request's number, 1 or more |
+| `VOTE` | `vote` with `for` and `against` both 0 or more |
+| `BLOCKED` | `blocked` with `missing`, `tried` and `resume_from` all filled in |
 
 | Kind | Markers it may return |
 |---|---|
@@ -110,6 +128,9 @@ A worker's last message is one JSON object. The harness enforces the schema; the
 | judge | `PREFERS A`, `PREFERS B`, `NO PREFERENCE`, `BLOCKED` |
 | analyst | `SYMPTOMS`, `BLOCKED` |
 | orchestrator | `RULING`, `SELECTED`, `BLOCKED` |
+
+A judge posting as `BRAINTRUST` may also return `VOTE`, its verdict on an amendment. `LAUNCH` is never a
+result: the launcher posts it.
 
 Because the launcher posts, a role cannot post another role's verdict, cannot name a head it did not
 review, and holds no GitHub credential to misuse. `LOCK`, `[LINT]`, `[PRODUCER]` and `[PLATFORM-GATE]`
