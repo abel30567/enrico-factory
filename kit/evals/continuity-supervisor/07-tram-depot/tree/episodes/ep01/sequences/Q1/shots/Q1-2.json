@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 14,
+  "characters": [
+    "nils"
+  ],
+  "set": "tram-depot",
+  "camera": "medium",
+  "action": "Nils, red coat buttoned, takes the keys and climbs into the cab."
+}

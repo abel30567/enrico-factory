@@ -1,0 +1,29 @@
+{
+  "fps": 24,
+  "events": [
+    {
+      "shot": "Q1-1",
+      "beat": "B1",
+      "start": 0,
+      "duration": 8
+    },
+    {
+      "shot": "Q1-2",
+      "beat": "B2",
+      "start": 8,
+      "duration": 10
+    },
+    {
+      "shot": "Q1-3",
+      "beat": "B3",
+      "start": 18,
+      "duration": 10
+    },
+    {
+      "shot": "Q1-4",
+      "beat": "B4",
+      "start": 28,
+      "duration": 12
+    }
+  ]
+}

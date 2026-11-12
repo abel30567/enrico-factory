@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "bea"
+  ],
+  "set": "hay-loft",
+  "camera": "medium",
+  "action": "Bea burrows into the hay; lightning flashes."
+}

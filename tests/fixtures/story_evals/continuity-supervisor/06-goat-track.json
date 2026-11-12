@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Q1-2 is lit by a noon sun inside a night scene, between two moonlit shots.",
+      "evidence": "episodes/ep01/sequences/Q1/shots/Q1-2.json"
+    }
+  ]
+}

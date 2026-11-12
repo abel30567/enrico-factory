@@ -1,0 +1,12 @@
+{
+  "id": "Q2-1",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 14,
+  "characters": [
+    "tam"
+  ],
+  "set": "fox-lane",
+  "camera": "close",
+  "action": "Tam sets the lantern down by the den."
+}

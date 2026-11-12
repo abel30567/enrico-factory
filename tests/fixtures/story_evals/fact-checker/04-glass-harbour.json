@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "F4 has no row in the evidence table.",
+      "evidence": "research/glass-harbour.md F4"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Ines is drawn at 141 cm and Oto at 163 cm; the canon makes Ines a head taller than Oto.",
+      "evidence": "bible/style/model-sheets/ines.md, oto.md Height; bible/canon/characters/ines.md"
+    }
+  ]
+}

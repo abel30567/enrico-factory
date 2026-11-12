@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "mira"
+  ],
+  "set": "tide-flats",
+  "camera": "low, tracking",
+  "action": "Mira wades towards the tower."
+}

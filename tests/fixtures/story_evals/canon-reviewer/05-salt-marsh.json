@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "A2 makes the marsh-light a spirit; the charter says nothing in the show is supernatural.",
+      "evidence": "bible/charter.md; bible/canon/ledger.tsv marsh-light kind"
+    }
+  ]
+}

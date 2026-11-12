@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "S2 names B3 but never plays it: no boat is unfolded and the letters are never found.",
+      "evidence": "episodes/ep01/script.md S2; episodes/ep01/beats.md B3"
+    }
+  ]
+}
