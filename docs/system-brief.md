@@ -52,7 +52,7 @@ every role prompt, and the gates in sections 9 and 11 enforce the ones a program
 |---|---|---|
 | Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
-| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks; a person files the first ticket of a line of work | build, check, score, or lock in another room |
+| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
 | Lint | Deterministic checks: PASS, FAIL or ERROR | make a judgment call |
 | Checkers and judges | Judged review by an agent that did not make the work, from another model family where one is available | fix the work, see the maker's reasoning, lock |
@@ -108,6 +108,7 @@ jobs), `analyst` (turns data into notes and proposals).
 | `story-artist` | maker | shot lists and panels for one sequence | change the style lock | `continuity-supervisor`, `pitch-judge` |
 | `art-director` | maker | model sheets, color script, the style lock | restyle mid-episode without an amendment | `look-reviewer` |
 | `editorial` | maker | timing, scratch voice, temp score, the reel and its edit list | drop a beat silently | `story-editor` |
+| `media-wrangler` | operator | job files for generated story media, one per request a maker wrote | write or change a prompt | |
 | `fact-checker`, `canon-reviewer`, `story-editor`, `continuity-supervisor`, `look-reviewer` | checker | notes on the exact head | fix the work | |
 | `pitch-judge` | judge | blind per-scene preference, old against new | see makers' reasoning | |
 | `braintrust` | judge | whole-episode screenings, symptom notes, votes on amendments (seven seats) | prescribe fixes; lock | |
@@ -190,7 +191,8 @@ rooms built so far: each room adds its entries together with its lints. One entr
 Stages run in table order; `after` names the stage that must be locked first. Two exceptions: `style`
 follows `bible` and must be locked before `board`, and `cross-shot` runs once every shot of the
 sequence has locked `lighting`, before any of them renders. `maker`, `checker` and `judge` are each a
-role id, a list, or empty.
+role id, a list, or empty. In a `maker` list the stage's maker is first; an operator after it only
+requests the stage's gated jobs.
 
 `blind: true` means a revision of an already locked unit needs a blind win over the locked version
 (rule 4). `pitches: N` launches N makers on one ticket; the judge scores all of them on one rubric and
@@ -205,9 +207,9 @@ the orchestrator selects one.
 | story | `outline` | episode | script-writer | every beat covered by a scene | story-editor |
 | story | `script` | episode | script-writer | every line in `lines.json`, ledger complete | story-editor |
 | story | `sequences` | episode | head-of-story | every scene assigned to one sequence | continuity-supervisor |
-| story | `style` | style lock | art-director | references resolve, palette values present | look-reviewer |
-| story | `board` | sequence | story-artist | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
-| story | `reel` | episode | editorial | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
+| story | `style` | style lock | art-director, media-wrangler | references resolve, palette values present | look-reviewer |
+| story | `board` | sequence | story-artist, media-wrangler | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
+| story | `reel` | episode | editorial, media-wrangler | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
 | production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame | none |
 | production | `assets` | asset | asset-builder | naming, references, budgets, scale against the bible, skeleton | look-reviewer |
 | production | `rigging` | asset | rigger | range of motion, limits, interpenetration, rig hash | deformation-reviewer |
@@ -352,7 +354,7 @@ Merging a pull request is the lock. `factory lock` merges at most one pull reque
 1. `[LINT] PASS` counts for the head, for every lint the stage names.
 2. Every checker the stage names has a counting `APPROVED`, and no Blocker is open.
 3. Every judge the stage names has a counting verdict on the head. Where the stage is `blind` and a locked version exists, the verdicts prefer the new one (for a panel, a majority).
-4. The upstream stage of the same unit is locked, or the format skips it; in production, every cheaper stage of the shot is locked.
+4. The upstream stage of the same unit is locked, or the format skips it; in production, every cheaper stage of the shot is locked. For an episode stage after a sequence stage, the upstream stage is locked for every sequence of the episode on the base branch, and there is at least one. For a sequence stage after an episode stage, the upstream ticket is the one of the sequence's episode.
 5. On a pitched ticket, the pull request is the one selected.
 6. A pull request touching `bible/**` carries its amendment, the vote its class requires, and `canon-reviewer` `APPROVED`.
 7. The changed files are inside the maker role's `writes` globs, and inside the room of the orchestrator that is locking.
@@ -577,6 +579,24 @@ a premise alone passes; a script without `lines.json` fails; a reel without `int
 
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
 the canon ledger, the episode ledger, the role file, the task.
+
+### Requests for generated media
+
+A maker asks for generated media with a request file on its ticket's pull request, inside its own
+`writes`. `media-wrangler` turns each request into a job file for the gate (section 11) and never
+writes or changes a prompt.
+
+| Stage | File | Written by |
+|---|---|---|
+| `style` | `bible/style/requests/<id>.json` | `art-director` |
+| `board` | `episodes/<ep>/sequences/<Q>/shots/requests/<id>.json` | `story-artist` |
+| `reel` | `episodes/<ep>/reel/requests/<id>.json` | `editorial` |
+
+A request is a JSON object with exactly the keys `for` (what it is for: the sheet or the shot id),
+`prompt` (the whole prompt text) and `refs` (a list of reference images, each `media:<id>`). A request
+that shows a character or a place names at least one reference image of it: the imported source art
+or an approved model sheet. `refs` may be empty only when the request shows neither. Only images are
+requested until a voice or music tool exists. No lint checks the shape yet.
 
 ### Bible sheets
 

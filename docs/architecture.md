@@ -113,7 +113,7 @@ Five facts hold the system together:
 |---|---|---|
 | Owner | One-time setup: accounts, logins, platform approvals, the caps, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer (`factory gate`, a program) | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
-| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks; a person files the first ticket of a line of work | build, check, score, or lock in another room |
+| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
 | Lint (`factory lint`) | Deterministic checks: PASS, FAIL or ERROR | make a judgment call |
 | Checkers and judges | Judged review by an agent that did not make the work, from another model family where one is available | fix the work, see the maker's reasoning, lock |
@@ -490,7 +490,7 @@ flowchart TD
 
 | GitHub object | Means | Written by |
 |---|---|---|
-| Issue `[KEY] summary`, labels `tracked`, `room:<room>`, `stage:<stage>`, `unit:<unit-id>` | a ticket: one unit at one stage in one room | `factory tick`, when the stage before it locks; a person for the first ticket of a line of work |
+| Issue `[KEY] summary`, labels `tracked`, `room:<room>`, `stage:<stage>`, `unit:<unit-id>` | a ticket: one unit at one stage in one room | `factory tick`, when the stage before it locks (an episode stage after a sequence stage: once it is locked for every sequence of the episode on the base branch); a person for the first ticket of a line of work |
 | Issue labelled `pivot`, class `P0`..`P3` | one entry in the pivot queue: what it touches and a hypothesis written before testing | researcher, trend-scout, audience-analyst |
 | Issue: story intent packet | hook, spoiler list, CTA prompts, tone, with every locked episode | story room |
 | Issue: platform notes | format limits, CTA results, audience theories, after every release | distribution room |

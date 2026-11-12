@@ -50,7 +50,7 @@ Any harness that provides these eight things can run a role. They are the adapte
 
 `factory launch <role> <ticket-or-pr>` does this, in order. A failure at any step launches nothing.
 
-1. Read `kit/roles/<role>.md`. Check the ticket's stage names this role and the upstream stage is locked.
+1. Read `kit/roles/<role>.md`. Check the ticket's stage names this role and the upstream stage is locked (for an episode stage after a sequence stage: locked for every sequence of the episode on the base branch).
 2. For an operator: require a counting `[PRODUCER] GATE PASS` on the job's hash.
 3. Create the worktree: a branch for a maker or operator, a detached checkout for a checker or judge.
    For a blind judge, `factory blind` has already replaced old and new with `A` and `B`.
