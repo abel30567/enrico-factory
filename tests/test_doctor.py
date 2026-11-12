@@ -987,5 +987,124 @@ class GatewayOff(Production):
         self.assertIn({"id": "gated.tool", "reasons": [], "state": "skipped"}, json.loads(out)["resources"])
         self.assertFalse(marker.exists())
 
+
+class NamesIn(TempDir):
+    """A command check with `names_in`: its stripped standard output must be one of the names of a setting."""
+
+    SHOWN = "{PY} -c print('Octo-Cat')"
+    NOT_NAMED = f"setting LOGINS does not name the output of: {SHOWN}"
+
+    def check(self, code="print('Octo-Cat')", **extra):
+        return {"kind": "command", "argv": ["{PY}", "-c", code], "names_in": "LOGINS", **extra}
+
+    def run_check(self, check, **values):
+        return resources.check(resource(check), {"PY": sys.executable, **values}, STUB)
+
+    def test_output_named_passes_and_another_name_fails(self):
+        self.assertEqual(self.run_check(self.check(), LOGINS="octo-cat"), (True, []))
+        self.assertEqual(self.run_check(self.check(), LOGINS="someone-else"), (False, [self.NOT_NAMED]))
+
+    def test_names_are_trimmed_case_ignored_and_empty_ones_dropped(self):
+        self.assertEqual(self.run_check(self.check(), LOGINS=" first , OCTO-CAT ,"), (True, []))
+        self.assertEqual(self.run_check(self.check(), LOGINS=" first , OCTO-DOG ,"), (False, [self.NOT_NAMED]))
+
+    def test_empty_setting_is_the_only_reason_and_the_command_does_not_run(self):
+        marker = self.tmp / "ran"
+        code = f"open({str(marker)!r}, 'w').close(); print('octo-cat')"
+        shown = f"setting LOGINS does not name the output of: {{PY}} -c {code}"
+        for values in ({}, {"LOGINS": ""}, {"LOGINS": " , ,"}):
+            with self.subTest(values=values):
+                self.assertEqual(self.run_check(self.check(code), **values), (False, ["setting LOGINS is empty"]))
+                self.assertFalse(marker.exists())
+        self.assertEqual(self.run_check(self.check(code), LOGINS="other"), (False, [shown]))
+        self.assertTrue(marker.exists())
+
+    def test_empty_or_white_space_output_is_not_named(self):
+        for code in ("pass", "print('  ')"):
+            with self.subTest(code=code):
+                self.assertEqual(self.run_check(self.check(code), LOGINS="octo-cat"),
+                                 (False, [f"setting LOGINS does not name the output of: {{PY}} -c {code}"]))
+        self.assertEqual(self.run_check(self.check("print('  octo-cat  ')"), LOGINS="octo-cat"), (True, []))
+
+    def test_standard_error_is_ignored(self):
+        code = "import sys; sys.stderr.write('octo-cat')"
+        self.assertEqual(self.run_check(self.check(code), LOGINS="octo-cat"),
+                         (False, [f"setting LOGINS does not name the output of: {{PY}} -c {code}"]))
+        code = "import sys; sys.stderr.write('noise'); print('octo-cat')"
+        self.assertEqual(self.run_check(self.check(code), LOGINS="octo-cat"), (True, []))
+
+    def test_non_zero_exit_gives_only_todays_reason(self):
+        code = "print('octo-cat'); raise SystemExit(3)"
+        self.assertEqual(self.run_check(self.check(code), LOGINS="octo-cat"),
+                         (False, [f"command failed: {{PY}} -c {code}"]))
+        self.assertEqual(self.run_check(self.check("print('octo-cat')"), LOGINS="octo-cat"), (True, []))
+
+    def test_match_all_and_names_in_both_apply_pattern_first(self):
+        check = self.check(match_all=["Octo", "missing-pattern"])
+        self.assertEqual(self.run_check(check, LOGINS="someone-else"),
+                         (False, ["pattern not found: missing-pattern", self.NOT_NAMED]))
+        self.assertEqual(self.run_check(self.check(match_all=["Octo"]), LOGINS="octo-cat"), (True, []))
+
+    def test_validation(self):
+        def problems(check):
+            register = fixture_register()
+            register["resources"][0]["checks"] = [check]
+            return resources.validate(register)
+
+        command = {"kind": "command", "argv": ["{PY}", "-c", "print('octo-cat')"]}
+        for value in ("", 3):
+            with self.subTest(names_in=value):
+                self.assertEqual(problems({**command, "names_in": value}),
+                                 ["tool.runner: check 1: command check names_in is not a non-empty string"])
+        self.assertEqual(problems({"kind": "setting", "name": "MODE", "names_in": "LOGINS"}),
+                         ["tool.runner: check 1: setting check has unknown key names_in"])
+        self.assertEqual(problems({**command, "names_in": "LOGINS"}), [])
+
+    def test_shipped_github_checks(self):
+        register, problems = resources.load(SHIPPED)
+        self.assertEqual(problems, [])
+        github = next(r for r in register["resources"] if r["id"] == "state.github")
+        shown = [(c["kind"], " ".join(c["argv"]), sorted(set(c) - {"kind", "argv"}), c.get("names_in"))
+                 for c in github["checks"]]
+        self.assertEqual(shown, [("command", "git --version", [], None),
+                                 ("command", "gh auth status", [], None),
+                                 ("command", "gh api user --jq .login", ["names_in"], "GITHUB_LOGINS")])
+
+
+class NamesInNoValues(Production):
+    """Run the real script with a `names_in` check whose output and setting value are seeded strings."""
+
+    SETTING = "zq-logins-value-3306"
+    OUTPUT = "zq-login-output-2295"
+
+    def test_no_value_reaches_stdout_or_stderr(self):
+        kit = self.tmp / "copy" / "kit"
+        (kit / "lib").mkdir(parents=True)
+        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/cmd_doctor.py"):
+            shutil.copy(ROOT / "kit" / name, kit / name)
+        register = fixture_register()
+        output = "'-'.join(['zq', 'login', 'output', '2295'])"
+        register["resources"].append(resource(
+            {"kind": "command", "argv": ["{PY}", "-c", f"print({output})"], "names_in": "LEAK_LOGINS"},
+            id="leak.logins"))
+        (kit / "resources.json").write_text(json.dumps(register), encoding="utf-8")
+        cases = ((self.SETTING, 1, "missing\tleak.logins\t"), (f"{self.SETTING},{self.OUTPUT}", 0, "ok\tleak.logins\t"))
+        for value, code, line in cases:
+            self.write_local(LEAK_LOGINS=value)
+            for extra in ([], ["--json"]):
+                with self.subTest(code=code, extra=extra):
+                    done = subprocess.run([sys.executable, str(kit / "lib" / "cmd_doctor.py"), "--root",
+                                           str(self.root), *extra], capture_output=True, text=True, cwd=self.tmp)
+                    self.assertEqual(done.returncode, code, done.stderr)
+                    for seeded in (self.SETTING, self.OUTPUT):
+                        self.assertNotIn(seeded, done.stdout)
+                        self.assertNotIn(seeded, done.stderr)
+                    if not extra:
+                        self.assertIn(line, done.stdout)
+                        if code:
+                            self.assertIn("  setting LEAK_LOGINS does not name the output of: {PY} -c print(",
+                                          done.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
