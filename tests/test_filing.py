@@ -242,6 +242,100 @@ class Shape(Case):
         self.assertEqual(filing.key("board", "ep01//Q.1"), "BOARD-EP01-Q-1")
 
 
+BOARDS_LOCKED = ([ticket(11, "board", "ep01/Q1"), ticket(13, "board", "ep01/Q10"), ticket(15, "board", "ep01/Q2")],
+                 [pull(12, 11), pull(14, 13), pull(16, 15)])
+REEL = [(11, 12, "story", "reel", "ep01")]
+
+
+class EpisodeAfterSequence(Case):
+    """ISSUE-251 behaviours 7 to 9: an episode stage is filed once every sequence of the episode is locked."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit(SCRATCH)
+
+    def with_boards(self, extra=(), pulls=(), errors=()):
+        found, locked = BOARDS_LOCKED
+        return make_state(found + list(extra), locked + list(pulls), errors)
+
+    def test_filed_once_every_board_is_locked(self):
+        [found] = self.due(self.with_boards())
+        self.assertEqual((found["from"], found["pull"], found["room"], found["stage"], found["unit"]), REEL[0])
+        self.assertEqual(found["title"], "[REEL-EP01] reel for ep01")
+        self.assertEqual(found["labels"], ["tracked", "room:story", "stage:reel", "unit:ep01"])
+        self.assertEqual(found["body"], "Do the stage reel for unit ep01.\n\n"
+                                        "Upstream: #11 board ep01/Q1, locked by PR #12.\n"
+                                        "Upstream: #13 board ep01/Q10, locked by PR #14.\n"
+                                        "Upstream: #15 board ep01/Q2, locked by PR #16.\n"
+                                        "Filed by factory tick.\n")
+        gh = github.Recorded(self.tmp / "github")
+        parsed = tickets.parse(gh.issue(gh.create_issue(found["title"], found["body"], found["labels"])))
+        self.assertEqual((parsed["room"], parsed["stage"], parsed["unit"]), ("story", "reel", "ep01"))
+
+    def test_a_board_not_locked_files_nothing(self):
+        found, locked = BOARDS_LOCKED
+        cases = {"pull 16 absent": make_state(found, locked[:2]),
+                 "pull 16 closed": make_state(found, locked[:2] + [pull(16, 15, state="closed")]),
+                 "ticket 15 absent": make_state(found[:2], locked),
+                 "an unreadable ticket": self.with_boards(errors=["ticket #9: title is not [KEY] summary"])}
+        for name, state in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.filed(state), [])
+
+    def test_never_twice(self):
+        for other in (ticket(21, "reel", "ep01", state="open"), ticket(21, "reel", "ep01")):
+            with self.subTest(state=other["state"]):
+                self.assertEqual(self.filed(self.with_boards([other])), [])
+        self.assertEqual(self.filed(self.with_boards([ticket(21, "reel", "ep02", state="open")])), REEL)
+
+    def test_one_source(self):
+        [found] = self.due(self.with_boards([ticket(31, "board", "ep01/Q1")], [pull(32, 31)]))
+        self.assertEqual((found["from"], found["pull"]), (11, 12))
+        self.assertIn("Upstream: #11 board ep01/Q1, locked by PR #12.\n", found["body"])
+        self.assertNotIn("#31", found["body"])
+
+    def test_a_board_off_the_base(self):
+        [found] = self.due(self.with_boards([ticket(5, "board", "ep01/Q9")], [pull(6, 5)]))
+        self.assertEqual((found["from"], found["pull"], found["unit"]), (11, 12, "ep01"))
+        self.assertNotIn("Q9", found["body"])
+        self.assertEqual(self.filed(make_state([ticket(5, "board", "ep01/Q9")], [pull(6, 5)])), [])
+
+
+class UnitTypesNotNames(Case):
+    """ISSUE-251 behaviour 9: the rule reads unit types from the pipeline, and a skip is stepped over."""
+
+    def setUp(self):
+        super().setUp()
+        entry = roles.load_pipeline(KIT / "pipeline.json")[3]
+        self.pipeline = [{**entry, "stage": "cut", "unit": "episode", "after": ""},
+                         {**entry, "stage": "draw", "unit": "sequence", "after": "cut"},
+                         {**entry, "stage": "mid", "unit": "episode", "after": "draw"},
+                         {**entry, "stage": "join", "unit": "episode", "after": "mid"}]
+        formats = self.tmp / "formats"
+        formats.mkdir()
+        (formats / "skip-mid.md").write_text("---\nformat: skip-mid\nskips: mid\n---\nA test format.\n")
+        self.formats = roles.load_formats(formats)
+        self.commit(SCRATCH)
+        self.draws = [ticket(11, "draw", "ep01/Q1"), ticket(13, "draw", "ep01/Q10"), ticket(15, "draw", "ep01/Q2")]
+        self.pulls = [pull(12, 11), pull(14, 13), pull(16, 15)]
+
+    def p(self, pipeline=None):
+        return production.Production(root=self.root, kit=KIT, settings={"BASE": "main"}, roles={},
+                                     formats=self.formats, pipeline=self.pipeline, kinds={}, actors={})
+
+    def test_a_skip_files_the_stage_after_it(self):
+        self.commit({"episodes/ep01/premise.md": premise("skip-mid")})
+        self.assertEqual(self.filed(make_state(self.draws, self.pulls)), [(11, 12, "story", "join", "ep01")])
+        self.assertEqual(self.filed(make_state(self.draws[:2], self.pulls[:2])), [])
+        join = ticket(21, "join", "ep01", state="open")
+        state = make_state(self.draws + [join], self.pulls)
+        self.assertEqual(tickets.upstream(self.p(), state, join, self.root),
+                         (True, "skipped by format skip-mid: upstream stage draw is locked for ep01"))
+
+    def test_without_the_skip(self):
+        self.assertEqual(self.filed(make_state(self.draws, self.pulls)), [(11, 12, "story", "mid", "ep01")])
+
+
 class Unreadable(Case):
     """Behaviour 7."""
 
