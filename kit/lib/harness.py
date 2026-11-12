@@ -29,6 +29,8 @@ MARKERS = ("READY", "ADDRESSED", "BLOCKED", "APPROVED", "NOTES", "PREFERS A", "P
 PREFERS = {"PREFERS A": "A", "PREFERS B": "B", "NO PREFERENCE": "none"}
 SLOTS = ("MAKER", "CHECKER", "OTHER")
 ENV_COPIED = ("PATH", "LANG", "LC_ALL", "TMPDIR", "TERM", "HOME")
+# Never move a shell command to the background: a later turn would replace the result envelope.
+NO_BACKGROUND_TASKS = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
 
 _STRING = {"type": "string"}
 _STRINGS = {"type": "array", "items": _STRING}
@@ -221,6 +223,7 @@ def environment(parent, settings, family, config_dir, token_fd, tmp_dir=None):
         env["TMPDIR"] = str(tmp_dir)
     env["CLAUDE_CONFIG_DIR"] = str(config_dir)
     env["CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR"] = str(token_fd)
+    env[NO_BACKGROUND_TASKS] = "1"
     if family == "other":
         env["ANTHROPIC_BASE_URL"] = _setting(settings, "PROXY_URL")
     return env
