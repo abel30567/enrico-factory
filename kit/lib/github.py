@@ -2,8 +2,12 @@
 
 Two forms with the same methods:
 - ``Recorded``: a directory of JSON, read and written. Every test and the offline fixture use it.
-- ``Gh``: a thin wrapper around ``gh`` and ``git push``, run live only by the orchestrator.
+- ``Gh``: a thin wrapper around ``gh`` and ``git``, run live only by the orchestrator.
 ``connect`` is the only place that chooses. No other file in the kit calls ``gh``.
+
+``merge`` merges on GitHub and ``sync_base`` brings the clone's local base up to GitHub's; after both, the
+local base, ``HEAD`` (when the base is checked out) and the working tree hold the merge on either form.
+``Gh.merge`` starts no git; ``Recorded.merge`` merges in the clone, so ``Recorded.sync_base`` only reads.
 
 Shapes (keys exactly these; times ``YYYY-MM-DDTHH:MM:SSZ``):
 - issue: ``{"number", "title", "body", "state": "open"|"closed", "labels": [sorted names], "created_at"}``;
@@ -83,6 +87,7 @@ class Recorded:
     """GitHub as a directory: ``issues/<n>.json``, ``pulls/<n>.json``, ``comments/<n>.json``, ``log.jsonl``.
 
     ``push`` and ``merge`` log their arguments without ``root``: a local path is not GitHub state.
+    ``sync_base`` writes nothing and logs nothing: the recorded GitHub's base is the clone's own.
     """
 
     def __init__(self, directory):
@@ -246,6 +251,14 @@ class Recorded:
         self._log("merge", number, head_sha=head_sha)
         return head
 
+    def sync_base(self, root, base_ref: str) -> str:
+        """The tip of the local branch ``base_ref``; there is nothing to fetch."""
+        done = subprocess.run(["git", "-C", str(root), "rev-parse", "--verify", "-q", f"refs/heads/{base_ref}"],
+                              capture_output=True, text=True, stdin=subprocess.DEVNULL)
+        if done.returncode != 0:
+            raise GitHubError(f"sync_base {base_ref}: git rev-parse failed (exit {done.returncode})")
+        return done.stdout.strip()
+
 
 def _issue(raw: dict) -> dict:
     return {"number": raw["number"], "title": raw["title"], "body": raw["body"],
@@ -362,7 +375,37 @@ class Gh:
         self._call("push", None, ["git", "-C", str(root), "push", "origin", ref])
 
     def merge(self, root, number: int, head_sha: str) -> str:
-        base_ref = self.pull(number)["base_ref"]
+        """Ask GitHub to merge an open pull at ``head_sha``; GitHub's merge sha. Starts no git: the local
+        base moves with ``sync_base``. A ``GitHubError`` means GitHub did not merge."""
+        state = self.pull(number)["state"]
+        if state != "open":
+            raise GitHubError(f"merge #{number}: pull is {state}, not open")
         done = self._api("merge", number, "PUT", f"pulls/{number}/merge", {"sha": head_sha, "merge_method": "merge"})
-        self._call("merge", number, ["git", "-C", str(root), "fetch", "origin", base_ref])
         return done["sha"]
+
+    def sync_base(self, root, base_ref: str) -> str:
+        """Fast-forward the local branch ``base_ref`` in ``root`` to GitHub's; its tip after the sync.
+
+        A local base that is only ahead is left as it is (the gate pushes it again). One that has diverged
+        is refused and nothing moves. A checked-out base moves with ``merge --ff-only``, keeping local
+        changes the merge does not touch; any other with a fetch into the branch, ``HEAD`` untouched.
+        """
+        run = self._run or subprocess.run
+
+        def git(*args) -> str:
+            done = run(["git", "-C", str(root), *args], input="", capture_output=True, text=True)
+            if done.returncode != 0:
+                raise GitHubError(f"sync_base {base_ref}: git {args[0]} failed (exit {done.returncode})")
+            return done.stdout.strip()
+
+        local = f"refs/heads/{base_ref}"
+        git("fetch", "origin", base_ref)
+        ahead, behind = (int(n) for n in git("rev-list", "--left-right", "--count", f"{local}...FETCH_HEAD").split())
+        if behind and ahead:
+            raise GitHubError(f"sync_base {base_ref}: the local branch holds {ahead} commit(s) GitHub does not have")
+        if behind:
+            if git("rev-parse", "--abbrev-ref", "HEAD") == base_ref:
+                git("merge", "--ff-only", "FETCH_HEAD")
+            else:
+                git("fetch", "origin", f"{base_ref}:{local}")
+        return git("rev-parse", "--verify", local)

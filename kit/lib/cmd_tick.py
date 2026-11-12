@@ -5,8 +5,11 @@ comment it causes is written by the module that owns it: ``LAUNCH`` by ``cmd_lau
 ``lintpost``, the gate's by ``cmd_gate``, ``LOCK`` by ``cmd_lock`` and a timed-out run's ``BLOCKED`` by
 ``finish``. A judgment is a ``NEED`` line and the label ``needs:orchestrator`` on the ticket.
 
-Without ``--apply`` it prints the lines and writes nothing. Exit 0, 1 when a step failed, 2 when the
-production or GitHub cannot be read.
+With ``--apply`` it first brings the local base up to GitHub's (``sync_base``), so its gate, lock rules
+and launches read the base GitHub has. A lock whose merge succeeded but whose sync failed ends the tick:
+one ``FAIL -`` line, no step for any further ticket. Without ``--apply`` it prints the lines, writes
+nothing and fetches nothing. Exit 0, 1 when a step failed, 2 when the production or GitHub cannot be read
+(a first sync that fails included).
 """
 
 import argparse
@@ -298,15 +301,20 @@ def _tick(p, gh, rooms, apply) -> int:
     if tickets.frozen(gh):
         print("FROZEN")
         return 0
+    if apply:
+        gh.sync_base(p.root, production.base(p))
     now = production.now()
     tick = Tick(p, gh, apply, now)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
-    for room in rooms:
-        for number in sorted(tick.state.tickets):
-            ticket = tick.state.tickets[number]
-            if ticket["room"] == room and ticket["state"] == "open":
-                tick.ticket(number)
+    try:
+        for room in rooms:
+            for number in sorted(tick.state.tickets):
+                ticket = tick.state.tickets[number]
+                if ticket["room"] == room and ticket["state"] == "open":
+                    tick.ticket(number)
+    except cmd_lock.Unsynced as error:
+        tick.say(f"FAIL - {error}")
     c = tick.counts
     print(f"tick: {c['STEP']} steps, {c['NEED']} need, {c['WAIT']} wait, {c['FAIL']} failed")
     return 1 if c["FAIL"] else 0
