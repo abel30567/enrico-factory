@@ -387,6 +387,102 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(json.dumps(self.summary(fx)), a)
 
 
+class BraintrustVoteTest(unittest.TestCase):
+    """A ``[BRAINTRUST] VOTE`` on a ``bible`` pull request is the braintrust's judge verdict."""
+
+    def setUp(self):
+        fx = load("pr_bible_vote.json")
+        self.pr, self.stage, self.roles = fx["pr"], fx["stage"], fx["roles"]
+        self.vote = next(c for c in self.pr["comments"] if c["id"] == 304)
+
+    def counts(self):
+        return markers.counts(self.vote, self.pr, self.stage, self.roles)
+
+    def judge(self):
+        return markers.summary(self.pr, self.stage, self.roles)["judges"].get("braintrust")
+
+    def add(self, cid, minute, first_line):
+        self.pr["comments"].append({
+            "id": cid, "created_at": "2026-11-11T10:%02d:00Z" % minute,
+            "body": first_line + "\n" + self.vote["body"].splitlines()[-1]})
+
+    def test_clean_vote_counts_and_fills_the_judge(self):
+        self.assertEqual(self.counts(), (True, "counts"))
+        self.assertEqual(markers.summary(self.pr, self.stage, self.roles)["judges"], {
+            "braintrust": {"id": 304, "created_at": "2026-11-11T10:15:00Z",
+                           "actor": "BRAINTRUST", "verb": "VOTE"}})
+
+    def assert_does_not_count(self, prefix):
+        ok, reason = self.counts()
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith(prefix), reason)
+        self.assertIsNone(self.judge())
+
+    def test_no_reviewed_head_line(self):
+        self.vote["body"] = "[BRAINTRUST] VOTE 5-2\n| 1 | for | the arc holds |"
+        self.assert_does_not_count("reviewed: ")
+
+    def test_reviewed_head_not_current(self):
+        self.vote["body"] = self.vote["body"].replace("head %s " % SHA["3"], "head %s " % SHA["1"])
+        self.assert_does_not_count("head: ")
+
+    def test_manifest_not_current(self):
+        self.vote["body"] = re.sub(r"manifest [0-9a-f]{64}", "manifest none", self.vote["body"])
+        self.assert_does_not_count("manifest: ")
+
+    def test_older_than_last_addressed(self):
+        self.pr["comments"].append({"id": 305, "created_at": "2026-11-11T10:20:00Z",
+                                    "body": "[CANON-KEEPER] ADDRESSED\nB1: cited the source."})
+        self.assert_does_not_count("order: ")
+
+    def test_braintrust_as_checker(self):
+        self.roles["braintrust"] = "checker"
+        self.assert_does_not_count("role: ")
+
+    def test_braintrust_named_checker_and_of_kind_checker(self):
+        self.roles["braintrust"] = "checker"
+        self.stage["checker"] = ["canon-reviewer", "braintrust"]
+        self.assertEqual(self.counts(), (False, "role: a checker may not post VOTE"))
+
+    def test_stage_does_not_name_braintrust_as_judge(self):
+        self.stage["judge"] = "pitch-judge"
+        self.roles["pitch-judge"] = "judge"
+        self.assert_does_not_count("role: ")
+        self.assertIsNone(markers.summary(self.pr, self.stage, self.roles)["judges"]["pitch-judge"])
+
+    def test_malformed_tally_fills_nothing(self):
+        for tally in ("5", "five-two"):
+            with self.subTest(tally=tally):
+                self.vote["body"] = re.sub(r"VOTE \S+", "VOTE " + tally, self.vote["body"], count=1)
+                self.assertIsNone(markers.parse(self.vote["body"]))
+                self.assertIsNone(self.judge())
+
+    def test_later_no_preference_replaces_the_vote(self):
+        self.assertEqual(self.judge()["verb"], "VOTE")
+        self.add(305, 20, "[BRAINTRUST] NO PREFERENCE")
+        self.assertEqual(self.judge()["verb"], "NO PREFERENCE")
+
+    def test_later_vote_replaces_no_preference(self):
+        self.vote["created_at"] = "2026-11-11T10:20:00Z"
+        self.add(305, 16, "[BRAINTRUST] NO PREFERENCE")
+        self.assertEqual((self.judge()["id"], self.judge()["verb"]), (304, "VOTE"))
+
+    def test_later_vote_replaces_an_earlier_one(self):
+        self.add(305, 20, "[BRAINTRUST] VOTE 6-1")
+        self.assertEqual((self.judge()["id"], self.judge()["verb"]), (305, "VOTE"))
+
+    def test_tally_is_not_judged(self):
+        self.vote["body"] = self.vote["body"].replace("VOTE 5-2", "VOTE 4-3")
+        self.assertEqual(self.counts(), (True, "counts"))
+        self.assertEqual(self.judge(), {"id": 304, "created_at": "2026-11-11T10:15:00Z",
+                                        "actor": "BRAINTRUST", "verb": "VOTE"})
+
+    def test_vote_from_another_actor_is_no_marker(self):
+        self.vote["body"] = self.vote["body"].replace("[BRAINTRUST]", "[PITCH-JUDGE]")
+        self.assertIsNone(markers.parse(self.vote["body"]))
+        self.assertEqual(self.counts(), (False, "marker: not a lint, checker or judge verdict"))
+
+
 class NoNetworkTest(unittest.TestCase):
     def test_module_imports_nothing_that_reaches_out(self):
         source = Path(markers.__file__).read_text()
