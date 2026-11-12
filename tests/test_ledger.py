@@ -63,7 +63,7 @@ class ReadLineTest(unittest.TestCase):
             "five decimal places": (good.replace("\t30\t", "\t0.00001\t"), r"^ledger line 3: compute_min is not digits"),
             "sign": (good.replace("\t2.5\t", "\t-2.5\t"), r"^ledger line 3: usd is not digits"),
             "empty field": (good.replace("\tep01\t", "\t\t"), r"^ledger line 3: episode is empty$"),
-            "bad kind": (good.replace("\tjob\t", "\trender\t"), r"^ledger line 3: kind is not job or lock$"),
+            "bad kind": (good.replace("\tjob\t", "\trender\t"), r"^ledger line 3: kind is not job, lock or run$"),
             "bad cap": (good.replace("\t-", "\tCAP_ANYTHING"), r"^ledger line 3: cap is not a cap name or -$"),
             "lock with a tool": (good.replace("\tjob\t", "\tlock\t"), r"^ledger line 3: tool of a lock is not -$"),
         }
@@ -90,6 +90,56 @@ class ReadLineTest(unittest.TestCase):
         self.assertEqual(ledger.spent(rows, "ep01"), {"usd": Decimal("2.5"), "compute_min": Decimal("30")})
         self.assertEqual(ledger.spent(rows, "ep09"), {"usd": Decimal(0), "compute_min": Decimal(0)})
         self.assertIsInstance(ledger.spent(rows)["usd"], Decimal)
+
+
+def run_row(**fields):
+    return row(**{"kind": "run", "usd": "1.5", "compute_min": "20", "verdict": "DONE", **fields})
+
+
+class RunRowTest(unittest.TestCase):
+    """ISSUE-91: the `run` rows `factory run` appends, and what `spent` counts once a job has run."""
+
+    def test_run_rows_are_read_and_written(self):
+        rows = [row(), run_row(), run_row(verdict="FAILED", usd="0", compute_min="0")]
+        self.assertEqual(ledger.read(text(*rows)), rows)
+        for r in rows[1:]:
+            self.assertEqual(ledger.line(r).split("\t")[1], "run")
+
+    def test_malformed_run_rows(self):
+        cases = {
+            "run with PASS": (run_row(verdict="PASS"), r"verdict of a run is not DONE or FAILED$"),
+            "run with a cap": (run_row(cap="CAP_EPISODE_USD"), r"cap of a run is not -$"),
+            "job with DONE": (row(verdict="DONE"), r"verdict is not PASS or STOP$"),
+            "kind render": (row(kind="render"), r"kind is not job, lock or run$"),
+        }
+        good = ledger.line(row())
+        for name, (bad, pattern) in cases.items():
+            with self.subTest(name):
+                with self.assertRaisesRegex(LedgerError, r"^ledger row: " + pattern):
+                    ledger.line(bad)
+                fields = "\t".join(bad[c] for c in ledger.COLUMNS)
+                with self.assertRaisesRegex(LedgerError, r"^ledger line 3: " + pattern):
+                    ledger.read(HEADER + "\n" + good + "\n" + fields + "\n")
+
+    def test_spent_counts_a_hash_once(self):
+        passed = row(usd="2.5", compute_min="30")
+        other = "cd" * 32
+        cases = (
+            ([passed], ("2.5", "30")),
+            ([passed, run_row()], ("1.5", "20")),
+            ([passed, run_row(verdict="FAILED", usd="0", compute_min="0")], ("0", "0")),
+            ([passed, run_row(hash=other)], ("4.0", "50")),
+            ([passed, row(hash=other, usd="1", compute_min="1"), run_row(hash=other, usd="0.5", compute_min="2")],
+             ("3.0", "32")),
+        )
+        for rows, (usd, compute_min) in cases:
+            with self.subTest(rows=[r["kind"] + " " + r["hash"][:2] for r in rows]):
+                self.assertEqual(ledger.spent(rows), {"usd": Decimal(usd), "compute_min": Decimal(compute_min)})
+        # The episode filter still applies, to the run rows too.
+        rows = [passed, run_row(), row(hash=other, episode="ep02"), run_row(hash=other, episode="ep02", usd="0.25")]
+        self.assertEqual(ledger.spent(rows, "ep01"), {"usd": Decimal("1.5"), "compute_min": Decimal("20")})
+        self.assertEqual(ledger.spent(rows, "ep02"), {"usd": Decimal("0.25"), "compute_min": Decimal("20")})
+        self.assertEqual(ledger.spent(rows, "ep09"), {"usd": Decimal(0), "compute_min": Decimal(0)})
 
 
 CAPS_OFF = {name: "" for name in production.CAPS}
@@ -186,6 +236,13 @@ class DecideTest(unittest.TestCase):
     def test_lock_with_no_cap_set(self):
         self.launches = 9
         self.assertEqual(self.decide({}, [row(usd="5")], kind="lock"), ("PASS", "-", "within caps"))
+
+    def test_an_earlier_job_counts_at_its_real_cost(self):
+        caps = {"CAP_EPISODE_USD": "4", "CAP_SEASON_USD": "100"}
+        earlier = [row(usd="2.5", compute_min="0")]
+        ran = earlier + [run_row(compute_min="0")]
+        self.assertEqual(self.decide(caps, ran, usd="2.5"), ("PASS", "-", "within caps"))
+        self.assertEqual(self.decide(caps, earlier, usd="2.5"), ("STOP", "CAP_EPISODE_USD", "over cap"))
 
     def test_reason_holds_no_value(self):
         for verdict in (self.decide({"CAP_EPISODE_USD": "7.25", "CAP_SEASON_USD": "7.25"}, usd="8"),

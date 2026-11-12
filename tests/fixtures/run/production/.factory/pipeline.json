@@ -1,0 +1,4 @@
+[
+ {"room": "production", "stage": "frames", "unit": "episode", "after": "", "maker": "painter", "lint": ["structure"], "checker": "inspector", "judge": "", "blind": false, "pitches": 1, "paths": ["frames/**"]},
+ {"room": "production", "stage": "render", "unit": "episode", "after": "frames", "maker": "renderer", "lint": ["structure"], "checker": "inspector", "judge": "", "blind": false, "pitches": 1, "paths": ["renders/**"]}
+]
