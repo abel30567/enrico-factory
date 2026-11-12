@@ -52,7 +52,7 @@ wave that first needs the resource (`docs/system-brief.md`, section 17).
 |---|---|---|---|---|---|
 | `gen.image.login` | Grok Imagine for story panels and image-to-video | login | have | 3 | By subscription login through the local proxy, never a key (owner's rule). The login can end without warning; the gate must tell "login ended" from "job failed", pause the step and raise `resource:down`. |
 | `gen.image.key` | A keyed image model for panels and edits | key | have (keys exist) | 3 | Optional second route. Gemini API image models cost $0.03 to $0.13 per image; fal.ai reaches several models with one key. A 60-panel board is about $2 to $8 before retries. |
-| `store.media` | Bucket with public URLs for every media file | key | partly | 3 | A public bucket exists. No command-line client is configured for it and no key file is set aside for the factory. Instagram also needs it: a Reel is published from a public URL. |
+| `store.media` | Bucket with public URLs for every media file | key | partly | 3 | A public bucket exists. `factory media` is the client. No key file is set aside for the factory. Instagram also needs it: a Reel is published from a public URL. |
 | `local.ffmpeg` | ffmpeg and ffprobe with loudness, similarity and detection filters | none | have | 3 | Every filter the checks name is present. The installed build is not native to the machine's processor, so it runs slower than it could. |
 
 ### Story room: other people's videos
@@ -74,7 +74,7 @@ the item that builds each tool adds its row.
 |---|---|---|---|---|---|
 | `engine.unreal` | Unreal Engine 5.8.x, pinned | none | missing | 4 | Needs an Epic account, and a linked GitHub account for the Linux container images. Free for linear content below $1 million annual revenue, then $1,850 per seat per year. |
 | `render.node` | A GPU node a program can start and stop | key | missing | 4 | The owner's laptop has 16 GB of memory against Epic's 32 GB recommendation, and no command-line Movie Render Graph run on macOS is documented. Plan on a cloud node; prove the laptop with a smoke test before relying on it. See decision D3. |
-| `store.assets` | Engine binaries stored by content hash | key | missing | 4 | Generated binaries go to a bucket and git records the hash. A small private Git LFS repository holds the hand-approved source assets. The public repository holds no LFS objects. |
+| `store.assets` | Engine binaries stored by content hash | key | missing | 4 | Generated binaries go to a private bucket and git records the hash. `factory assets` is the client: it stores an object under its sha256, signs every request and never overwrites. The key file is three lines: access key id, secret access key, region. A small private Git LFS repository holds the hand-approved source assets. The public repository holds no LFS objects. |
 | `local.metrics` | Perceptual and character-identity metrics | none | missing | 4 | No open-source identity metric is validated on stylised 3D renders. DreamSim, CCIP and DINOv2 are the candidates; wave 4 calibrates one on the production's own characters. The usual face-identity models are licensed for research only and are excluded. |
 | `gen.model3d` | Text or image to 3D | key | have (key exists) | 5 | fal.ai (one key, several models, $0.02 to $0.80 per model), Tripo ($0.20 to $0.30) or Meshy (about $0.60). |
 | `gen.rig` | Automatic rigging | key | missing | 5 | Tripo ($0.25) or Meshy. Body only, humanoid only; no service rigs a face. |
