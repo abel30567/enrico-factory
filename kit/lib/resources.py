@@ -23,7 +23,7 @@ ROOMS = ("story", "production", "post", "distribution", "lab", "all")
 REQUIRED = ("id", "title", "class", "auth", "holder", "rooms", "wave", "setup", "checks")
 OPTIONAL = ("optional", "renew")
 CHECK_FIELDS = {
-    "command": (("argv",), ("match_all",)),
+    "command": (("argv",), ("match_all", "names_in")),
     "module": (("name",), ()),
     "secret": (("name",), ("min",)),
     "setting": (("name",), ("one_of",)),
@@ -70,6 +70,8 @@ def _check_problems(check):
                         re.compile(pattern)
                     except re.error:
                         problems.append(f"command check pattern does not compile: {pattern}")
+        if "names_in" in check and not _is_text(check["names_in"]):
+            problems.append("command check names_in is not a non-empty string")
     for key in ("name", "setting", "secret"):
         if key in required and key in check and not _is_text(check[key]):
             problems.append(f"{kind} check {key} is not a non-empty string")
@@ -226,8 +228,16 @@ def _empty(name):
     return f"setting {name} is empty"
 
 
+def _names(value):
+    """The names in a comma-separated setting value: each trimmed and lowercased, empty ones dropped."""
+    return {name.strip().lower() for name in (value or "").split(",") if name.strip()}
+
+
 def _check_command(check, values):
     shown = " ".join(check["argv"])
+    setting = check.get("names_in")
+    if setting is not None and not _names(values.get(setting)):
+        return [_empty(setting)]
     argv = []
     for arg in check["argv"]:
         names = PLACEHOLDER.findall(arg)
@@ -246,7 +256,10 @@ def _check_command(check, values):
     if done.returncode != 0:
         return [f"command failed: {shown}"]
     output = (done.stdout + done.stderr).decode("utf-8", "replace")
-    return [f"pattern not found: {p}" for p in check.get("match_all", []) if not re.search(p, output)]
+    reasons = [f"pattern not found: {p}" for p in check.get("match_all", []) if not re.search(p, output)]
+    if setting is not None and done.stdout.decode("utf-8", "replace").strip().lower() not in _names(values[setting]):
+        reasons.append(f"setting {setting} does not name the output of: {shown}")
+    return reasons
 
 
 def _usable(path):
