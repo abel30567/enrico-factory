@@ -16,6 +16,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "init" / "kit"
 sys.path.insert(0, str(ROOT))
 
 from kit.lib import frontmatter  # noqa: E402
+from kit.lib import cmd_init, finish, resources  # noqa: E402
 
 ROLE_ROOMS = {"chief": "story", "writer": "story", "editor": "story", "keeper": "studio",
               "uploader": "distribution", "watcher": "distribution"}
@@ -170,7 +171,7 @@ class TreeTest(InitTest):
         self.assertTrue(local[0].startswith("# ") and "production.local.env" in local[0])
         self.assertEqual(local[1:], ["HARNESS=", "STATE_DIR=", "SECRETS_DIR=", "ACCOUNTS_MAKER=",
                                      "ACCOUNTS_CHECKER=", "PROXY_URL=", "FERMI_URL=",
-                                     "SANDBOX=on", "GATEWAY=on"])
+                                     "SANDBOX=on", "SANDBOX_DENY=", "GATEWAY=on"])
         self.assertFalse([line for line in local if line.startswith("ACCOUNTS_OTHER")])
 
     def test_two_empty_directories_give_identical_trees_and_output(self):
@@ -367,6 +368,28 @@ class ExistingFilesTest(InitTest):
         for _ in range(2):
             self.assertEqual(self.init(kit, target, "--upgrade").returncode, 0)
             self.assertEqual((target / ".gitignore").read_text(), expected)
+
+
+class SandboxDenyTest(InitTest):
+    """The example names SANDBOX_DENY; left empty it denies nothing extra, filled in it is read as a list."""
+
+    def deny(self, value):
+        root = self.tempdir()
+        filled = {"HARNESS": "/opt/harness", "STATE_DIR": str(root / "state"),
+                  "SECRETS_DIR": str(root / "secrets"), "ACCOUNTS_MAKER": "maker-a"}
+        if value is not None:
+            filled["SANDBOX_DENY"] = value
+        lines = []
+        for line in cmd_init.LOCAL_ENV_EXAMPLE.splitlines():
+            key = line.split("=", 1)[0]
+            lines.append(f"{key}={filled[key]}" if key in filled else line)
+        self.assertIn("SANDBOX_DENY=" + (value or ""), lines)
+        (root / "production.local.env").write_text("\n".join(lines) + "\n")
+        return finish._sandbox_deny(resources.settings(root))
+
+    def test_empty_denies_nothing_and_a_list_is_read(self):
+        self.assertEqual(self.deny(None), ())
+        self.assertEqual(self.deny("/a/b,/c"), ("/a/b", "/c"))
 
 
 class NoMachineValuesTest(InitTest):
