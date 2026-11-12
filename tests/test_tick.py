@@ -115,6 +115,8 @@ class World:
         return gitstate.git(self.root, "-c", "user.name=tester", "-c", "user.email=tester@example.invalid", *args)
 
     def commit(self, message):
+        # Empty the index first, so `add` hashes every file instead of trusting a copied fixture's mtime.
+        self.git("rm", "-r", "-q", "--cached", "--ignore-unmatch", ".")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", message)
 
