@@ -57,6 +57,7 @@ FERMI_URL=
 SANDBOX=on
 SANDBOX_DENY=
 GATEWAY=on
+GITHUB_LOGINS=
 """
 
 GITIGNORE = ("production.local.env", "__pycache__/")

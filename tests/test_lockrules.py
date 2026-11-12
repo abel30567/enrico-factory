@@ -188,6 +188,11 @@ class World:
         self._save(number, self._comments(number) + [
             {"id": comment_id, "created_at": created_at, "role": role, "body": self.heads(body)}])
 
+    def add_by(self, author, number, comment_id, created_at, role, body):
+        """Like ``add``, with the login ``author`` stored as the comment's author."""
+        self._save(number, self._comments(number) + [
+            {"id": comment_id, "created_at": created_at, "author": author, "role": role, "body": self.heads(body)}])
+
     def comments(self, number):
         return self.gh.comments(number)
 
@@ -612,6 +617,62 @@ class FreshnessTest(OneRule):
         w.edit(14, 1403, role="canon-reviewer",
                body="[CANON-REVIEWER] APPROVED\nEvery criterion holds.\nreviewed head {head:14} manifest none\n")
         self.assertOnly(w, 14, {2}, "checker editor has no counting verdict")
+
+
+
+class CommentAuthorTest(OneRule):
+    """ISSUE-225 behaviour 4: a comment by a login ``GITHUB_LOGINS`` does not name counts for no rule.
+
+    Each case takes a counting comment away and stores it again as written by ``stranger``. The adapter
+    comes from ``github.connect`` on the production's settings, as ``factory lock`` gets it.
+    """
+
+    def forged(self, pull, dropped, again, named):
+        w = World(self, (pull,))
+        comment = next(c for c in w._comments(pull) if c["id"] == again)
+        for comment_id in dropped:
+            w.drop(pull, comment_id)
+        w.add_by("stranger", pull, comment["id"], comment["created_at"], comment["role"], comment["body"])
+        if named:
+            with open(w.root / "production.local.env", "a") as f:
+                f.write("GITHUB_LOGINS=stranger\n")
+        w.gh = github.connect(production.load(w.root).settings)
+        return w
+
+    def assertForgedFails(self, pull, dropped, again, rule, reason):
+        w = self.forged(pull, dropped, again, named=False)
+        self.assertNotIn(again, [c["id"] for c in w.comments(pull)])
+        self.assertOnly(w, pull, {rule}, reason)
+        code, out, err = w.lock()
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(report_block(out, pull)[0].endswith(": NO 1 rule(s)"), out)
+
+    def assertNamedLocks(self, pull, dropped, again):
+        w = self.forged(pull, dropped, again, named=True)
+        self.assertIn(again, [c["id"] for c in w.comments(pull)])
+        self.assertEqual(w.failed(pull), set())
+        code, out, err = w.lock()
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(len(report_block(out, pull)), 1, out)
+        self.assertTrue(report_block(out, pull)[0].endswith(": LOCKABLE"), out)
+
+    def test_forged_approval(self):
+        self.assertForgedFails(8, (808,), 808, 2, "checker editor has no counting verdict")
+
+    def test_forged_approval_by_a_named_login(self):
+        self.assertNamedLocks(8, (808,), 808)
+
+    def test_forged_lint_pass(self):
+        self.assertForgedFails(8, (802, 807), 807, 1, "no counting [LINT] verdict")
+
+    def test_forged_lint_pass_by_a_named_login(self):
+        self.assertNamedLocks(8, (802, 807), 807)
+
+    def test_forged_gate_record(self):
+        self.assertForgedFails(21, (2104,), 2104, 9, "stage cut is the last of room story")
+
+    def test_forged_gate_record_by_a_named_login(self):
+        self.assertNamedLocks(21, (2104,), 2104)
 
 
 if __name__ == "__main__":
