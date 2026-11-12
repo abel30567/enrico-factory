@@ -3,7 +3,10 @@
 The rules are ``kit.lib.lockrules`` (system brief section 9). Without ``--apply`` it only reports and
 writes nothing. With it, it locks the first lockable candidate, by pull number, and stops: it posts
 ``[<ORCHESTRATOR>] LOCK`` on the pull as ``program:lock``, merges at the head it evaluated and closes the
-ticket. Exit 0 report printed, 2 frozen, usage, or the production or GitHub cannot be read, 3 merge failed.
+ticket. Before it reads, ``--apply`` brings the local base up to GitHub's (``sync_base``), and again after
+the merge. Exit 0 report printed, 2 frozen, usage, or the production or GitHub cannot be read (a sync that
+fails before the read included), 3 merge failed (the LOCK is void), 4 merged and the ticket closed but the
+local base not synced.
 """
 
 import argparse
@@ -23,6 +26,10 @@ from kit.lib.tickets import TicketError  # noqa: E402
 ROLE = "program:lock"
 VOID = "lock: merge failed, the LOCK above is void"
 ERRORS = (ProductionError, GitHubError, GitError, TicketError)
+
+
+class Unsynced(Exception):
+    """GitHub merged the pull and the ticket is closed, but the local base could not be brought up to it."""
 
 
 def candidates(p, state, rooms) -> list:
@@ -90,8 +97,15 @@ def lock(p, gh, state, ticket, pull) -> int:
         gh.post(number, VOID, ROLE)
         print("lock: merge failed", file=sys.stderr)
         return 3
+    unsynced = None
+    try:
+        gh.sync_base(p.root, pull["base_ref"])
+    except GitHubError as error:
+        unsynced = error
     gh.close_issue(ticket["number"])
     print(f"locked PR #{number} at {merged[:12]}")
+    if unsynced is not None:
+        raise Unsynced(f"PR #{number} is merged at {merged[:12]}, base not synced: {unsynced}")
     return 0
 
 
@@ -109,6 +123,8 @@ def main(argv):
             print(f"lock: no room {args.room}", file=sys.stderr)
             return 2
         gh = github.connect(p.settings)
+        if args.apply:
+            gh.sync_base(p.root, production.base(p))
         state = tickets.load(p, gh, p.root)
         if args.apply and state.frozen:
             print("lock: frozen", file=sys.stderr)
@@ -128,6 +144,9 @@ def main(argv):
     except ERRORS as error:
         print("lock: " + " ".join(str(error).split()), file=sys.stderr)
         return 2
+    except Unsynced as error:
+        print(f"lock: {error}", file=sys.stderr)
+        return 4
 
 
 if __name__ == "__main__":
