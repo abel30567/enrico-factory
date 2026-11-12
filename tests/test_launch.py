@@ -1,0 +1,564 @@
+"""Tests for kit/lib/launch.py.
+
+The production is tests/fixtures/launch/production/, made a git repository on branch `trunk` in a
+temporary directory with one branch per recorded pull. GitHub is a copy of tests/fixtures/launch/github/:
+ticket #5 (beats, ep01) is ready for its maker's first launch; ticket #6 (beats, ep02) carries that
+maker's first LAUNCH and has the open pull #7 with a READY, a [LINT] FAIL and a reviewer's NOTES.
+A comment body's ``{head:N}`` stands for the head commit of pull N's branch, filled in when it is copied.
+"""
+
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from kit.lib import gitstate, github, launch, lint, production  # noqa: E402
+from kit.lib.launch import LaunchError  # noqa: E402
+
+FIX = ROOT / "tests" / "fixtures" / "launch"
+PRODUCTION = FIX / "production"
+GITHUB = FIX / "github"
+FAKE_HARNESS = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
+HEAD = re.compile(r"\{head:(\d+)\}")
+NOW = "2026-11-11T12:00:00Z"
+SEED = "quillfish-seed-5c1e"
+RUN_KEYS = {"id", "role", "kind", "actor", "number", "ticket", "pull", "room", "stage", "unit", "branch",
+            "worktree", "blind", "base_ref", "base_sha", "head_sha", "model", "family", "harness_version",
+            "prompt_sha256", "started_at", "launch_comment"}
+PLACEHOLDER = re.compile(r"\{\{[A-Z][A-Z0-9_]*\}\}")
+
+
+class World:
+    """A production repository on branch `trunk`, a recorded GitHub directory and a state directory."""
+
+    def __init__(self, test):
+        patch = mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                                             "FACTORY_NOW": NOW})
+        patch.start()
+        test.addCleanup(patch.stop)
+        self.tmp = Path(tempfile.mkdtemp())
+        test.addCleanup(shutil.rmtree, self.tmp)
+        self.root = self.tmp / "show"
+        shutil.copytree(PRODUCTION, self.root)
+        self.git("init", "-q", "-b", "trunk")
+        self.commit("the production")
+        self.state = self.tmp / "state"
+        self.dir = self.tmp / "github"
+        shutil.copytree(GITHUB, self.dir)
+        for path in sorted((self.dir / "pulls").glob("*.json")):
+            self.branch(json.loads(path.read_text())["head_ref"])
+        for path in sorted((self.dir / "comments").glob("*.json")):
+            path.write_text(self.heads(path.read_text()))
+        self.gh = github.Recorded(self.dir)
+        self.local()
+
+    def local(self, **extra):
+        """Write production.local.env with the test settings plus `extra`, and load the production."""
+        values = {"STATE_DIR": str(self.state), "HARNESS": str(FAKE_HARNESS), "MODEL_MAKER": "maker-model-1",
+                  "MODEL_CHECKER": "checker-model-1", "SECRETS_DIR": "/nowhere/" + SEED,
+                  "ACCOUNTS_MAKER": SEED, **extra}
+        (self.root / "production.local.env").write_text("".join(f"{k}={v}\n" for k, v in values.items()))
+        self.p = production.load(self.root)
+
+    def git(self, *args):
+        return gitstate.git(self.root, "-c", "user.name=tester", "-c", "user.email=tester@example.invalid", *args)
+
+    def commit(self, message):
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", message)
+
+    def branch(self, ref):
+        """A branch `ref` with one commit on top of `trunk`."""
+        self.git("checkout", "-q", "-b", ref, "trunk")
+        path = self.root / "work" / (ref.replace("/", "-") + ".md")
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(ref + "\n")
+        self.commit("write " + ref)
+        self.git("checkout", "-q", "trunk")
+
+    def head(self, ref):
+        return gitstate.head(self.root, ref)
+
+    def heads(self, text):
+        def head(m):
+            return self.head(json.loads((self.dir / "pulls" / f"{m.group(1)}.json").read_text())["head_ref"])
+        return HEAD.sub(head, text)
+
+    def _read(self, rel):
+        return json.loads((self.dir / rel).read_text())
+
+    def _write(self, rel, data):
+        path = self.dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n")
+
+    def comment(self, number, id, created_at, role, body):
+        rel = f"comments/{number}.json"
+        found = self._read(rel) if (self.dir / rel).is_file() else []
+        self._write(rel, found + [{"id": id, "created_at": created_at, "role": role, "body": self.heads(body)}])
+
+    def set_issue(self, number, **fields):
+        rel = f"issues/{number}.json"
+        self._write(rel, {**(self._read(rel) if (self.dir / rel).is_file() else {}), **fields, "number": number})
+
+    def set_pull(self, number, **fields):
+        rel = f"pulls/{number}.json"
+        record = {**(self._read(rel) if (self.dir / rel).is_file() else {}), **fields, "number": number}
+        if not self.git("branch", "--list", record["head_ref"]).strip():
+            self.branch(record["head_ref"])
+        self._write(rel, record)
+
+    def worktrees(self):
+        return gitstate.git(self.root, "worktree", "list", "--porcelain")
+
+    def snapshot(self):
+        """What a refused launch must leave as it was."""
+        comments = {p.name: p.read_text() for p in sorted((self.dir / "comments").glob("*.json"))}
+        return {"comments": comments, "worktrees": self.worktrees(),
+                "branches": self.git("for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/")}
+
+    def prepare(self, role, number, **kw):
+        return launch.prepare(self.p, self.gh, self.root, role, number, now=NOW, **kw)
+
+
+def fenced(body):
+    """The text inside the comment's fence, and the fence."""
+    lines = body.split("\n")
+    start = next(i for i, line in enumerate(lines) if line.startswith("````"))
+    fence = lines[start]
+    end = len(lines) - 1 - lines[::-1].index(fence)
+    return "\n".join(lines[start + 1:end]) + "\n", fence
+
+
+def mode(path):
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+class CleanMakerLaunch(unittest.TestCase):
+    """Criterion 1."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.before = self.w.gh.comments(5)
+        self.run_ = self.w.prepare("drafter", 5)
+
+    def test_branch_and_worktree(self):
+        w, run = self.w, self.run_
+        self.assertEqual(run.worktree, w.state / "worktrees" / "drafter-5-1")
+        self.assertEqual(run.dir, w.state / "runs" / "drafter-5-1")
+        self.assertEqual(w.head("beats/BT-1-drafter-1"), w.head("trunk"))
+        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/beats/BT-1-drafter-1")
+
+    def test_run_json(self):
+        w, meta = self.w, self.run_.meta
+        self.assertEqual(set(meta), RUN_KEYS)
+        self.assertEqual(launch.load_run(self.run_.dir), self.run_)
+        text = (self.run_.dir / "run.json").read_text()
+        self.assertEqual(text, json.dumps(json.loads(text), indent=2, sort_keys=True) + "\n")
+        comment = w.gh.comments(5)[-1]
+        self.assertEqual(meta, {
+            "id": "5-1", "role": "drafter", "kind": "maker", "actor": "DRAFTER", "number": 5, "ticket": 5,
+            "pull": None, "room": "story", "stage": "beats", "unit": "ep01", "branch": "beats/BT-1-drafter-1",
+            "worktree": str(w.state / "worktrees" / "drafter-5-1"), "blind": False, "base_ref": "trunk",
+            "base_sha": w.head("trunk"), "head_sha": None, "model": "maker-model-1", "family": "any",
+            "harness_version": "0.0.0 (fake)", "prompt_sha256": meta["prompt_sha256"], "started_at": NOW,
+            "launch_comment": comment["id"]})
+
+    def test_files_and_modes(self):
+        run_dir = self.run_.dir
+        self.assertEqual(sorted(p.name for p in run_dir.iterdir()),
+                         ["config", "mcp.json", "prompt.md", "prompt.sha256", "run.json"])
+        self.assertEqual(list((run_dir / "config").iterdir()), [])
+        self.assertEqual(json.loads((run_dir / "mcp.json").read_text()), {"mcpServers": {}})
+        for path in (self.w.state, self.w.state / "runs", self.w.state / "worktrees", run_dir, run_dir / "config"):
+            self.assertEqual(mode(path), 0o700, path)
+        for name in ("prompt.md", "prompt.sha256", "mcp.json", "run.json"):
+            self.assertEqual(mode(run_dir / name), 0o600, name)
+
+    def test_hash_and_comment(self):
+        run_dir = self.run_.dir
+        data = (run_dir / "prompt.md").read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        self.assertEqual((run_dir / "prompt.sha256").read_text(), digest + "\n")
+        self.assertEqual(self.run_.meta["prompt_sha256"], digest)
+        comments = self.w.gh.comments(5)
+        self.assertEqual(len(comments), len(self.before) + 1)
+        comment = comments[-1]
+        self.assertEqual(comment["role"], "showlead")
+        lines = comment["body"].split("\n")
+        self.assertEqual(lines[:8], [
+            "[SHOWLEAD] LAUNCH drafter 5-1", f"prompt sha256: {digest}", "model: maker-model-1", "family: any",
+            "harness: 0.0.0 (fake)", f"base: {self.w.head('trunk')}", "head: none", ""])
+        text, fence = fenced(comment["body"])
+        self.assertEqual(fence, "````")
+        self.assertEqual(text.encode("utf-8"), data)
+
+    def test_prompt(self):
+        text = (self.run_.dir / "prompt.md").read_text()
+        self.assertIsNone(PLACEHOLDER.search(text))
+        self.assertIn("You are the drafter for example/tide-show.\n", text)
+        self.assertIn("Ticket: #5 [BT-1] Beats for ep01\n\nLay out the beats of episode one", text)
+        self.assertIn(f"Worktree: {self.w.state / 'worktrees' / 'drafter-5-1'}\n", text)
+        self.assertIn("Branch: beats/BT-1-drafter-1\n", text)
+        self.assertIn("Task: Do the stage beats for unit ep01.\n", text)
+        self.assertIn("The orchestrator rules", text)
+        self.assertIn("Every scene ends on the tide.", text)
+
+    def test_cleanup_removes_the_worktree(self):
+        launch.cleanup(self.w.root, self.run_)
+        self.assertFalse(self.run_.worktree.exists())
+        self.assertNotIn("drafter-5-1", self.w.worktrees())
+
+    def test_second_maker_launch_is_refused(self):
+        # Ticket #5 now has a launch and no pull: its one pitch is in use.
+        with self.assertRaisesRegex(LaunchError, r"^ticket #5 has no free pitch; give the pull request number$"):
+            self.w.prepare("drafter", 5)
+
+
+class Refusals(unittest.TestCase):
+    """Criterion 2: each check of Behaviour 2 on the clean fixture with exactly one defect."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def refused(self, message, role, number, **kw):
+        before = self.w.snapshot()
+        with self.assertRaises(LaunchError) as caught:
+            self.w.prepare(role, number, **kw)
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertFalse(self.w.state.exists())
+
+    def test_clean_twin(self):
+        self.w.prepare("drafter", 5)
+        self.w.prepare("reviewer", 7)
+
+    def test_frozen(self):
+        self.w.set_issue(20, title="Freeze the show", body="", state="open",
+                         labels=["factory:freeze"], created_at="2026-11-10T00:00:00Z")
+        self.refused("production is frozen", "drafter", 5)
+
+    def test_no_role(self):
+        self.refused("no role ghost", "ghost", 5)
+
+    def test_orchestrator(self):
+        self.refused("an orchestrator is not launched by factory launch", "showlead", 5)
+
+    def test_operator(self):
+        self.refused("gated launches are not built in wave 2", "runner", 5)
+
+    def test_analyst(self):
+        self.refused("analyst launches are not built in wave 2", "reader", 5)
+
+    def test_not_tracked(self):
+        self.refused("#99 is not a tracked ticket or a pull request of one", "drafter", 99)
+
+    def test_closed_ticket(self):
+        self.w.set_issue(5, state="closed")
+        self.refused("ticket #5 is closed", "drafter", 5)
+
+    def test_locked_ticket(self):
+        self.w.set_pull(8, title="Work for #5", body="Ticket: #5\n", state="merged", labels=[],
+                        head_ref="beats/BT-1-elsewhere", base_ref="trunk", ticket=5,
+                        created_at="2026-11-02T09:00:00Z", merged_at="2026-11-03T09:00:00Z")
+        self.refused("ticket #5 is locked", "drafter", 5)
+
+    def test_hold(self):
+        self.w.set_issue(5, labels=["hold", "room:story", "stage:beats", "tracked", "unit:ep01"])
+        self.refused("ticket #5 is on hold", "drafter", 5)
+
+    def test_pull_not_open(self):
+        self.w.set_pull(8, title="Work for #6", body="Ticket: #6\n", state="closed", labels=[],
+                        head_ref="beats/BT-2-dropped", base_ref="trunk", ticket=6,
+                        created_at="2026-11-02T09:00:00Z", merged_at=None)
+        self.refused("pull request #8 is not open", "reviewer", 8)
+
+    def test_stage_does_not_name_role(self):
+        path = self.w.root / ".factory" / "pipeline.json"
+        path.write_text(path.read_text().replace('"judge": "assessor"', '"judge": ""'))
+        self.w.local()
+        self.refused("stage beats does not name assessor", "assessor", 7)
+
+    def test_upstream_not_locked(self):
+        self.w.set_pull(2, state="closed", merged_at=None)
+        self.refused("upstream stage premise is not locked for ep01", "drafter", 5)
+
+    def test_checker_given_a_ticket(self):
+        self.refused("give the pull request number", "reviewer", 6)
+
+    def test_judge_given_a_ticket(self):
+        self.refused("give the pull request number", "assessor", 6)
+
+    def test_maker_given_a_ticket_with_no_free_pitch(self):
+        self.refused("ticket #6 has no free pitch; give the pull request number", "drafter", 6)
+
+    def test_gateway_on(self):
+        self.w.local(GATEWAY="on")
+        self.refused("the knowledge gateway is not built; set GATEWAY=off", "drafter", 5)
+
+    def test_already_running(self):
+        self.w.comment(7, 30, "2026-11-10T10:00:00Z", "showlead", "[SHOWLEAD] LAUNCH reviewer 7-1\n")
+        self.refused("reviewer is already running on #7", "reviewer", 7)
+        # The twin: a later marker of the reviewer's actor ends that run.
+        self.w.comment(7, 31, "2026-11-10T11:00:00Z", "reviewer", "[REVIEWER] BLOCKED\nno access\n")
+        self.assertEqual(self.w.prepare("reviewer", 7).meta["id"], "7-2")
+
+    def test_run_already_exists(self):
+        (self.w.state / "runs" / "drafter-5-1").mkdir(parents=True)
+        before = self.w.snapshot()
+        with self.assertRaisesRegex(LaunchError, r"^run drafter-5-1 already exists$"):
+            self.w.prepare("drafter", 5)
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertFalse((self.w.state / "worktrees").exists())
+
+    def test_branch_already_exists(self):
+        self.w.git("branch", "beats/BT-1-drafter-1", "trunk")
+        self.refused("branch beats/BT-1-drafter-1 already exists", "drafter", 5)
+
+    def test_pair_dir_only_for_a_judge(self):
+        self.refused("a pair directory is only for a judge", "reviewer", 7, pair_dir=self.w.tmp)
+
+    def test_pair_dir_must_exist(self):
+        self.refused("the pair directory is not an existing directory", "assessor", 7,
+                     pair_dir=self.w.tmp / "missing")
+
+    def test_harness_error(self):
+        self.w.local(MODEL_MAKER="")
+        self.refused("setting MODEL_MAKER is empty", "drafter", 5)
+
+
+class CheckerLaunch(unittest.TestCase):
+    """Criterion 3."""
+
+    def test_checker(self):
+        w = World(self)
+        run = w.prepare("reviewer", 7)
+        head = w.head("beats/BT-2-drafter-1")
+        self.assertEqual(gitstate.head(run.worktree), head)
+        self.assertEqual(gitstate.git(run.worktree, "rev-parse", "--abbrev-ref", "HEAD").strip(), "HEAD")
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn("Pull request: 7\n", text)
+        self.assertIn(f"Task: Review pull request #7 at head {head}.\n", text)
+        self.assertTrue(text.endswith("\n\n## Maker's report\n\n[DRAFTER] READY\nMaker report: kelp-lantern-report, "
+                                      "the beats are in episodes/ep02/beats.md.\n"), text)
+        comment = w.gh.comments(7)[-1]
+        self.assertEqual(comment["role"], "showlead")
+        self.assertTrue(comment["body"].startswith("[SHOWLEAD] LAUNCH reviewer 7-1\n"))
+        self.assertIn(f"\nhead: {head}\n", comment["body"])
+        self.assertIn("\nfamily: same\n", comment["body"])
+        self.assertEqual(fenced(comment["body"])[0], text)
+        self.assertEqual((run.meta["pull"], run.meta["branch"], run.meta["head_sha"]), (7, None, head))
+
+
+class JudgeLaunch(unittest.TestCase):
+    """Criterion 4."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.bodies = [c["body"] for n in (5, 6, 7) for c in self.w.gh.comments(n)]
+
+    def assert_no_comment(self, text):
+        self.assertNotIn("kelp-lantern-report", text)
+        for body in self.bodies:
+            for line in body.splitlines():
+                self.assertNotIn(line, text)
+
+    def test_judge(self):
+        run = self.w.prepare("assessor", 7)
+        text = (run.dir / "prompt.md").read_text()
+        self.assert_no_comment(text)
+        self.assertIn("Task: Judge pull request #7.\n", text)
+        self.assertIn("Pull request: 7\n", text)
+        self.assertFalse(run.meta["blind"])
+        launch.cleanup(self.w.root, run)
+        self.assertFalse(run.worktree.exists())
+
+    def test_blind_judge(self):
+        pair = self.w.tmp / "pair"
+        pair.mkdir()
+        (pair / "A.md").write_text("one\n")
+        before = self.w.worktrees()
+        run = self.w.prepare("assessor", 7, pair_dir=pair)
+        text = (run.dir / "prompt.md").read_text()
+        self.assert_no_comment(text)
+        self.assertNotIn(self.w.head("beats/BT-2-drafter-1"), text)
+        self.assertNotIn("beats/BT-2-drafter-1", text)
+        self.assertNotIn("Work for #6", text)
+        self.assertIn(f"Worktree: {pair}\n", text)
+        self.assertEqual(self.w.worktrees(), before)
+        self.assertFalse((self.w.state / "worktrees" / "assessor-7-1").exists())
+        self.assertTrue(run.meta["blind"])
+        self.assertEqual(launch.load_run(run.dir).meta["blind"], True)
+        launch.cleanup(self.w.root, run)
+        self.assertEqual((pair / "A.md").read_text(), "one\n")
+
+
+class MakerRelaunch(unittest.TestCase):
+    """Criterion 5."""
+
+    BRANCH = "beats/BT-2-drafter-1"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def test_relaunch(self):
+        w = self.w
+        earlier = w.state / "worktrees" / "drafter-6-1"
+        earlier.parent.mkdir(parents=True)
+        gitstate.add_worktree(w.root, earlier, self.BRANCH, branch=self.BRANCH)
+        run = w.prepare("drafter", 7)
+        self.assertEqual((run.meta["id"], run.meta["branch"]), ("7-2", self.BRANCH))
+        self.assertFalse(earlier.exists())
+        self.assertNotIn("drafter-6-1", w.worktrees())
+        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/" + self.BRANCH)
+        self.assertEqual(gitstate.head(run.worktree), w.head(self.BRANCH))
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn(f"Branch: {self.BRANCH}\n", text)
+        lint_body = w.gh.comments(7)[1]["body"].rstrip("\n")
+        notes_body = w.gh.comments(7)[2]["body"].rstrip("\n")
+        self.assertIn(f"Task: Address every open note on pull request #7.\n\n{lint_body}\n\n{notes_body}\n", text)
+        comment = w.gh.comments(7)[-1]
+        self.assertTrue(comment["body"].startswith("[SHOWLEAD] LAUNCH drafter 7-2\n"))
+        self.assertEqual(run.meta["launch_comment"], comment["id"])
+
+    def test_branch_checked_out_elsewhere(self):
+        w = self.w
+        elsewhere = w.tmp / "elsewhere"
+        gitstate.add_worktree(w.root, elsewhere, self.BRANCH, branch=self.BRANCH)
+        before = w.snapshot()
+        with self.assertRaisesRegex(LaunchError, r"^worktree: branch beats/BT-2-drafter-1 is checked out outside the run "
+                                                 r"worktrees$"):
+            w.prepare("drafter", 7)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(gitstate.git(elsewhere, "symbolic-ref", "HEAD").strip(), "refs/heads/" + self.BRANCH)
+        self.assertFalse(w.state.exists())
+
+
+class Fence(unittest.TestCase):
+    """Criterion 6."""
+
+    def test_five_backticks(self):
+        w = World(self)
+        task = w.tmp / "task.md"
+        task.write_text("Show this:\n`````\ncode\n`````\n")
+        run = w.prepare("drafter", 5, task_file=task)
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn("Task: Show this:\n`````\n", text)
+        body = w.gh.comments(5)[-1]["body"]
+        inner, fence = fenced(body)
+        self.assertEqual(fence, "``````")
+        self.assertEqual(inner, text)
+
+
+class FailingPost(github.Recorded):
+    def post(self, number, body, role):
+        raise github.GitHubError(f"post #{number}: exit 1")
+
+
+class PostFails(unittest.TestCase):
+    """Criterion 7."""
+
+    def test_first_launch(self):
+        w = World(self)
+        w.gh = FailingPost(w.dir)
+        before = w.snapshot()
+        with self.assertRaisesRegex(LaunchError, r"^could not post LAUNCH on #5$"):
+            w.prepare("drafter", 5)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(list((w.state / "runs").iterdir()), [])
+        self.assertEqual(list((w.state / "worktrees").iterdir()), [])
+
+    def test_relaunch_keeps_the_pull_branch(self):
+        w = World(self)
+        w.gh = FailingPost(w.dir)
+        before = w.snapshot()
+        with self.assertRaisesRegex(LaunchError, r"^could not post LAUNCH on #7$"):
+            w.prepare("drafter", 7)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(list((w.state / "runs").iterdir()), [])
+
+
+class NoSecrets(unittest.TestCase):
+    """Criterion 8."""
+
+    def test_seeded_settings_are_nowhere(self):
+        w = World(self)
+        w.prepare("drafter", 5)
+        w.prepare("reviewer", 7)
+        w.prepare("assessor", 7)
+        files = [p for p in (w.state / "runs").rglob("*") if p.is_file()]
+        self.assertEqual(len(files), 12)
+        for path in files:
+            self.assertNotIn(SEED, path.read_text(), path)
+        for path in (w.dir / "comments").glob("*.json"):
+            self.assertNotIn(SEED, path.read_text(), path)
+
+    def test_error_message_holds_no_setting(self):
+        w = World(self)
+        w.local(MODEL_CHECKER="")
+        with self.assertRaises(LaunchError) as caught:
+            w.prepare("reviewer", 7)
+        self.assertNotIn(SEED, str(caught.exception))
+
+
+class MarkersLint(unittest.TestCase):
+    """Criterion 9."""
+
+    def lint_status(self, comments):
+        tree = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tree)
+        shutil.copytree(PRODUCTION / ".factory", tree / ".factory")
+        (tree / ".factory-state").mkdir()
+        (tree / ".factory-state" / "comments.json").write_text(json.dumps(comments, indent=1) + "\n")
+        return lint.run(tree, only=["markers"])["markers"].status
+
+    def test_launch_comments_pass(self):
+        w = World(self)
+        w.prepare("drafter", 5)
+        w.prepare("reviewer", 7)
+        w.prepare("drafter", 7)
+        comments = [c for n in (5, 6, 7) for c in w.gh.comments(n)]
+        launches = [c for c in comments if " LAUNCH " in c["body"].split("\n", 1)[0]]
+        self.assertEqual(len(launches), 4)
+        self.assertEqual(self.lint_status(comments), lint.PASS)
+        seeded = [{**c, "role": "program:launch"} if c in launches else c for c in comments]
+        self.assertEqual(self.lint_status(seeded), lint.FAIL)
+
+
+class UnfilledPlaceholder(unittest.TestCase):
+    """Criterion 10."""
+
+    def test_no_value(self):
+        w = World(self)
+        doc = w.p.roles["reviewer"]
+        w.p.roles["reviewer"] = {**doc, "body": doc["body"] + "Branch: {{BRANCH}}\n"}
+        before = w.snapshot()
+        with self.assertRaises(LaunchError) as caught:
+            w.prepare("reviewer", 7)
+        self.assertEqual(str(caught.exception), "no value for {{BRANCH}}")
+        self.assertEqual(w.snapshot(), before)
+        self.assertFalse(w.state.exists())
+
+
+class Source(unittest.TestCase):
+    """Criterion 11."""
+
+    def test_no_flag_no_placeholder_one_renderer(self):
+        source = (ROOT / "kit" / "lib" / "launch.py").read_text()
+        self.assertIsNone(re.search(r"--(model|tools|mcp-config|json-schema|permission-mode)", source))
+        self.assertNotIn("{{", source)
+        self.assertGreaterEqual(source.count("prompt.render"), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
