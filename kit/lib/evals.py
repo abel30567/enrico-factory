@@ -1,0 +1,260 @@
+"""Role evals (brief section 13): the case format, the loader, the grader, suite metrics and noise.
+
+A case is a directory ``<kit>/evals/<role>/<case-id>/`` holding ``case.json``, ``task.md`` and
+``tree/`` (for a ``pair`` case, ``old/`` and ``new/``). Nothing here runs a role or writes a file:
+``factory eval`` (cmd_eval.py) copies a case, runs it through the harness adapter and calls ``grade``.
+A grade's detail is built from the case and fixed words, never from model output.
+"""
+
+import hashlib
+import json
+import re
+import statistics
+from dataclasses import dataclass
+from pathlib import Path
+
+from kit.lib import frontmatter, harness, lint, roles
+
+CASE_KEYS = {"seeded": ("catches",), "clean": (), "replay": ("lint", "expect_files"),
+             "pair": ("better",)}
+CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay",), "judge": ("pair",)}
+SIDES = ("old", "new")
+PLACES = 4
+MEASURED_RUNS = 5
+
+_ROLE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+
+
+class EvalError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class Case:
+    role: str
+    id: str
+    kind: str
+    path: Path
+    task: str
+    spec: dict
+    role_kind: str
+    actor: str
+
+
+def role_file(kit, role):
+    """``(meta, body)`` of ``<kit>/roles/<role>.md``."""
+    if not _ROLE_ID.fullmatch(role):
+        raise EvalError(f"{role!r}: not a role id")
+    try:
+        text = (Path(kit) / "roles" / f"{role}.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise EvalError(f"{role}: no role file roles/{role}.md") from None
+    except (OSError, UnicodeDecodeError):
+        raise EvalError(f"{role}: roles/{role}.md cannot be read") from None
+    try:
+        meta, body = frontmatter.parse(text)
+    except frontmatter.FrontMatterError as error:
+        raise EvalError(f"{role}: roles/{role}.md: {error}") from None
+    if meta.get("kind") not in roles.KINDS:
+        raise EvalError(f"{role}: kind {meta.get('kind')!r} is not one of {', '.join(roles.KINDS)}")
+    return meta, body
+
+
+def _is_strings(value):
+    return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
+
+
+def _spec_problem(spec, role_kind, lint_ids):
+    """The first thing wrong with a parsed ``case.json``, or None."""
+    if not isinstance(spec, dict):
+        return "case.json is not an object"
+    kind = spec.get("kind")
+    if kind not in CASE_KEYS:
+        return f"unknown kind {kind!r}"
+    unknown = sorted(set(spec) - {"kind"} - set(CASE_KEYS[kind]))
+    if unknown:
+        return f"unknown key {unknown[0]!r}"
+    for key in CASE_KEYS[kind]:
+        if key not in spec:
+            return f"missing key {key!r}"
+    if kind not in CASE_KINDS.get(role_kind, ()):
+        return f"a {kind} case does not fit a role of kind {role_kind}"
+    if kind == "seeded":
+        if not _is_strings(spec["catches"]) or not spec["catches"]:
+            return "catches is not a non-empty list of regexes"
+        for pattern in spec["catches"]:
+            try:
+                re.compile(pattern)
+            except re.error:
+                return f"catches: regex {pattern!r} does not compile"
+    if kind == "replay":
+        if not _is_strings(spec["lint"]) or not spec["lint"]:
+            return "lint is not a non-empty list of check ids"
+        for check in spec["lint"]:
+            if check not in lint_ids:
+                return f"lint: {check!r} is not a lint"
+        if not _is_strings(spec["expect_files"]):
+            return "expect_files is not a list of globs"
+        for pattern in spec["expect_files"]:
+            if pattern.startswith("/"):
+                return f"expect_files: {pattern!r} is not relative"
+    if kind == "pair" and spec["better"] not in SIDES:
+        return f"better {spec['better']!r} is not one of {', '.join(SIDES)}"
+    return None
+
+
+def _case(path, role, role_kind, actor, lint_ids):
+    where = f"{role}/{path.name}"
+    try:
+        spec = json.loads((path / "case.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise EvalError(f"{where}: missing case.json") from None
+    except (OSError, UnicodeDecodeError, ValueError):
+        raise EvalError(f"{where}: case.json is not readable JSON") from None
+    problem = _spec_problem(spec, role_kind, lint_ids)
+    if problem:
+        raise EvalError(f"{where}: {problem}")
+    try:
+        task = (path / "task.md").read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise EvalError(f"{where}: missing task.md") from None
+    except (OSError, UnicodeDecodeError):
+        raise EvalError(f"{where}: task.md cannot be read") from None
+    for name in (SIDES if spec["kind"] == "pair" else ("tree",)):
+        if not (path / name).is_dir():
+            raise EvalError(f"{where}: missing {name}/")
+    return Case(role, path.name, spec["kind"], path, task, spec, role_kind, actor)
+
+
+def load(kit, role):
+    """The cases of ``<kit>/evals/<role>/``, sorted by id.
+
+    A checker, maker or judge needs at least one case; a role of another kind may have none.
+    """
+    meta, _ = role_file(kit, role)
+    role_kind = meta["kind"]
+    suite = Path(kit) / "evals" / role
+    paths = sorted((p for p in suite.iterdir() if p.is_dir()), key=lambda p: p.name) \
+        if suite.is_dir() else []
+    if not paths and role_kind in CASE_KINDS:
+        raise EvalError(f"{role}: no cases in evals/{role}/")
+    # Only a maker may hold replay cases, the only ones that name lints.
+    lint_ids = set(lint.discover()) if role_kind == "maker" else set()
+    actor = roles.actor({**meta, "role": role})
+    return [_case(path, role, role_kind, actor, lint_ids) for path in paths]
+
+
+def sides(case_id, run):
+    """Which version each side of a pair case shows: A is ``new`` when the hash's first byte is even."""
+    first = hashlib.sha256(f"{case_id}\n{run}".encode("utf-8")).digest()[0]
+    a = "new" if first % 2 == 0 else "old"
+    return {"A": a, "B": "old" if a == "new" else "new"}
+
+
+def _grade_seeded(case, result):
+    if result["marker"] != "NOTES":
+        return False, f"not caught: marker {result['marker']}"
+    blockers = [n for n in result.get("notes", []) if n["severity"] == "Blocker"]
+    missed = [p for p in case.spec["catches"]
+              if not any(re.search(p, n["text"]) or re.search(p, n["evidence"]) for n in blockers)]
+    if missed:
+        return False, "not caught: no Blocker matches " + ", ".join(missed)
+    return True, "caught"
+
+
+def _grade_clean(case, result):
+    count = sum(n["severity"] == "Blocker" for n in result.get("notes", []))
+    if result["marker"] == "NOTES" and count:
+        return False, f"false alarm: {count} Blocker(s)"
+    return True, f"no alarm: marker {result['marker']}"
+
+
+def _grade_replay(case, result, run_dir):
+    if result["marker"] != "READY":
+        return False, f"marker {result['marker']}, not READY"
+    run_dir = Path(run_dir)
+    missing = [g for g in case.spec["expect_files"] if not any(p.is_file() for p in run_dir.glob(g))]
+    status = lint.overall(lint.run(run_dir, only=case.spec["lint"]))
+    parts = [f"lint {status}"] + (["missing " + ", ".join(missing)] if missing else [])
+    return status == lint.PASS and not missing, "; ".join(parts)
+
+
+def _grade_pair(case, result, run):
+    choice = harness.PREFERS.get(result["marker"])
+    if choice is None:
+        return False, f"marker {result['marker']}, no preference given"
+    if choice == "none":
+        return False, "no preference"
+    chosen = sides(case.id, run)[choice]
+    return chosen == case.spec["better"], f"preferred {chosen}, better is {case.spec['better']}"
+
+
+def grade(case, result, run=1, run_dir=None):
+    """``{"case", "kind", "marker", "pass", "detail"}`` for one result of one case.
+
+    ``run`` is the run index (it decides the sides of a pair case); ``run_dir`` is the directory the
+    role worked in (a replay case's files and lints are read there). A result that is None or fails
+    ``harness.validate_result`` does not pass and has marker None.
+    """
+    graded = {"case": case.id, "kind": case.kind, "marker": None, "pass": False, "detail": "no result"}
+    if result is None:
+        return graded
+    problems = harness.validate_result(case.role_kind, case.actor, result)
+    if problems:
+        graded["detail"] = f"invalid result: {len(problems)} problem(s)"
+        return graded
+    if case.kind == "seeded":
+        passed, detail = _grade_seeded(case, result)
+    elif case.kind == "clean":
+        passed, detail = _grade_clean(case, result)
+    elif case.kind == "replay":
+        passed, detail = _grade_replay(case, result, run_dir)
+    else:
+        passed, detail = _grade_pair(case, result, run)
+    graded.update(marker=result["marker"], detail=detail)
+    graded["pass"] = passed
+    return graded
+
+
+def _rate(graded, kind, passed):
+    """The share of ``kind`` cases whose pass is ``passed``; None with no such case."""
+    group = [g for g in graded if g["kind"] == kind]
+    return sum(g["pass"] is passed for g in group) / len(group) if group else None
+
+
+def metrics(kind, graded):
+    """The suite's rates and score for one run of a role of ``kind``, rounded to 4 places.
+
+    A checker: catch rate on seeded cases less false-alarm rate on clean ones (a clean case that does
+    not pass counts as an alarm). A maker: lint pass rate. A judge: agreement. A rate with no case
+    to count is None, and then there is no score: ``EvalError``.
+    """
+    if kind == "checker":
+        rates = {"catch_rate": _rate(graded, "seeded", True),
+                 "false_alarm_rate": _rate(graded, "clean", False)}
+    elif kind == "maker":
+        rates = {"lint_pass_rate": _rate(graded, "replay", True)}
+    elif kind == "judge":
+        rates = {"agreement": _rate(graded, "pair", True)}
+    else:
+        raise EvalError(f"no eval score for a role of kind {kind}")
+    for name, value in rates.items():
+        if value is None:
+            raise EvalError(f"{kind} score: {name} is null, no case to count")
+    values = list(rates.values())
+    score = values[0] - values[1] if kind == "checker" else values[0]
+    out = {name: round(value, PLACES) for name, value in rates.items()}
+    out["score"] = round(score, PLACES)
+    return out
+
+
+def noise(scores):
+    """``{"runs", "mean", "floor", "measured"}``: the floor is the sample standard deviation of the
+    suite score over repeated runs, None under 2 runs, and measured only with 5 runs or more."""
+    scores = list(scores)
+    return {
+        "runs": len(scores),
+        "mean": round(statistics.fmean(scores), PLACES) if scores else None,
+        "floor": round(statistics.stdev(scores), PLACES) if len(scores) >= 2 else None,
+        "measured": len(scores) >= MEASURED_RUNS,
+    }
