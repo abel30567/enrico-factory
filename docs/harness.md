@@ -250,6 +250,9 @@ made by the worker still runs; for GitHub the boundary is that the worker cannot
   ticket's topic in the working directory, outside git, and it is removed when the run ends (#269).
 - Keys are files outside every repository, one per resource id in `kit/resources.json`.
   `factory doctor` checks that each exists and works, and prints names and states, never values.
+- **The two stores** have a client each: `factory media` for the media store (public links, one
+  manifest row per file) and `factory assets` for the asset store (private, an object is named by its
+  sha256, every request is signed). Each reads its own key file, so a sandboxed worker can run neither.
 - **Whose comments count.** No worker holds the GitHub login, but anyone who can comment on the
   repository can type a marker. The machine setting `GITHUB_LOGINS` in `production.local.env` names,
   comma-separated, the logins whose comments the kit reads; a comment by any other author is left out

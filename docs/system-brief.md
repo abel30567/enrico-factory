@@ -527,6 +527,8 @@ name, so adding a command edits no shared file. Python 3 standard library, bash,
 | `factory blind <pr>` | prepare a blinded old-against-new pair for a judge and record the key outside the worktree |
 | `factory gate <job-or-pr>` | section 11 |
 | `factory run <job>` | make one gated call with its credential; write the outputs, the manifest rows and the ledger line |
+| `factory media put <file>` / `link` / `check` | the media store client: store a file's bytes and add its manifest row, print the public link of a row, check that the links serve the manifest's bytes |
+| `factory assets put <file> [--apply]` / `get <sha256> <path>` / `check <sha256> ...` | the asset store client: store or fetch an engine binary under its sha256. Every request is signed and no object or file is overwritten |
 | `factory lock [--room R] [--apply]` | section 9; without `--apply` it only reports |
 | `factory tick [--apply]` | section 12: dispatch the next mechanical steps from GitHub state |
 | `factory freeze` / `unfreeze` | the kill switch |
