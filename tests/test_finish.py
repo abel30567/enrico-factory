@@ -606,6 +606,114 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(code, 0, out + err)
         self.assertTrue((w.state / "worktrees" / "escaped.txt").is_file())
 
+    def home(self, w):
+        """A fixture home directory under the test's own temporary directory, set as HOME."""
+        home = w.tmp / "home"
+        (home / "notes").mkdir(parents=True)
+        (home / "notes" / "plain.txt").write_text("plain\n")
+        patch = mock.patch.dict(os.environ, {"HOME": str(home)})
+        patch.start()
+        self.addCleanup(patch.stop)
+        return home
+
+    def home_rule(self, w):
+        """The one line of the run's profile that names `.ssh`."""
+        text = (w.run_dir("critic-5-1") / "sandbox.sb").read_text()
+        rule = [r for r in text.splitlines() if "/.ssh" in r]
+        self.assertEqual(len(rule), 1)
+        return rule[0]
+
+    def test_sandbox_deny_reaches_the_profile(self):
+        """Behaviour 6."""
+        w = World(self)
+        self.home(w)
+        store = w.tmp / "store"
+        w.local(SANDBOX_DENY=f"{store}, {w.tmp}/nowhere ,,")
+        w.steps(approved())
+        code, out, err = w.launch("critic", "5")
+        self.assertEqual(code, 0, out + err)
+        rule = self.home_rule(w)
+        self.assertIn(f'(subpath "{store}")', rule)
+        self.assertIn(f'(subpath "{w.tmp}/nowhere")', rule)
+
+    def test_sandbox_deny_expands_home(self):
+        """Behaviour 6: `~/` is the home directory, and an entry named twice appears once."""
+        w = World(self)
+        home = self.home(w)
+        w.local(SANDBOX_DENY="~/.store,~/.store, ~/absent/x")
+        w.steps(approved())
+        code, out, err = w.launch("critic", "5")
+        self.assertEqual(code, 0, out + err)
+        rule = self.home_rule(w)
+        self.assertTrue(rule.endswith(f'(subpath "{home}/.store") (subpath "{home}/absent/x"))'), rule)
+        self.assertEqual(rule.count(f'"{home}/.store"'), 1)
+
+    def test_without_sandbox_deny_twin(self):
+        """Behaviour 6, clean twin."""
+        w = World(self)
+        home = self.home(w)
+        w.steps(approved())
+        code, out, err = w.launch("critic", "5")
+        self.assertEqual(code, 0, out + err)
+        text = (w.run_dir("critic-5-1") / "sandbox.sb").read_text()
+        self.assertNotIn(str(w.tmp / "store"), text)
+        self.assertNotIn(f"{w.tmp}/nowhere", text)
+        self.assertNotIn(f"{home}/.store", text)
+        self.assertIn(f'(subpath "{home}/.claude")', self.home_rule(w))
+
+    def test_unusable_sandbox_deny_is_blocked(self):
+        """Behaviour 7."""
+        absolute = "setting SANDBOX_DENY holds a path that is not absolute"
+        contains = "setting SANDBOX_DENY holds a path that contains the production, the worktree or the run directory"
+        for value, message in (("relative/x", absolute), ("~other/x", absolute), (None, contains)):
+            with self.subTest(value=value):
+                w = World(self)
+                self.home(w)
+                w.local(SANDBOX_DENY=str(w.state) if value is None else value)
+                w.steps(approved())
+                code, out, err = w.launch("critic", "5")
+                self.assertEqual(code, 3, out + err)
+                body = w.by(5, "critic")[-1]["body"]
+                self.assertTrue(body.startswith("[CRITIC] BLOCKED"), body)
+                self.assertIn(f"Missing: a valid result ({message})\n", body)
+                self.assertTrue(w.run_dir("critic-5-1").is_dir())
+                self.assertFalse((w.run_dir("critic-5-1") / "sandbox.sb").exists())
+                self.assertEqual(w.calls(), [])
+
+    def probe_launch(self, **settings):
+        """`probe.json` of a sandboxed launch of `critic` on 5 by `probing-harness`, and the paths it read."""
+        reason = self.probe()
+        if reason:
+            self.skipTest(reason)
+        w = World(self, "probing-harness")
+        shutil.copy2(FIX / "probing-harness", w.harness / "probing-harness")
+        home = self.home(w)
+        store = home / ".store"
+        store.mkdir()
+        (store / "login.env").write_text("login\n")
+        paths = {"store": str(store / "login.env"), "notes": str(home / "notes" / "plain.txt"),
+                 "token": str(w.secrets / "inference.primary" / ACCOUNTS[0])}
+        (w.harness / "probe-paths.json").write_text(json.dumps(sorted(paths.values())))
+        w.local(SANDBOX="on", **{k: v.format(store=store) for k, v in settings.items()})
+        w.steps(approved())
+        code, out, err = w.launch("critic", "5")
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(markers.parse(w.by(5, "critic")[-1]["body"]).verb, "APPROVED")
+        tmp = w.run_dir("critic-5-1") / "tmp"
+        found = json.loads((w.run_dir("critic-5-1") / "probe.json").read_text())
+        self.assertEqual([found["TMPDIR"], found["gettempdir"], found["mkstemp"]], [os.path.realpath(tmp)] * 3)
+        self.assertEqual(oct(os.stat(tmp).st_mode & 0o777), "0o700")
+        return {name: found["paths"][path] for name, path in paths.items()}
+
+    def test_worker_tmp_and_denied_store(self):
+        """Behaviour 11."""
+        self.assertEqual(self.probe_launch(SANDBOX_DENY="{store}"),
+                         {"store": "PermissionError", "token": "PermissionError", "notes": "read"})
+
+    def test_worker_tmp_without_sandbox_deny_twin(self):
+        """Behaviour 11, clean twin."""
+        self.assertEqual(self.probe_launch(), {"store": "read", "token": "PermissionError", "notes": "read"})
+
 
 class Post(unittest.TestCase):
     """``finish.post`` called with nothing but ``p, gh, root, run, outcome`` (as w2-15 will), and the body rules."""
