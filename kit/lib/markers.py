@@ -199,7 +199,7 @@ def _role_reason(marker, stage, roles):
     return None
 
 
-def _is_verdict(marker):
+def is_verdict(marker):
     if marker is None:
         return False
     if marker.actor == "LINT":
@@ -211,7 +211,7 @@ def _is_verdict(marker):
 def counts(verdict, pr, stage, roles):
     """``(True, "counts")``, or ``(False, reason)`` naming the first condition of section 8 that fails."""
     marker = parse(verdict["body"])
-    if not _is_verdict(marker):
+    if not is_verdict(marker):
         return False, "marker: not a lint, checker or judge verdict"
     seen = reviewed(verdict["body"])
     if seen is None:

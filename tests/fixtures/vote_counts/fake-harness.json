@@ -1,0 +1,30 @@
+[
+ {
+  "match": "You are the canon keeper",
+  "result": {
+   "marker": "READY",
+   "summary": "The lamp has a name.",
+   "evidence": [{"criterion": "the amendment names the lamp", "result": "pass", "command": "cat bible/canon/lamp.md"}]
+  },
+  "files": {
+   "bible/canon/lamp.md": "# The lamp\n\nThe lamp in the tower is called Wren.\n",
+   "bible/amendments/A-1.json": "{\"id\": \"A-1\", \"class\": \"arc\", \"summary\": \"The lamp has a name.\"}\n"
+  }
+ },
+ {
+  "match": "You are the canon reviewer",
+  "result": {
+   "marker": "APPROVED",
+   "summary": "The name fits the canon.",
+   "evidence": [{"criterion": "no contradiction with the canon", "result": "pass", "command": "cat bible/canon/lamp.md"}]
+  }
+ },
+ {
+  "match": "You are the Braintrust",
+  "result": {
+   "marker": "VOTE",
+   "summary": "Seven seats voted.",
+   "vote": {"for": 6, "against": 1, "reasons": ["seat 1: it fits the arc", "seat 7: too early"]}
+  }
+ }
+]

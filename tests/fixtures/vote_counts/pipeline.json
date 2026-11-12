@@ -1,0 +1,37 @@
+[
+ {
+  "room": "story",
+  "stage": "bible",
+  "unit": "amendment",
+  "after": "",
+  "maker": "canon-keeper",
+  "lint": [],
+  "checker": "canon-reviewer",
+  "judge": "braintrust",
+  "blind": false,
+  "pitches": 1,
+  "paths": [
+   "bible/charter.md",
+   "bible/canon/**",
+   "bible/amendments/**"
+  ]
+ },
+ {
+  "room": "story",
+  "stage": "premise",
+  "unit": "episode",
+  "after": "",
+  "maker": "story-writer",
+  "lint": [
+   "structure",
+   "media"
+  ],
+  "checker": "story-editor",
+  "judge": "",
+  "blind": false,
+  "pitches": 1,
+  "paths": [
+   "episodes/*/premise.md"
+  ]
+ }
+]
