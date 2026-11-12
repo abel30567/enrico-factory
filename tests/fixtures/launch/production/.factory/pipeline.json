@@ -1,0 +1,4 @@
+[
+ {"room": "story", "stage": "premise", "unit": "episode", "after": "", "maker": "drafter", "lint": [], "checker": "reviewer", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/premise.md"]},
+ {"room": "story", "stage": "beats", "unit": "episode", "after": "premise", "maker": "drafter", "lint": ["shape"], "checker": "reviewer", "judge": "assessor", "blind": false, "pitches": 1, "paths": ["episodes/*/beats.md"]}
+]

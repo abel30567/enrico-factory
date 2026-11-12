@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["references"], "expect_files": ["pages/*.md"]}
