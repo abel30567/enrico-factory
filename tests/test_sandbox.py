@@ -1,5 +1,6 @@
 """Tests for the macOS sandbox profile. Each denied action has a test that fails if the action succeeds."""
 
+import errno
 import os
 import shutil
 import socket
@@ -19,6 +20,8 @@ from kit.lib import sandbox  # noqa: E402
 ARGS = dict(root="/srv/prod", worktree="/srv/state/worktrees/w1", scratch="/srv/state/scratch/w1",
             state_dir="/srv/state", secrets_dir="/srv/keys", home="/srv/home")
 ENFORCEMENT = {"ran": 0, "total": 0, "reason": ""}
+SWEEP = {"ports": range(49152, 49452), "skipped": 0}
+NETWORK_DENY = ["(deny network-outbound)", "(allow network-outbound (remote unix-socket))"]
 
 
 def lines(text):
@@ -70,16 +73,14 @@ class ProfileTests(unittest.TestCase):
                 self.assertIn(f'(literal "{directory}/{name}")', rule[0])
 
     def test_no_web_and_no_endpoints_allows_no_outbound(self):
-        text = sandbox.profile(**ARGS)
-        self.assertIn('(deny network-outbound (remote ip "*:*"))', lines(text))
-        self.assertFalse([r for r in lines(text) if r.startswith("(allow network-outbound")])
+        rules = lines(sandbox.profile(**ARGS))
+        self.assertEqual([r for r in rules if "network-outbound" in r], NETWORK_DENY)
 
     def test_endpoints_are_allowed_in_sorted_order(self):
         rules = lines(sandbox.profile(**ARGS, endpoints=("localhost:9000", "*:443")))
-        allows = [r for r in rules if r.startswith("(allow network-outbound")]
-        self.assertEqual(allows, ['(allow network-outbound (remote ip "*:443"))',
-                                  '(allow network-outbound (remote ip "localhost:9000"))'])
-        self.assertLess(rules.index('(deny network-outbound (remote ip "*:*"))'), rules.index(allows[0]))
+        self.assertEqual([r for r in rules if "network-outbound" in r], NETWORK_DENY + [
+            '(allow network-outbound (remote ip "*:443"))',
+            '(allow network-outbound (remote ip "localhost:9000"))'])
 
     def test_web_allows_all_outbound(self):
         text = sandbox.profile(**ARGS, web=True, endpoints=("*:443",))
@@ -209,10 +210,12 @@ class EnforcementTests(unittest.TestCase):
             directory.mkdir(parents=True)
         self.profile_path = base / "profile.sb"
 
-    def run_sh(self, action, web=False, endpoints=()):
-        text = sandbox.profile(self.root, self.worktree, self.scratch, self.state, self.secrets, self.home,
+    def profile(self, web=False, endpoints=()):
+        return sandbox.profile(self.root, self.worktree, self.scratch, self.state, self.secrets, self.home,
                                web=web, endpoints=endpoints)
-        sandbox.write(self.profile_path, text)
+
+    def run_sh(self, action, web=False, endpoints=(), text=None):
+        sandbox.write(self.profile_path, self.profile(web, endpoints) if text is None else text)
         argv = sandbox.wrap(["/bin/sh", "-c", action], str(self.profile_path))
         return subprocess.run(argv, cwd=self.worktree, capture_output=True, text=True, timeout=30)
 
@@ -312,12 +315,76 @@ class EnforcementTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(connected)
 
+    def test_connect_unix_socket_in_scratch_allowed(self):
+        path = self.scratch / "s.sock"
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
+        listener.bind(str(path))
+        listener.listen(1)
+        code = "import socket, sys; socket.socket(socket.AF_UNIX).connect(sys.argv[1])"
+        result = self.run_sh(f"exec '{sys.executable}' -c '{code}' '{path}'")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        listener.settimeout(5)
+        listener.accept()[0].close()
+
+    def denied_ports(self, profile_for, ports):
+        """The ports whose connection under `profile_for(port)` was denied, and how many busy ports were skipped."""
+        denied, skipped = [], 0
+        for port in ports:
+            listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            with listener:
+                listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    listener.bind(("127.0.0.1", port))
+                except OSError as error:
+                    if error.errno != errno.EADDRINUSE:
+                        raise
+                    skipped += 1
+                    continue
+                listener.listen(1)
+                result = self.run_sh(f"exec 3<>/dev/tcp/127.0.0.1/{port}", text=profile_for(port))
+                listener.settimeout(5 if result.returncode == 0 else 0)
+                try:
+                    listener.accept()[0].close()
+                except (BlockingIOError, TimeoutError):
+                    self.assertIn("Operation not permitted", result.stderr, f"port {port}")
+                    denied.append(port)
+                else:
+                    self.assertEqual(result.returncode, 0, f"port {port}: {result.stderr}")
+        SWEEP["skipped"] += skipped
+        self.assertGreaterEqual(len(ports) - skipped, 100, "too many busy ports to sweep")
+        return denied, skipped
+
+    def test_sweep_localhost_endpoint_allowed(self):
+        denied, _ = self.denied_ports(lambda port: self.profile(endpoints=(f"localhost:{port}",)), SWEEP["ports"])
+        self.assertEqual(denied, [])
+
+    def test_sweep_any_host_endpoint_allowed(self):
+        denied, _ = self.denied_ports(lambda port: self.profile(endpoints=(f"*:{port}",)), SWEEP["ports"])
+        self.assertEqual(denied, [])
+
+    def test_sweep_other_port_denied(self):
+        denied, skipped = self.denied_ports(lambda port: self.profile(endpoints=(f"localhost:{port + 1}",)),
+                                            SWEEP["ports"])
+        self.assertEqual(len(denied), len(SWEEP["ports"]) - skipped)
+
+    def test_sweep_helper_seeded_defects(self):
+        def without(prefix):
+            return lambda port: "".join(r for r in self.profile(endpoints=(f"localhost:{port}",)).splitlines(True)
+                                        if not r.startswith(prefix))
+        denied, skipped = self.denied_ports(without("(allow network-outbound (remote ip "), SWEEP["ports"])
+        self.assertEqual(len(denied), len(SWEEP["ports"]) - skipped)
+        denied, _ = self.denied_ports(without("(deny network-outbound"), SWEEP["ports"])
+        self.assertEqual(denied, [])
+
 
 def tearDownModule():
     ran, total = ENFORCEMENT["ran"], ENFORCEMENT["total"]
     if total:
         note = f" ({ENFORCEMENT['reason']})" if ENFORCEMENT["reason"] else ""
         print(f"\nsandbox enforcement tests: {total - ran} of {total} not run{note}", file=sys.stderr)
+    if SWEEP["skipped"]:
+        print(f"sandbox port sweeps: {SWEEP['skipped']} busy ports skipped", file=sys.stderr)
 
 
 if __name__ == "__main__":
