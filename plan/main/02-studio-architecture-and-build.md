@@ -67,11 +67,19 @@ wave 2 ships) and `references ERROR` (the documents cite example media ids and t
 - [x] #34 (w2-16) checker and judge roles (merged in PR #38)
 - [x] #37 (w2-18) eval runner and the one prompt renderer (merged in PR #41)
 - [x] #26 (w2-05) factory init (merged in PR #33)
-- [ ] in review, verifiers queued behind the host load limit (`~/.agent-orch/enrico-factory/launch-queue.sh`, log beside it): #42 w2-08 status and freeze (PR #47), #43 w2-09 lint --post (PR #48), #40 w2-17 orchestrator, maker and analyst roles (PR #49), #45 w2-12 blind (PR #50), #46 w2-13 gate and ledger (PR #51)
-- [ ] #44 w2-10 launch prepare: builder queued behind the same limit. Q12 as built: the `markers` lint refuses `program:launch`, so a LAUNCH is posted with the room orchestrator's role id
-- [ ] before filing w2-11, w2-14, w2-15: follow the `blind` signatures of #45 (`has_key` wrapped by the caller, pair directory `<pr>-<id>`), a relaunch removes the maker's earlier worktree, and decide whether `GATEWAY` and `RUN_TIMEOUT_MIN` belong in `kit/resources.json`
-- [ ] rule on the remaining questions (Q7 to Q11, Q16, Q19) before group D; update `docs/harness.md` section 5 (Q14)
-- [ ] groups B to E: review, file and launch as their dependencies merge
+- [x] #42 (w2-08) status, freeze and unfreeze (merged in PR #47)
+- [x] #40 (w2-17) orchestrator, maker and analyst roles (merged in PR #49)
+- [x] #45 (w2-12) blind pairs (merged in PR #50)
+- [x] #44 (w2-10) launch prepare (merged in PR #52)
+- [ ] verified, waiting for the merge gate (one merge per wake): #43 w2-09 lint --post (PR #48), #46 w2-13 gate and ledger (PR #51), #55 braintrust vote (PR #58)
+- [x] group D bodies reviewed against the built code: `body-11.md`, `body-14.md`, `body-19.md` in `~/.agent-orch/enrico-factory/inputs/wave2/`. File and launch w2-14 after #43 and #46
+- [ ] #57 w2-19 story-room eval suites: PR #59 is READY, verifier launched
+- [ ] #60 w2-11 launch finish: filed, builder launched
+- [ ] #55 a counting `[BRAINTRUST] VOTE` fills the `bible` stage's judge place (found in the group D review: on `main` a `bible` pull request can never become lockable). PR #58 is verified. Ruling: braintrust votes on every `bible` pull request; the tally is lock rule 6
+- [x] rulings taken for group D (in the ticket bodies): Q7 to Q11, Q16, Q19 as recommended; the amendment is `bible/amendments/A-<n>.json` with a `class` key (the brief and `canon-keeper.md` over Q9's front matter); rule 6 applies to `amendment` stages and to `bible/**` changes outside the stage's own `paths`; a `LOCK` is posted as role `program:lock` with first line `[<ORCHESTRATOR ROLE ID>] LOCK`; `GATEWAY` and `RUN_TIMEOUT_MIN` stay in `production.env`, and `factory init` keeps writing `GATEWAY=on`, so a new production refuses launches until the gateway exists or it is set to `off` (fail closed; the w2-20 fixture sets `off`)
+- [ ] follow-ups filed: #53 (gate does not retry a failed push), #54 (one intermittent full-suite failure under concurrent test runs; main was green on 2 of 3 gate runs at 2819ab0), #56 (canon-keeper does not tell the maker to write the amendment's `class`)
+- [ ] update `docs/harness.md` section 5 (Q14)
+- [ ] group E: w2-15 tick, then w2-20 end to end: review, file and launch as their dependencies merge
 
 ## Review
 
