@@ -163,6 +163,8 @@ def _grade_seeded(case, result):
 
 
 def _grade_clean(case, result):
+    if result["marker"] == "BLOCKED":
+        return False, "blocked: marker BLOCKED"
     count = sum(n["severity"] == "Blocker" for n in result.get("notes", []))
     if result["marker"] == "NOTES" and count:
         return False, f"false alarm: {count} Blocker(s)"
@@ -216,26 +218,37 @@ def grade(case, result, run=1, run_dir=None):
     return graded
 
 
-def _rate(graded, kind, passed):
-    """The share of ``kind`` cases whose pass is ``passed``; None with no such case."""
+def _blocked(graded):
+    return graded.get("marker") == "BLOCKED"
+
+
+def _rate(graded, kind, counts):
+    """The share of ``kind`` cases for which ``counts`` holds; None with no such case."""
     group = [g for g in graded if g["kind"] == kind]
-    return sum(g["pass"] is passed for g in group) / len(group) if group else None
+    return sum(bool(counts(g)) for g in group) / len(group) if group else None
+
+
+def _passed(graded):
+    return graded["pass"] is True
 
 
 def metrics(kind, graded):
     """The suite's rates and score for one run of a role of ``kind``, rounded to 4 places.
 
     A checker: catch rate on seeded cases less false-alarm rate on clean ones (a clean case that does
-    not pass counts as an alarm). A maker: lint pass rate. A judge: agreement. A rate with no case
-    to count is None, and then there is no score: ``EvalError``.
+    not pass and is not ``BLOCKED`` counts as an alarm). A maker: lint pass rate. A judge: agreement.
+    A blocked case counts in each denominator and in no numerator; ``blocked`` is the number of
+    graded cases whose marker is ``BLOCKED``. A rate with no case to count is None, and then there is
+    no score: ``EvalError``.
     """
     if kind == "checker":
-        rates = {"catch_rate": _rate(graded, "seeded", True),
-                 "false_alarm_rate": _rate(graded, "clean", False)}
+        rates = {"catch_rate": _rate(graded, "seeded", _passed),
+                 "false_alarm_rate": _rate(graded, "clean",
+                                           lambda g: g["pass"] is False and not _blocked(g))}
     elif kind == "maker":
-        rates = {"lint_pass_rate": _rate(graded, "replay", True)}
+        rates = {"lint_pass_rate": _rate(graded, "replay", _passed)}
     elif kind == "judge":
-        rates = {"agreement": _rate(graded, "pair", True)}
+        rates = {"agreement": _rate(graded, "pair", _passed)}
     else:
         raise EvalError(f"no eval score for a role of kind {kind}")
     for name, value in rates.items():
@@ -245,6 +258,7 @@ def metrics(kind, graded):
     score = values[0] - values[1] if kind == "checker" else values[0]
     out = {name: round(value, PLACES) for name, value in rates.items()}
     out["score"] = round(score, PLACES)
+    out["blocked"] = sum(_blocked(g) for g in graded)
     return out
 
 

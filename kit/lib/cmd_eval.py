@@ -1,10 +1,11 @@
 """factory eval <role> [--runs N] [--harness fake|real] [--cases GLOB] [--out DIR] [--root DIR]: run a role's eval suite.
 
-Each case is copied to a temporary run directory, the role runs on it through the harness adapter,
-and the result is graded. Writes `results.jsonl` and `summary.json` to the output directory: no
-prompt, no model output beyond the marker and the graded detail, no setting value. Exit 0 when
-every run completed, 2 on usage, refusal or a malformed suite, 3 when a run's harness outcome was
-not `ok`. The suite under `<kit>/evals/` is never written.
+Each case is copied to a temporary run directory that `build_run_dir` makes a production around it,
+the role runs on it through the harness adapter, and the result is graded. Writes `results.jsonl`
+and `summary.json` to the output directory: no prompt, no model output beyond the marker and the
+graded detail, no setting value. Exit 0 when every run completed, 2 on usage, refusal or a
+malformed suite, 3 when a run's harness outcome was not `ok`. The suite under `<kit>/evals/` is
+never written.
 """
 
 import argparse
@@ -19,7 +20,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from kit.lib import evals, harness, production, prompt  # noqa: E402
+from kit.lib import cmd_init, evals, harness, production, prompt  # noqa: E402
 
 RUNNING_KIT = Path(__file__).resolve().parent.parent
 LIVE = "FACTORY_LIVE"
@@ -63,15 +64,36 @@ def _real_token(settings, meta, family):
     return harness.token_path(settings, slot, account)
 
 
+PAIR_FILES = ("bible/charter.md", "bible/canon/ledger.tsv")
+
+
+def build_run_dir(kit, case, run, run_dir):
+    """Build the directory ``run_dir`` a role works in for ``case`` in ``run``. Starts no harness.
+
+    A ``seeded``, ``clean`` or ``replay`` case: a production as ``factory init`` makes it, with
+    ``.factory/`` copied from ``kit`` without ``evals/``, then the case's ``tree/`` over it (a tree file
+    wins). A ``pair`` case: ``A/`` and ``B/`` only, each the version ``evals.sides`` gives it, plus the
+    init charter and canon ledger where the version has none.
+    """
+    run_dir = Path(run_dir)
+    if case.kind == "pair":
+        for side, version in sorted(evals.sides(case.id, run).items()):
+            shutil.copytree(case.path / version, run_dir / side)
+            for rel in PAIR_FILES:
+                path = run_dir / side / rel
+                if not path.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(cmd_init.FILES[rel], encoding="utf-8")
+        return
+    cmd_init.install(run_dir, Path(kit), cmd_init.parse_rooms(cmd_init.DEFAULT_ROOMS), evals=False)
+    shutil.copytree(case.path / "tree", run_dir, dirs_exist_ok=True)
+
+
 def _run_case(case, run, job):
     """``(harness status, graded)`` for one case in one run."""
     base = job["work"] / f"{run}-{case.id}"
     run_dir = base / "run"
-    if case.kind == "pair":
-        for side, version in sorted(evals.sides(case.id, run).items()):
-            shutil.copytree(case.path / version, run_dir / side)
-    else:
-        shutil.copytree(case.path / "tree", run_dir)
+    build_run_dir(job["kit"], case, run, run_dir)
     (base / "config").mkdir()
     values = {"TASK": case.task, "TICKET": f"eval {case.id}", "WORKTREE": str(run_dir),
               "REPO": "eval", "RULES": job["rules"], "BRANCH": "eval", "PR": "0"}
@@ -121,8 +143,8 @@ def _run(args):
             token.touch(mode=0o600)
         else:
             token = _real_token(settings, meta, family)
-        job = {"work": work, "rules": rules, "body": body, "meta": meta, "settings": settings,
-               "family": family, "token": token}
+        job = {"kit": kit, "work": work, "rules": rules, "body": body, "meta": meta,
+               "settings": settings, "family": family, "token": token}
         for run in range(1, args.runs + 1):
             graded = []
             for case in cases:
@@ -133,6 +155,8 @@ def _run(args):
                                         sort_keys=True))
             per_run.append(evals.metrics(kind, graded))
             print(f"run {run}: score {per_run[-1]['score']}")
+            if per_run[-1]["blocked"]:
+                print(f"run {run}: {per_run[-1]['blocked']} blocked")
 
     spread = evals.noise([m["score"] for m in per_run])
     summary = {"role": args.role, "kind": kind, "harness": args.harness, "harness_version": version,
