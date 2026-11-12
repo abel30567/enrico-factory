@@ -750,7 +750,10 @@ class OwnWorldRules(Case):
                             "  rule 6 amendment: bible/amendments/A-1.json: class arc needs a [BRAINTRUST] VOTE "
                             "with 5 or more for, later than the maker's last READY or ADDRESSED"])
         self.tick_line(w, ["NEED #3 lock refused: rule 6 amendment"])
-        w.post(4, "[BRAINTRUST] VOTE 6-1\n\nThe lamp belongs in the canon.\n", "braintrust")
+        w.post(4, "[BRAINTRUST] VOTE 6-1\n\nThe lamp belongs in the canon.\n"
+                  f"reviewed head {w.head(w.record('pulls', 4)['head_ref'])} manifest "
+                  f"{gitstate.manifest(w.show, w.record('pulls', 4)['base_ref'], w.record('pulls', 4)['head_ref'])}\n",
+               "braintrust")
         self.lockable(w, 4, 3, "bible", "A-1")
         self.locks(w, 4, 3, 1)
 

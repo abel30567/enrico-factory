@@ -82,7 +82,7 @@ def _check_comment(comment: dict, line: int, kinds: dict[str, tuple[str, str]]) 
         bad = _rule3(role, marker, kinds)
         if bad:
             found.append((bad[0], f"{first!r}: {bad[1]}"))
-        if (marker.actor == "LINT" or marker.verb in markers.ROLE_VERDICTS) and markers.reviewed(body) is None:
+        if markers.is_verdict(marker) and markers.reviewed(body) is None:
             found.append(("marker-reviewed", f"{first!r}: verdict does not end with "
                                              f"'reviewed head <sha> manifest <hash>'"))
     return [Finding(COMMENTS, line, rule, f"comment {cid}: {message}") for rule, message in found]

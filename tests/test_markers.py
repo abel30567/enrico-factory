@@ -289,6 +289,41 @@ class CountsTest(unittest.TestCase):
         self.assertTrue(self.counts(self.approved)[1].startswith("head: "))
 
 
+class ReviewedReasonTest(unittest.TestCase):
+    """``reviewed_reason`` is the reviewed-head part of ``counts``: the same answer for the same comment."""
+
+    def setUp(self):
+        fx = load("pr_current.json")
+        self.pr, self.stage, self.roles = fx["pr"], fx["stage"], fx["roles"]
+        self.approved = copy.deepcopy(next(c for c in self.pr["comments"] if c["id"] == 103))
+
+    def assertReason(self, verdict, expected):
+        self.assertEqual(markers.reviewed_reason(verdict, self.pr), expected)
+        if expected is not None:
+            self.assertEqual(markers.counts(verdict, self.pr, self.stage, self.roles), (False, expected))
+
+    def test_current_head_and_manifest(self):
+        self.assertReason(self.approved, None)
+
+    def test_head_followed_only_by_a_merge_of_the_base(self):
+        self.approved["body"] = self.approved["body"].replace(SHA["3"], SHA["2"])
+        self.assertReason(self.approved, None)
+
+    def test_no_reviewed_head_line(self):
+        self.approved["body"] = "[STORY-EDITOR] APPROVED\ncriterion 1: beats in order"
+        self.assertReason(self.approved, "reviewed: no reviewed head line")
+
+    def test_older_head(self):
+        self.approved["body"] = self.approved["body"].replace(SHA["3"], SHA["1"])
+        self.assertReason(self.approved,
+                          "head: commit %s after %s is not a merge of the base" % (SHA["2"], SHA["1"]))
+
+    def test_different_manifest(self):
+        current = self.pr["manifest"]
+        self.approved["body"] = self.approved["body"].replace("manifest " + current, "manifest none")
+        self.assertReason(self.approved, "manifest: none is not the current manifest %s" % current)
+
+
 class SummaryTest(unittest.TestCase):
     def summary(self, fx):
         return markers.summary(fx["pr"], fx["stage"], fx["roles"])

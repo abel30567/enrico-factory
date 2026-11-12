@@ -177,15 +177,19 @@ def _selected(state, ticket, entry, pull):
     return f"ticket #{ticket['number']} selected PR #{chosen}"
 
 
-def _voted(entry, comments):
-    """The latest ``[BRAINTRUST] VOTE`` after the maker's last READY or ADDRESSED has enough votes for."""
+def _voted(entry, pull):
+    """``(enough, reason)`` for the latest ``[BRAINTRUST] VOTE`` after the maker's last READY or ADDRESSED:
+    ``enough`` when it has enough votes for, ``reason`` from ``markers.reviewed_reason`` for that vote."""
+    comments = pull["comments"]
     last = _makers_last(entry, comments)
     vote = None
     for c in _ordered(comments):
         m = markers.parse(c["body"])
         if m and m.actor == VOTE_ACTOR and m.verb == "VOTE" and (last is None or _order(c) > last):
-            vote = m
-    return vote is not None and int(vote.args[0]) >= VOTE_MIN
+            vote = (c, m)
+    if vote is None or int(vote[1].args[0]) < VOTE_MIN:
+        return False, None
+    return True, markers.reviewed_reason(vote[0], pull["git"])
 
 
 def _amendment(entry, pull, root):
@@ -209,10 +213,14 @@ def _amendment(entry, pull, root):
     approved = pull["summary"]["checkers"].get(CANON_REVIEWER)
     if approved is None or approved["verb"] != "APPROVED":
         return f"{CANON_REVIEWER} has no counting APPROVED"
-    if (kind in VOTE_CLASSES or CHARTER in changed) and not _voted(entry, pull["comments"]):
-        why = f"class {kind}" if kind in VOTE_CLASSES else f"a change to {CHARTER}"
-        return (f"{path}: {why} needs a [{VOTE_ACTOR}] VOTE with {VOTE_MIN} or more for, "
-                "later than the maker's last READY or ADDRESSED")
+    if kind in VOTE_CLASSES or CHARTER in changed:
+        enough, reason = _voted(entry, pull)
+        if not enough:
+            why = f"class {kind}" if kind in VOTE_CLASSES else f"a change to {CHARTER}"
+            return (f"{path}: {why} needs a [{VOTE_ACTOR}] VOTE with {VOTE_MIN} or more for, "
+                    "later than the maker's last READY or ADDRESSED")
+        if reason:
+            return f"{path}: the [{VOTE_ACTOR}] VOTE does not count: {reason}"
     return ""
 
 
