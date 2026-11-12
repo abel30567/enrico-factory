@@ -1,8 +1,11 @@
-# Synthetic harness envelopes
+# Harness envelopes
 
-Every file here is **synthetic**: written by hand for `tests/test_harness.py`, not recorded from a
-harness build. The orchestrator replaces them with envelopes recorded from the pinned build; a
-replacement must keep the field values listed below, or the test that reads it must change with it.
+Three files here are recorded from harness build `2.1.290 (hbar)` on 2026-11-12, during the launches
+`12-3`, `12-2` and `12-1` of enrico-factory issue #85, and copied unchanged: `recorded-ok-approved.stdout`,
+`recorded-ok-blocked.stdout` and `recorded-background-turn.stdout`. Every other file is **synthetic**:
+written by hand for `tests/test_harness.py`, not recorded from a harness build. A synthetic file
+replaced by a recorded one must keep the field values listed below, or the test that reads it must
+change with it.
 
 A `.stdout` file is what the harness printed on standard output; a `.stderr` file is what it printed
 on standard error. `kit.lib.harness.read` takes the last stdout line that is a JSON object with
@@ -21,3 +24,6 @@ on standard error. `kit.lib.harness.read` takes the last stdout line that is a J
 | `failed-subtype.stdout` | `failed` | `subtype` other than `success` (`error_max_turns`), `is_error` false |
 | `failed-error.stdout` | `failed` | `is_error` true, `result` matching neither the usage nor the login pattern |
 | `proxy-down.stderr` | `proxy_down` (with empty stdout) | no envelope on stdout; stderr matches `(?i)ECONNREFUSED\|connection refused` |
+| `recorded-ok-approved.stdout` | `ok`, marker `APPROVED` | `subtype` `success`, `is_error` false, `structured_output` an object with `marker` `APPROVED`; exit 0 |
+| `recorded-ok-blocked.stdout` | `ok`, marker `BLOCKED` | `subtype` `success`, `is_error` false, `structured_output` an object with `marker` `BLOCKED` and `blocked` holding `missing`, `tried` and `resume_from`; exit 0 |
+| `recorded-background-turn.stdout` | `failed`, reason `no result object` | `subtype` `success`, `is_error` false, no `structured_output`, `result` a prose string (the turn after a background command ended); exit 0 |
