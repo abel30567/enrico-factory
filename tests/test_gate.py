@@ -249,6 +249,111 @@ class FailingPost(github.Recorded):
         raise github.GitHubError(f"post #{number}: exit 1")
 
 
+class FlakyPush(github.Recorded):
+    """``Recorded`` whose first ``fails`` pushes raise; with ``remote`` a push also runs `git push origin`."""
+
+    def __init__(self, directory, fails=1, remote=False):
+        super().__init__(directory)
+        self.fails, self.remote = fails, remote
+
+    def push(self, root, ref):
+        if self.fails:
+            self.fails -= 1
+            raise github.GitHubError("push: exit 1")
+        if self.remote:
+            gitstate.git(root, "push", "-q", "origin", ref)
+        super().push(root, ref)
+
+
+class PushRetryTest(unittest.TestCase):
+    """A run whose push failed left the ledger line committed on the local base only: a rerun pushes it."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.target = str(self.w.root / CLEAN_JOB)
+
+    def run_gate(self, gh, apply=True):
+        with mock.patch.object(cmd_gate.github, "connect", return_value=gh):
+            return self.w.gate(self.target, apply)
+
+    def rows_of(self, digest):
+        return [r for r in self.w.ledger_rows() if r["hash"] == digest]
+
+    def half_done(self, gh):
+        """The first run, its push failing: the line committed on the base, nothing posted; the row."""
+        code, out, err = self.run_gate(gh)
+        self.assertEqual((code, out, err), (2, "", "gate: push: exit 1\n"))
+        [row] = self.w.ledger_rows()
+        self.assertEqual(self.w.git("log", "-1", "--format=%an", "trunk").strip(), "factory")
+        self.assertEqual(self.w.git("show", "--name-only", "--format=", "trunk").split(), [ledger.PATH])
+        self.assertNotIn("post", [e["op"] for e in self.w.log()])
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+        return row
+
+    def assert_posted_once(self, row, before):
+        """The log gained exactly ``push`` then ``post``, the comment quotes ``row``, one row has its hash."""
+        log = self.w.log()
+        self.assertEqual(log[:len(before)], before)
+        self.assertEqual([e["op"] for e in log[len(before):]], ["push", "post"])
+        [gate] = self.w.gates(JOB_TICKET)
+        self.assertIn("ledger: " + ledger.line(row).replace("\t", " | ") + "\n", gate["body"])
+        self.assertEqual(self.rows_of(row["hash"]), [row])
+
+    def test_failed_push_then_rerun_pushes_then_posts(self):
+        row = self.half_done(FlakyPush(self.w.dir, fails=1))
+        before = self.w.log()
+        code, out, err = self.run_gate(FlakyPush(self.w.dir, fails=0))
+        self.assertEqual((code, out, err), (0, f"gate job {row['hash']}: PASS cap - reason within caps\n", ""))
+        self.assert_posted_once(row, before)
+
+    def test_push_fails_on_the_rerun_too(self):
+        gh = FlakyPush(self.w.dir, fails=2)
+        row = self.half_done(gh)
+        self.assertEqual(self.run_gate(gh), (2, "", "gate: push: exit 1\n"))
+        self.assertNotIn("post", [e["op"] for e in self.w.log()])
+        self.assertEqual(self.rows_of(row["hash"]), [row])
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+        before = self.w.log()
+        self.assertEqual(self.run_gate(gh)[0], 0)
+        self.assert_posted_once(row, before)
+
+    def test_clean_twin_does_not_push_again(self):
+        code, out, err = self.run_gate(FlakyPush(self.w.dir, fails=0))
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([e["op"] for e in self.w.log()], ["push", "post"])
+        before = self.w.log()
+        self.assertEqual(self.run_gate(FlakyPush(self.w.dir, fails=0)),
+                         (0, out.rstrip("\n") + " (already recorded)\n", ""))
+        self.assertEqual(self.w.log(), before)
+        self.assertEqual(len(self.w.ledger_rows()), 1)
+
+    def test_without_apply_on_the_half_done_state(self):
+        self.half_done(FlakyPush(self.w.dir, fails=1))
+        log, refs = self.w.log(), self.w.git("for-each-ref", "--format=%(refname) %(objectname)")
+        tree = (gitstate.status(self.w.root), (self.w.root / ledger.PATH).read_text())
+        code, out, err = self.run_gate(FlakyPush(self.w.dir, fails=0), apply=False)
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+        self.assertEqual(self.w.log(), log)
+        self.assertEqual(self.w.git("for-each-ref", "--format=%(refname) %(objectname)"), refs)
+        self.assertEqual((gitstate.status(self.w.root), (self.w.root / ledger.PATH).read_text()), tree)
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+
+    def test_rerun_reaches_a_real_remote(self):
+        remote = self.w.root.parent / "remote.git"
+        gitstate.git(self.w.root.parent, "init", "-q", "--bare", str(remote))
+        self.w.git("remote", "add", "origin", str(remote))
+        self.w.git("push", "-q", "origin", "trunk")
+        start = gitstate.head(self.w.root, "trunk")
+        gh = FlakyPush(self.w.dir, fails=1, remote=True)
+        self.half_done(gh)
+        self.assertNotEqual(gitstate.head(self.w.root, "trunk"), start)
+        self.assertEqual(gitstate.head(self.w.root, "origin/trunk"), start)
+        self.assertEqual(self.run_gate(gh)[0], 0)
+        self.assertEqual(self.w.git("rev-parse", "origin/trunk").strip(), gitstate.head(self.w.root, "trunk"))
+        self.assertEqual(gitstate.head(remote, "trunk"), gitstate.head(self.w.root, "trunk"))
+
+
 class JobGateTest(unittest.TestCase):
     def setUp(self):
         self.w = World(self)
@@ -376,7 +481,8 @@ class JobGateTest(unittest.TestCase):
         self.assertEqual(self.w.ledger_rows(), [row])
         [gate] = self.w.gates(JOB_TICKET)
         self.assertIn("ledger: " + ledger.line(row).replace("\t", " | ") + "\n", gate["body"])
-        self.assertEqual([e["op"] for e in self.w.log()], ["push", "post"])
+        # The rerun pushes the line again before it posts: a push the first run may not have made.
+        self.assertEqual([e["op"] for e in self.w.log()], ["push", "push", "post"])
 
     def test_frozen(self):
         (self.w.dir / "issues" / "9.json").write_text(json.dumps({
