@@ -44,7 +44,7 @@ wave that first needs the resource (`docs/system-brief.md`, section 17).
 | `inference.other` | A second model family for judges | login | have | 2 | A local proxy already holds a ChatGPT login and an xAI login and speaks the harness's API. It is shared with other systems on the same machine, so a failure there is not always the factory's. Optional: without it a launch records `family: same`. |
 | `knowledge.fermi` | Fermi MCP: skills, memory, search | login | partly | 2 | The server exists. It has no reduced access: a login exposes every tool, including secrets and desktop control, and its machine tokens get skills only. The knowledge gateway (`docs/harness.md`, section 6) is the wave 2 answer. See decision D2. |
 | `state.github` | Issues, pull requests, markers | login | have | 2 | Held by the programs only. |
-| sandbox | A per-launch `sandbox-exec` profile | none | missing | 2 | The software kit this repository is built with has no profile yet either, so its builders run unsandboxed today. |
+| sandbox | A per-launch `sandbox-exec` profile | none | have | 2 | Built and tested in the kit (`docs/harness.md`, section 7). Each machine lists its own extra login stores in `SANDBOX_DENY`. Not yet run under a real worker turn. |
 
 ### Story room
 

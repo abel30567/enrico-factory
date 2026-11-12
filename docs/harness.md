@@ -205,6 +205,18 @@ On macOS this is a `sandbox-exec` profile generated per launch; on a Linux rende
 The profile is part of the kit and is tested the same way as a lint: each denied action has a test
 that fails if the action succeeds.
 
+The profile allows by default and denies by list. The kit's list covers the secrets directory, the
+launcher's state directory and the credential stores it knows under the home directory, among them the
+harness's own default configuration. A machine that holds other login stores (a second harness, a local
+proxy's files) names them in the machine setting `SANDBOX_DENY`, a comma-separated list of absolute
+paths, where a leading `~/` is the home directory. A launch refuses an entry that is relative, or that is
+or contains the production, the worktree or the run directory. A worker's temporary directory is its own
+`tmp` directory inside the run directory, not the launcher's.
+
+Two limits are known. A deny list protects only what it names, so a new login store on the machine is
+readable until it is added. And the kernel checks a program by its path, so a copy of a denied program
+made by the worker still runs; for GitHub the boundary is that the worker cannot read the login.
+
 ## 8. Tools and credentials
 
 - **Tools a role holds** are the harness's own (read, edit, write, search, shell, web) as its file lists.
