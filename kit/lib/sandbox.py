@@ -7,8 +7,9 @@ network connections other than to its named endpoints.
 
 The macOS sandbox cannot filter outbound connections by host name. An endpoint is `localhost:<port>`
 or `*:<port>`, so a remote model endpoint is `*:443`; anything tighter needs a local egress proxy,
-which this module does not provide. Only IP traffic is denied, so Unix-socket and local
-name-resolution traffic that a process needs to resolve and connect stays allowed.
+which this module does not provide. Unix-socket traffic, which local name resolution needs, stays
+allowed. The deny rule has no filter: on macOS 14 a deny filtered by `(remote ip "*:*")` also denies
+a fixed set of allowed ports, roughly one in seven.
 
 An error message names setting keys and fixed words, never a path.
 """
@@ -63,7 +64,7 @@ def profile(root, worktree, scratch, state_dir, secrets_dir, home, web=False, en
         f"(deny process-exec {exec_paths})",
     ]
     if not web:
-        lines.append('(deny network-outbound (remote ip "*:*"))')
+        lines += ["(deny network-outbound)", "(allow network-outbound (remote unix-socket))"]
         lines += [f"(allow network-outbound (remote ip {_quote(e)}))" for e in sorted(set(allowed))]
     return "\n".join(lines) + "\n"
 
