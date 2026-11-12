@@ -20,7 +20,10 @@ GIST_ID = STATE / "board-gist-id"   # local only; the gist is secret (unlisted)
 
 
 def gh(*a):
-    p = subprocess.run(["gh", *a], capture_output=True, text=True)
+    for _ in range(3):  # a TLS handshake that timed out sent nothing, so the call is safe to repeat
+        p = subprocess.run(["gh", *a], capture_output=True, text=True)
+        if not p.returncode or "TLS handshake timeout" not in p.stderr:
+            break
     if p.returncode:
         sys.exit(f"gh {' '.join(a[:4])}: {p.stderr.strip()[:400]}")
     return p.stdout
@@ -175,9 +178,10 @@ def sync():
         edit = lambda *a: gh("project", "item-edit", "--id", item["id"], "--project-id", pid, *a)
         if cur != status:
             edit("--field-id", st["id"], "--single-select-option-id", opt[status])
-        if key:
+        if key and item.get("key") != key:
             edit("--field-id", fs["Key"]["id"], "--text", key)
-        edit("--field-id", fs["Fix rounds"]["id"], "--number", str(rounds))
+        if item.get("fix rounds") != rounds:
+            edit("--field-id", fs["Fix rounds"]["id"], "--number", str(rounds))
 
 
 if __name__ == "__main__":
