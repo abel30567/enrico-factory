@@ -1,0 +1,14 @@
+[
+ {
+  "body": "[PAINTER] READY\nThe work is on the branch.\n",
+  "created_at": "2026-11-06T10:00:00Z",
+  "id": 601,
+  "role": "painter"
+ },
+ {
+  "body": "[INSPECTOR] APPROVED\nEvery criterion holds.\nreviewed head {head:6} manifest none\n",
+  "created_at": "2026-11-06T10:10:00Z",
+  "id": 602,
+  "role": "inspector"
+ }
+]
