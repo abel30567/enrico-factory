@@ -1,4 +1,4 @@
-"""structure: rules 1 to 10 of an episode's files."""
+"""structure: rules 1 to 11 of an episode's files."""
 
 import json
 import os
@@ -15,6 +15,8 @@ from test_lint import ROOT, LintCase, cli, lint  # noqa: E402
 FIX = ROOT / "tests" / "fixtures" / "lint_structure"
 CLEAN = FIX / "clean"
 E1, E2 = "episodes/ep01", "episodes/ep02"  # short-hook-payoff (skips outline), episode-acts
+P1, R1, R2 = f"{E1}/intent-packet.json", f"{E1}/reel/edit-list.json", f"{E2}/reel/edit-list.json"
+PIPELINE = json.loads((ROOT / "kit" / "pipeline.json").read_text(encoding="utf-8"))
 INPUT = re.compile(r"^episodes/[^/]+/(premise\.md|beats\.md|outline\.md|script\.md|lines\.json"
                    r"|sequences/.+\.json|reel/edit-list\.json)$")
 
@@ -273,6 +275,73 @@ class Structure(LintCase):
         self.assertOnly(root, "structure", [(f"{E1}/reel/edit-list.json", 1, "depends"),
                                             (f"{E1}/reel/edit-list.json", 1, "edit-list"),
                                             (f"{E1}/reel/edit-list.json", 1, "edit-list")])
+
+    # The story package at the reel: the intent packet and the bible version (ISSUE-97)
+
+    def test_behaviour1_a_reel_needs_its_intent_packet(self):
+        for ep in (E1, E2):
+            self.assertTrue((CLEAN / ep / "intent-packet.json").is_file(), ep)
+            self.assertEqual(load(f"{ep}/reel/edit-list.json")["bible"], "A-1")
+        self.assertTrue((CLEAN / "bible/amendments/A-1.json").is_file())
+        self.assertEqual(self.structure(CLEAN).status, lint.PASS)
+        self.fails([(R1, 1, "depends")], drop=[P1])
+        found = self.structure(self.tree(drop=[P1])).findings
+        self.assertEqual(found[0].message, f"{P1} is missing")
+
+    def test_behaviour2_rule11_intent_packet_shape(self):
+        packet = load(P1)
+        self.assertEqual(sorted(packet), ["cta", "hook", "spoilers", "tone"])
+        bad = [{k: v for k, v in packet.items() if k != key} for key in sorted(packet)]
+        bad += [dict(packet, extra="x"), dict(packet, spoilers="a reveal"), dict(packet, hook="   "),
+                dict(packet, cta=["Ask", 3]), [packet]]
+        for data in bad:
+            with self.subTest(data):
+                self.fails([(P1, 1, "intent-packet")], {P1: dump(data)})
+        found = self.structure(self.tree({P1: dump([packet])})).findings
+        self.assertEqual(found[0].message, "not {hook, spoilers: [...], cta: [...], tone}")
+        result = self.structure(self.tree({P1: dump(dict(packet, spoilers=[], cta=[]))}))
+        self.assertEqual(result.status, lint.PASS, result.findings)
+
+    def test_behaviour3_bible_is_an_amendment_id(self):
+        reel = load(R1)
+        bad = [{k: v for k, v in reel.items() if k != "bible"}] + \
+            [dict(reel, bible=value) for value in (1, "", "A1", "a-1", "A-1.json")]
+        for data in bad:
+            with self.subTest(data):
+                self.fails([(R1, 1, "edit-list")], {R1: dump(data)})
+                found = self.structure(self.tree({R1: dump(data)})).findings
+                self.assertEqual(found[0].message, "bible is not the id A-<n> of an amendment")
+        result = self.structure(self.tree({R1: dump(dict(reel, bible="A-1"))}))
+        self.assertEqual(result.status, lint.PASS, result.findings)
+
+    def test_behaviour4_bible_names_an_amendment_in_the_tree(self):
+        later = {R2: dump(dict(load(R2), bible="A-2"))}
+        self.fails([(R2, 1, "edit-list")], later)
+        found = self.structure(self.tree(later)).findings
+        self.assertEqual(found[0].message, "bible A-2: bible/amendments/A-2.json is missing")
+        root = self.tree(dict(later, **{"bible/amendments/A-2.json": read("bible/amendments/A-1.json")}))
+        self.assertEqual(load(R1)["bible"], "A-1")
+        result = self.structure(root)
+        self.assertEqual(result.status, lint.PASS, result.findings)
+
+    def test_behaviour5_a_packet_without_a_reel_is_checked_for_its_shape(self):
+        neither = self.tree(drop=[R1, P1])
+        self.assertEqual(self.structure(neither).status, lint.PASS, self.structure(neither).findings)
+        packet_only = self.tree(drop=[R1])
+        self.assertEqual(self.structure(packet_only).status, lint.PASS, self.structure(packet_only).findings)
+        self.assertOnly(self.tree({P1: dump(dict(load(P1), extra=1))}, drop=[R1]), "structure",
+                        [(P1, 1, "intent-packet")])
+        result = self.structure(self.tree({P1: "{not json\n"}, drop=[R1]))
+        self.assertEqual(result.status, lint.ERROR)
+        self.assertIn(P1, result.reason)
+
+    def test_behaviour7_the_reel_stage_lints_post_the_refusal(self):
+        checks = next(e["lint"] for e in PIPELINE if e["stage"] == "reel")
+        self.assertIn("structure", checks)
+        self.assertTrue(lint.marker(lint.run(CLEAN, only=checks)).startswith("[LINT] PASS"))
+        body = lint.marker(lint.run(self.tree(drop=[P1]), only=checks))
+        self.assertTrue(body.startswith("[LINT] FAIL"), body)
+        self.assertIn(f"- B1 structure {R1}:1 {P1} is missing", body.splitlines())
 
     def test_output_is_deterministic(self):
         root = self.tree(self.edit(f"{E2}/outline.md", "beats: B3", "beats: B3, B9"),

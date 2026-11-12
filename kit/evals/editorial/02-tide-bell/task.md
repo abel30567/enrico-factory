@@ -1,1 +1,1 @@
-Write the story reel of episode ep01 (an edit list over its board) from the locked files in this tree. Write only episodes/ep01/reel/edit-list.json.
+Write the story reel of episode ep01 (an edit list over its board) and its intent packet from the locked files in this tree. Write only episodes/ep01/reel/edit-list.json and episodes/ep01/intent-packet.json.

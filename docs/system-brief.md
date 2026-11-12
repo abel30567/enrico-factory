@@ -207,7 +207,7 @@ the orchestrator selects one.
 | story | `sequences` | episode | head-of-story | every scene assigned to one sequence | continuity-supervisor |
 | story | `style` | style lock | art-director | references resolve, palette values present | look-reviewer |
 | story | `board` | sequence | story-artist | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
-| story | `reel` | episode | editorial | edit list covers every beat ID, runtime | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
+| story | `reel` | episode | editorial | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
 | production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame | none |
 | production | `assets` | asset | asset-builder | naming, references, budgets, scale against the bible, skeleton | look-reviewer |
 | production | `rigging` | asset | rigger | range of motion, limits, interpenetration, rig hash | deformation-reviewer |
@@ -269,7 +269,7 @@ to it on the base branch, and nothing else may write it.
 
 | Store | Path | Written by | Notes |
 |---|---|---|---|
-| Series bible | `bible/charter.md`, `bible/canon/**`, `bible/amendments/A-<n>.json` | canon-keeper, by amendment | Each episode records the bible version it was built from |
+| Series bible | `bible/charter.md`, `bible/canon/**`, `bible/amendments/A-<n>.json` | canon-keeper, by amendment | Each episode records the bible version it was built from, as `bible` in its `reel/edit-list.json` |
 | Playbook | `playbook/PB-<n>.md` | retro-agent, audience-analyst, render-reviewer | A lesson with evidence, confidence and an expiry date. Expired lessons are dropped |
 | Pivot queue | issues labelled `pivot`, class `P0`..`P3` | researcher, trend-scout, audience-analyst | Each states what it touches and a hypothesis written before testing |
 | Judge calibration set | `calibration/` | audience-analyst | Scenes labelled with real audience response. The only path by which audience data changes how judges score |
@@ -569,11 +569,11 @@ These are the shapes the `structure` lint checks. IDs are stable once locked: be
 | `ledger.json` | a list of `{subject, attribute, value, tag, source, scene}`: the facts the episode asserts |
 | `sequences/<Q>/sequence.json` | `{id, scenes: [S<n>, ...]}`. Every scene is in exactly one sequence |
 | `sequences/<Q>/shots/<shot>.json` | `{id, scene, beat, duration, characters: [...], set, camera, action}`, optional `panel: media:<id>`. `duration` is seconds, above zero. Each character is a file `bible/canon/characters/<id>.md` and the set a file `bible/canon/places/<id>.md` |
-| `reel/edit-list.json` | `{fps, events: [{shot, beat, start, duration}]}`: events in order with no gap or overlap, every shot exists, every beat ID appears, and the total is inside the format's runtime |
-| `intent-packet.json` | `{hook, spoilers: [...], cta: [...], tone}` |
+| `reel/edit-list.json` | `{fps, bible, events: [{shot, beat, start, duration}]}`: events in order with no gap or overlap, every shot exists, every beat ID appears, and the total is inside the format's runtime. `bible` is the bible version the episode was built from: the id `A-<n>` of an amendment under `bible/amendments/`, which must exist |
+| `intent-packet.json` | `{hook, spoilers: [...], cta: [...], tone}`, exactly these keys. Written by `editorial` in the reel pull request, and required from the reel on |
 
 The lint checks a file only when it exists, and the files a stage needs only from that stage on:
-a premise alone passes; a script without `lines.json` fails.
+a premise alone passes; a script without `lines.json` fails; a reel without `intent-packet.json` fails.
 
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
 the canon ledger, the episode ledger, the role file, the task.

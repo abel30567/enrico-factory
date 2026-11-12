@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/mira.md": "adds Mira",
+    "bible/canon/characters/abel.md": "adds Abel",
+    "bible/canon/places/tide-flats.md": "adds the tide flats"
+  },
+  "why": "the bell episode needs the girl, her father and the flats",
+  "evidence": {
+    "bible/canon/places/tide-flats.md": "the drowned church at the lowest tide"
+  }
+}

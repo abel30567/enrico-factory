@@ -1,1 +1,1 @@
-{"kind": "replay", "lint": ["structure", "media"], "expect_files": ["episodes/ep01/reel/edit-list.json"]}
+{"kind": "replay", "lint": ["structure", "media"], "expect_files": ["episodes/ep01/reel/edit-list.json", "episodes/ep01/intent-packet.json"]}

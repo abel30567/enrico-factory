@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import frontmatter, markers, roles  # noqa: E402
+from kit.lib import frontmatter, markers, production, roles  # noqa: E402
 from kit.lib.frontmatter import as_list  # noqa: E402
 
 KIT = ROOT / "kit"
@@ -371,6 +371,39 @@ class SeededDefectTest(unittest.TestCase):
         own = kit.own("retro-agent")
         self.assertIn("names a model, flag or path: '--model'", own)
         self.assertTrue(any(p.endswith(f"more than {MAX_LINES}") for p in own))
+
+
+PACKET = "episodes/ep01/intent-packet.json"
+
+
+def packet_writers(kit_dir):
+    """The roles whose `writes` and the stages whose `paths` reach an episode's intent packet."""
+    loaded = roles.load_roles(Path(kit_dir) / "roles")
+    writers = sorted(r for r, doc in loaded.items()
+                     if production.matches(PACKET, as_list(doc["meta"].get("writes"))))
+    stages = sorted(e["stage"] for e in roles.load_pipeline(Path(kit_dir) / "pipeline.json")
+                    if production.matches(PACKET, e["paths"]))
+    return writers, stages
+
+
+class IntentPacketTest(unittest.TestCase):
+    """Behaviour 6 of ISSUE-97: editorial writes the packet, in the reel stage, and nobody else."""
+
+    def test_only_editorial_at_the_reel_writes_the_packet(self):
+        self.assertEqual(packet_writers(KIT), (["editorial"], ["reel"]))
+
+    def test_the_old_reel_writes_cannot_write_the_packet(self):
+        kit = KitCopy(self)
+        kit.edit("editorial", "writes: episodes/*/reel/**, episodes/*/intent-packet.json",
+                 "writes: episodes/*/reel/**")
+        self.assertEqual(packet_writers(kit.dir), ([], ["reel"]))
+        self.assertIn("reel: editorial writes lacks episodes/*/intent-packet.json", coverage_problems(kit.dir))
+
+    def test_another_role_with_the_glob_is_seen(self):
+        kit = KitCopy(self)
+        kit.edit("script-writer", "episodes/*/ledger.json\n",
+                 "episodes/*/ledger.json, episodes/*/intent-packet.json\n")
+        self.assertEqual(packet_writers(kit.dir), (["editorial", "script-writer"], ["reel"]))
 
 
 if __name__ == "__main__":
