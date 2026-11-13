@@ -1,0 +1,12 @@
+{
+ "base_ref": "main",
+ "body": "Ticket: #1\n",
+ "created_at": "2026-11-05T10:00:00Z",
+ "head_ref": "feat/LA-1-layout",
+ "labels": [],
+ "merged_at": "2026-11-05T12:00:00Z",
+ "number": 2,
+ "state": "merged",
+ "ticket": 1,
+ "title": "Work for #1"
+}

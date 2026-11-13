@@ -1,0 +1,12 @@
+{
+ "base_ref": "main",
+ "body": "Ticket: #13\n",
+ "created_at": "2026-11-05T10:00:00Z",
+ "head_ref": "feat/RN-1-render",
+ "labels": [],
+ "merged_at": null,
+ "number": 14,
+ "state": "open",
+ "ticket": 13,
+ "title": "Work for #13"
+}
