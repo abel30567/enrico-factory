@@ -182,6 +182,19 @@ def _operator_task(root, role, ticket, pull, found):
     return "\n".join(lines)
 
 
+def _cite_task(root, pull, found, task):
+    """``task`` with the block that asks the maker to cite the media of the pull's jobs."""
+    n = pull["number"]
+    lines = [f"Cite the media of the jobs on pull request #{n}."]
+    lines += [f"- {job['request']}: media: {_media(root, pull['git']['head'], job['hash'])}" for job in found["jobs"]]
+    lines.append("Write the files that wait for these images. "
+                 "Do not change or remove a request: a changed request is a new job.")
+    block = "\n".join(lines)
+    if task == f"Address every open note on pull request #{n}.":
+        return block
+    return _joined([block, task])
+
+
 def _default_task(p, state, kind, ticket, pull, judged, blocked=None):
     if kind == "orchestrator":
         return _orchestrator_task(p, ticket, pull, judged, blocked)
@@ -435,6 +448,10 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         task = _operator_task(root, role, ticket, pull, requested)
     else:
         task = _default_task(p, state, kind, ticket, pull, judged, blocked)
+        if kind == "maker" and pull is not None:
+            found = jobs.of(p, root, state, ticket, pull)
+            if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):
+                task = _cite_task(root, pull, found, task)
     issue = gh.issue(t)
     values = {
         "REPO": production.setting(p, "REPO"),

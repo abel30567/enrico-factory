@@ -216,7 +216,7 @@ SPECIFIC = {
     "audience-analyst": ("never says what to change",),
     "art-director": ("`bible/style/requests/<id>.json`", "`{for, prompt, refs}`", "`for` the sheet",
                      *REQUEST, "A model sheet or a design image of a new subject",
-                     "cite its `media:<id>` in the sheet"),
+                     "cite its `media:<id>` in the sheet", "Until then, write no model sheet of that subject."),
     "story-artist": ("`episodes/<ep>/sequences/<Q>/shots/requests/<id>.json`", "`{for, prompt, refs}`",
                      "`for` the shot id", *REQUEST,
                      "A panel is only an image already in `media/manifest.tsv`.",

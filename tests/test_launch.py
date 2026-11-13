@@ -644,6 +644,29 @@ class OperatorLaunch(unittest.TestCase):
         self.assertIn("Task: Report on the jobs of pull request #7. Write no file.\n"
                       f"- {self.JOB}: job {digest} DONE usd 0.75 compute_min 4; media: {media}\n", self.prompt(run))
 
+    def test_the_maker_cites_the_media(self):
+        # ISSUE-285 behaviour 8: every job DONE, the maker's task asks it to cite the media.
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        digest = self.job()
+        self.passed(digest)
+        self.ledger_row("run", digest, "DONE")
+        media = f"{digest[:16]}-r1.png"
+        self.on_branch({"media/manifest.tsv": f"id\tsha256\tbytes\tsource\n{media}\t{'a' * 64}\t9\tjob {digest}\n"})
+        run = self.w.prepare("drafter", 7)
+        self.assertIn("Task: Cite the media of the jobs on pull request #7.\n"
+                      f"- {self.REQUEST}: media: {media}\n"
+                      "Write the files that wait for these images. "
+                      "Do not change or remove a request: a changed request is a new job.\n", self.prompt(run))
+
+    def test_a_job_not_run_is_not_cited(self):
+        # Seeded: a PASS and no run.
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        self.passed(self.job())
+        run = self.w.prepare("drafter", 7)
+        text = self.prompt(run)
+        self.assertIn("Task: Address every open note on pull request #7.", text)
+        self.assertNotIn("Cite the media", text)
+
 
 class Fence(unittest.TestCase):
     """Criterion 6."""

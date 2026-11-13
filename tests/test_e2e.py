@@ -1127,6 +1127,7 @@ class OperatorJob(Case):
                       evidence=EVIDENCE),
                  editor_approved(),
                  step("You are the media wrangler", "READY", evidence=EVIDENCE),
+                 step("You are editorial", "READY", evidence=EVIDENCE),
                  editor_approved())
 
     def launched(self, role):
@@ -1168,6 +1169,7 @@ class OperatorJob(Case):
         self.assertIn(f"Report on the jobs of pull request #4. Write no file.\n- {self.JOB}: job {self.digest} DONE "
                       f"usd 1 compute_min 2; media: {media_id}\n", reporting["body"])
         self.assertEqual(first(w.comments(4)[-1]), "[MEDIA-WRANGLER] READY")
+        self.tick_line(w, ["STEP #3 launch editorial on PR #4"], apply=True)
         self.tick_line(w, ["STEP #3 lint PR #4"], apply=True)
         self.tick_line(w, ["STEP #3 launch story-editor on PR #4"], apply=True)
         self.assertEqual(len(self.launched("media-wrangler")), 2)
@@ -1183,6 +1185,137 @@ class OperatorJob(Case):
                          (1, "", f"launch: job {self.digest} has no counting GATE PASS\n"))
         self.assertEqual(len(w.log()), posts)
         self.assertEqual(sorted(p.name for p in (w.state / "runs").iterdir()), runs)
+
+
+class StyleJob(Case):
+    """ISSUE-285: a style ticket whose art director asks for an image, cites it after the run, and locks.
+    The world is OperatorJob's with the `style` stage of kit/pipeline.json, after nothing, as its second
+    stage; the request is tests/fixtures/e2e/jobs/request.json at bible/style/requests/ama.json."""
+
+    REQUEST = "bible/style/requests/ama.json"
+    JOB = "jobs/" + REQUEST
+    SHEET = "bible/style/characters/ama.md"
+    CAPS = OperatorJob.CAPS
+    HEADER = "PR #4 #3 story/style look: NO 1 rule(s)"
+    LINES = ["STEP #3 launch art-director on #3", "STEP #3 launch media-wrangler on PR #4", "STEP #3 lint PR #4",
+             "STEP #3 launch look-reviewer on PR #4", f"STEP #3 gate {JOB} PR #4", f"STEP #3 run {JOB} PR #4",
+             "STEP #3 launch media-wrangler on PR #4", "STEP #3 launch art-director on PR #4", "STEP #3 lint PR #4",
+             "STEP #3 launch look-reviewer on PR #4", "STEP #3 gate PR #4", "STEP #3 sync PR #4",
+             "STEP #3 lock PR #4"]
+
+    def setUp(self):
+        OperatorJob.setUp(self)
+        w = self.w
+        style = next(e for e in json.loads((ROOT / "kit" / "pipeline.json").read_text()) if e["stage"] == "style")
+        entries = pipeline()
+        entries[1] = {**style, "after": ""}
+        (w.show / ".factory" / "pipeline.json").write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("the style stage")
+        w.set_record("issues", 3, labels=["room:story", "stage:style", "tracked", "unit:look"],
+                     title="[LOOK] Style lock")
+        self.media = f"{self.digest[:16]}-frame.txt"
+        self.script(f"# Ama\n\nReference: ![ama](media:{self.media})\n")
+
+    def script(self, sheet, first=None):
+        """The six launches; ``first`` adds files to the art director's first READY."""
+        w = self.w
+        w.script(step("You are the art director", "READY", {self.REQUEST: self.request, **(first or {})},
+                      evidence=EVIDENCE),
+                 step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n"},
+                      evidence=EVIDENCE),
+                 step("You are the look reviewer", "APPROVED", evidence=EVIDENCE),
+                 step("You are the media wrangler", "READY", evidence=EVIDENCE),
+                 step("You are the art director", "READY", {self.SHEET: sheet}, evidence=EVIDENCE),
+                 step("You are the look reviewer", "APPROVED", evidence=EVIDENCE))
+
+    def ticks(self, w, lines):
+        for line in lines:
+            self.tick_line(w, [line], apply=True)
+
+    def to_sync(self):
+        w = self.w
+        self.ticks(w, self.LINES[:-1])
+        return w
+
+    def seed(self, w, files):
+        """A merge of the head and main that writes ``files`` (None removes the file); the old head."""
+        ref = w.record("pulls", 4)["head_ref"]
+        old, main = w.head(ref), w.head("main")
+        with w.detached(old) as where:
+            for rel, text in files.items():
+                path = where / rel
+                if text is None:
+                    path.unlink()
+                else:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(text)
+            w.git("add", "-A", cwd=where)
+            tree = w.git("write-tree", cwd=where).strip()
+        new = w.git("commit-tree", tree, "-p", old, "-p", main, "-m", "a seed").strip()
+        w.move_branch(ref, new, old)
+
+    def manifest(self, w):
+        return w.git("show", f"{w.record('pulls', 4)['head_ref']}:media/manifest.tsv")
+
+    def rule_7(self, *paths):
+        listed = ", ".join(paths)
+        return f"  rule 7 writes: outside the writes of art-director: {listed}; outside room story: {listed}"
+
+    def test_the_style_ticket_locks(self):
+        w = self.w
+        self.assertEqual([out for out in to_lock(self, w, 20)], [[line] for line in self.LINES])
+        citing = [c for c in w.comments(4) if first(c).startswith("[SHOWRUNNER] LAUNCH art-director")][-1]
+        self.assertIn(f"Cite the media of the jobs on pull request #4.\n- {self.REQUEST}: media: {self.media}\n"
+                      "Write the files that wait for these images. "
+                      "Do not change or remove a request: a changed request is a new job.\n", citing["body"])
+        self.assertEqual(first(w.comments(4)[-1]), "[SHOWRUNNER] LOCK")
+        self.assertEqual(w.git("show", "main:" + self.REQUEST), self.request)
+        self.assertEqual(w.git("show", "main:" + self.JOB), json.dumps(self.job, indent=1) + "\n")
+        self.assertIn(f"media:{self.media}", w.git("show", "main:" + self.SHEET))
+        self.assertIn(f"{self.media}\t", w.git("show", "main:media/manifest.tsv"))
+
+    def test_a_file_outside_both_writes(self):
+        w = self.to_sync()
+        self.assertEqual(w.lock(), (0, "PR #4 #3 story/style look: LOCKABLE\n", ""))
+        self.seed(w, {"notes/stray.md": "Not the art director's to write.\n"})
+        self.refused(w, 4, [self.HEADER, self.rule_7("notes/stray.md")])
+        self.tick_line(w, ["NEED #3 lock refused: rule 7 writes"])
+
+    def test_a_file_under_jobs_that_is_no_job(self):
+        w = self.to_sync()
+        self.seed(w, {"jobs/extra.json": "{}"})
+        self.refused(w, 4, [self.HEADER, self.rule_7("jobs/extra.json")])
+
+    def test_a_row_that_is_not_a_jobs(self):
+        w = self.to_sync()
+        self.seed(w, {"media/manifest.tsv": self.manifest(w) + f"extra\t{'0' * 64}\t3\tTEXT\n"})
+        self.assertIn(self.rule_7("media/manifest.tsv"), w.lock()[1].splitlines())
+
+    def test_a_removed_base_row(self):
+        w = self.w
+        row = f"lamp\t{'a' * 64}\t5\tTEXT\n"
+        w.write("media/manifest.tsv", "id\tsha256\tbytes\tsource\n" + row)
+        w.commit("a row on main")
+        w = self.to_sync()
+        text = self.manifest(w)
+        self.assertIn(row, text)
+        self.seed(w, {"media/manifest.tsv": text.replace(row, "")})
+        self.refused(w, 4, [self.HEADER, self.rule_7("media/manifest.tsv")])
+
+    def test_a_job_that_has_not_run(self):
+        w = self.w
+        self.ticks(w, self.LINES[:5])
+        self.assertIn(self.rule_7(self.JOB), w.lock()[1].splitlines())
+
+    def test_a_sheet_before_its_image(self):
+        w = self.w
+        self.script(f"# Ama\n\nReference: ![ama](media:{self.media})\n", {self.SHEET: "# Ama\n\nNo image yet.\n"})
+        self.ticks(w, self.LINES[:3])
+        lint = w.comments(4)[-1]
+        self.assertEqual(first(lint), "[LINT] FAIL")
+        self.assertIn(f"- B1 structure {self.SHEET}:1 no reference image cited as a link to media:<id>",
+                      lint["body"].splitlines())
+        self.tick_line(w, ["STEP #3 launch art-director on PR #4"])
 
 
 class BlockedJudgments(Case):

@@ -18,7 +18,7 @@ import re
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from kit.lib import blind, frontmatter, gitstate, lab, ledger, markers, production, tickets
+from kit.lib import blind, frontmatter, gitstate, jobs, lab, ledger, markers, production, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
          "base", "released", "bible-version", "keep", "pivot")
@@ -36,6 +36,7 @@ PIVOT_CLASSES = ("P0", "P1", "P2", "P3")
 PIVOT_LIMITS = {"P2": 3, "P3": 1}
 PIVOT_VOTED = ("P2", "P3")
 COOLDOWN_DAYS = 14
+MANIFEST_HEADER = "id\tsha256\tbytes\tsource"
 
 _AMENDMENT = re.compile(r"bible/amendments/A-\d+\.json")
 _CHECKS = re.compile(r"Checks required by stage (\S+): (.*)")
@@ -254,7 +255,33 @@ def _amendment(entry, pull, root):
     return ""
 
 
-def _writes(p, room, maker, changed):
+def operator_paths(p, state, ticket, pull, root) -> set:
+    """The paths rule 7 takes from the operator and from ``factory run``: the job file of each ``DONE`` job,
+    and the manifest when it keeps every row of the merge base and adds only rows of those jobs."""
+    found = jobs.of(p, root, state, ticket, pull)
+    if found is None:
+        return set()
+    done = [job for job in found["jobs"] if job["run"] == "DONE"]
+    accepted = {job["path"] for job in done}
+    if not done:
+        return accepted
+    head = pull["git"]["head"]
+    text = gitstate.show(root, head, gitstate.MANIFEST)
+    if text is None or text.splitlines()[:1] != [MANIFEST_HEADER]:
+        return accepted
+    base = gitstate.show(root, gitstate.merge_base(root, pull["base_ref"], head), gitstate.MANIFEST)
+    base_rows = set(base.splitlines()[1:]) if base is not None else set()
+    head_rows = text.splitlines()[1:]
+    added = [row for row in head_rows if row not in base_rows]
+    sources = {f"job {job['hash']}" for job in done}
+    if (base_rows <= set(head_rows) and added
+            and all(len(row.split("\t")) == 4 and row.split("\t")[3] in sources for row in added)):
+        accepted.add(gitstate.MANIFEST)
+    return accepted
+
+
+def _writes(p, room, maker, changed, accepted):
+    changed = [path for path in changed if path not in accepted]
     writes = frontmatter.as_list(p.roles[maker]["meta"].get("writes"))
     room_paths = [glob for e in production.stages(p, room) for glob in e["paths"]]
     outside_writes = [path for path in changed if not production.matches(path, writes)]
@@ -553,7 +580,8 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _upstream(p, state, ticket, root),
         _selected(state, ticket, entry, pull),
         _amendment(entry, pull, root),
-        (_lab_writes(p, ticket["room"], changed) if in_lab else _writes(p, ticket["room"], maker, changed))
+        (_lab_writes(p, ticket["room"], changed) if in_lab
+         else _writes(p, ticket["room"], maker, changed, operator_paths(p, state, ticket, pull, root)))
         if maker else no_maker,
         _repeat_notes(p, state, ticket, entry, pull),
         _gate(p, state, ticket, entry, pull, maker) if maker else no_maker,
