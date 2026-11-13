@@ -471,7 +471,10 @@ class B08ArgumentsAndTopic(Base):
         for read, line in ((("Harbour", "youtube"), "run: topic must match [a-z0-9][a-z0-9-]*"),
                            ((TOPIC, "vimeo"), "run: platform must be one of youtube, tiktok, instagram"),
                            ((TOPIC, "tiktok"), "run: no read tool for tiktok")):
-            with self.subTest(read=read):
+            with self.subTest(read=read), contextlib.ExitStack() as stack:
+                if read == (TOPIC, "tiktok"):
+                    empty = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+                    stack.enter_context(mock.patch.object(reads, "TOOLS_DIR", empty))
                 self.refused(line, read=read)
 
     def test_the_topic_file_only_in_the_working_tree(self):

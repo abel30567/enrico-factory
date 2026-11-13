@@ -1,0 +1,35 @@
+{
+ "source": "https://business-api.tiktok.com/portal/docs?id=1825119032526849",
+ "read_on": "2026-11-12",
+ "status": 200,
+ "body": {
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261112093000-invented-trending",
+  "data": {
+   "list": [
+    {
+     "hashtag_id": "7003",
+     "hashtag_name": "skarrowfen",
+     "rank_position": 1,
+     "views": 9183746,
+     "posts": 51729
+    },
+    {
+     "hashtag_id": "7001",
+     "hashtag_name": "harbourtales",
+     "rank_position": 3,
+     "views": 4827193,
+     "posts": 28364
+    },
+    {
+     "hashtag_id": "7002",
+     "hashtag_name": "lighthousekeeper",
+     "rank_position": 40,
+     "views": 736291,
+     "posts": 6158
+    }
+   ]
+  }
+ }
+}
