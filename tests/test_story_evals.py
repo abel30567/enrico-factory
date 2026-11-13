@@ -42,8 +42,6 @@ SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
 TREES = ("tree", "old", "new")
 READ_FIRST = re.compile(r"(?ms)^## Read first\n(.*?)(?=^## |\Z)")
 INSTALLED = ("bible/", "media/", "registry/", ".factory/")
-# Not decided by ISSUE-247: no program reads or writes registry/posts.tsv and nothing defines its columns.
-NOT_PROVIDED = {("canon-reviewer", "registry/posts.tsv")}
 
 
 def declared(role):
@@ -103,11 +101,11 @@ def files(path):
 
 
 def read_first(kit, role):
-    """The installed paths ``## Read first`` of the role file names, less the ones not provided."""
+    """The installed paths ``## Read first`` of the role file names."""
     section = READ_FIRST.search((kit / "roles" / f"{role}.md").read_text(encoding="utf-8")).group(1)
     named = {path for path in re.findall(r"`([^`]+)`", section)
              if path.startswith(INSTALLED) and not set(path) & set("<>*")}
-    return sorted(named - {path for name, path in NOT_PROVIDED if name == role})
+    return sorted(named)
 
 
 def checked_lints(kit, case):

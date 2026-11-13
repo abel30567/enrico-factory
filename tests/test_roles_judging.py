@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import frontmatter, markers, roles  # noqa: E402
+from kit.lib import frontmatter, lockrules, markers, roles  # noqa: E402
 from kit.lib.frontmatter import as_list  # noqa: E402
 
 KIT = ROOT / "kit"
@@ -46,6 +46,9 @@ ALL_VERBS = sorted(set(markers.ROLE_VERBS) | set(markers.CHANNEL_VERBS)
 FORBIDDEN = re.compile(r"(claude|opus|sonnet|gpt|--model|sk-|/Users/)")
 JUDGE_FORBIDDEN = re.compile(r"(?i)\b(maker|comment|pull request history|newer version is)\b")
 MAX_LINES = 120
+# The roles that read what is released, and the file that records a release (ISSUE-255).
+RELEASED = ("canon-reviewer", "distinctiveness-judge", "render-reviewer")
+UNOWNED = "registry/posts.tsv"
 
 
 def names(value):
@@ -91,9 +94,13 @@ def own_problems(role_id, text):
     reads = as_list(meta.get("reads"))
     if not {"bible/**", "episodes/**"} <= set(reads):
         problems.append(f"reads {reads} lacks bible/** or episodes/**")
+    if role_id in RELEASED and lockrules.RELEASE.format("*") not in reads:
+        problems.append(f"reads lacks {lockrules.RELEASE.format('*')!r}")
 
     if len(text.splitlines()) > MAX_LINES:
         problems.append(f"{len(text.splitlines())} lines, more than {MAX_LINES}")
+    if UNOWNED in text:
+        problems.append(f"names {UNOWNED}, which no program writes")
     if FORBIDDEN.search(text):
         problems.append(f"names a model, flag or path: {FORBIDDEN.search(text).group(0)!r}")
 
@@ -112,6 +119,9 @@ def own_problems(role_id, text):
 
     if not part.get("Read first", "").strip().endswith(AUTHORITY):
         problems.append("Read first does not end with the order of authority")
+    release = lockrules.RELEASE.format("<ep>")
+    if role_id in RELEASED and f"`{release}`" not in part.get("Read first", ""):
+        problems.append(f"Read first lacks {release!r}")
     for name in ("TASK", "TICKET", "PR", "REPO", "WORKTREE"):
         if f"{{{{{name}}}}}" not in part.get("Task", ""):
             problems.append(f"Task lacks {{{{{name}}}}}")
@@ -334,6 +344,18 @@ class SeededDefectTest(unittest.TestCase):
         kit = KitCopy(self)
         kit.edit("braintrust", "{{RULES}}", "{{RULES}}" + "\n" * MAX_LINES)
         self.assertTrue(any(p.endswith(f"more than {MAX_LINES}") for p in kit.own("braintrust")))
+
+    def test_names_the_post_registry(self):
+        kit = KitCopy(self)
+        kit.edit("distinctiveness-judge", "`distribution/<ep>/release.json`", "`registry/posts.tsv`")
+        own = kit.own("distinctiveness-judge")
+        self.assertIn("names registry/posts.tsv, which no program writes", own)
+        self.assertIn("Read first lacks 'distribution/<ep>/release.json'", own)
+
+    def test_reads_without_the_release(self):
+        kit = KitCopy(self)
+        kit.edit("render-reviewer", ", distribution/*/release.json", "")
+        self.assertEqual(kit.own("render-reviewer"), ["reads lacks 'distribution/*/release.json'"])
 
 
 if __name__ == "__main__":
