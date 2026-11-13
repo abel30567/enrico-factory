@@ -22,7 +22,7 @@ not make this work, and you do not change it.
 2. The files under `bible/charter.md` and `bible/canon/**` the amendment changes.
 3. `bible/canon/ledger.tsv`: the canon ledger, as it stands on the head.
 4. `registry/posts.tsv` and `episodes/<ep>/ledger.json` of every released episode.
-5. `research/**` and `sources/**` the changed lines cite.
+5. `research/**` and `sources/**` the changed lines cite, and `research/not-ours.tsv` where there is one.
 
 When two files disagree, this order wins: the rules of power, the charter, the production
 rules, the canon ledger, the episode ledger, the role file, the task.
@@ -47,9 +47,8 @@ in {{WORKTREE}}; you read it and change nothing.
    Issue: a released fact becomes awkward but stays true.
 4. **Sourced.** Every changed row and list item carries its tag, and every `[text]` or `[art]` source
    opens and says what the row says. Blocker: a missing or contradicting source. Issue: a weak one.
-5. **Permanent only.** Every new ledger row is a permanent fact (a height, a lineage, a death), not
-   story state that changes during an episode. Blocker: story state in the canon ledger. Issue: a row
-   whose permanence is unclear.
+5. **Permanent only.** Every new ledger row is a permanent fact (a height, a lineage, a death), not state
+   that changes during an episode. Blocker: story state in the canon ledger. Issue: unclear permanence.
 6. **Charter.** Read `bible/charter.md`. The change fits it, or the amendment changes the charter
    itself. Blocker: a contradiction with the charter outside a charter amendment. Issue: drift in tone.
 7. **Class and vote.** Check the class the amendment states. A change to the charter or an arc is P2 or
@@ -59,6 +58,9 @@ in {{WORKTREE}}; you read it and change nothing.
    else `arc` when it adds or bends an arc, else `canon`. Blocker: no `class`, a value outside the three,
    `canon` or `arc` on a change to `bible/charter.md`, or `canon` on a change that adds or bends an arc.
    Issue: `charter` or `arc` on a change that touches neither the charter nor an arc.
+9. **Origin.** Every character, place or creature the amendment adds has an origin and is ours: compare
+   it with `research/not-ours.tsv` and what each `link` shows. Blocker: no origin, or a subject that is,
+   or is recognisably, a third party's. Issue: `house` with no word on what it was designed from.
 
 ## You may not
 
@@ -69,8 +71,7 @@ in {{WORKTREE}}; you read it and change nothing.
 
 ## Markers
 
-Return exactly one of these as the result object's `marker`. The launcher posts it as
-`[CANON-REVIEWER] <marker>`.
+Return exactly one of these as the result object's `marker`. The launcher posts it as `[CANON-REVIEWER] <marker>`.
 
 - `APPROVED`: no Blocker. Issues you found still go in `notes`; they do not hold the work.
 - `NOTES`: at least one Blocker, every note in `notes`.
@@ -97,8 +98,7 @@ A repeated defect is never raised as if it were new.
 
 ## Provenance
 
-- Cite only files, by path and line (for example `bible/canon/ledger.tsv:14`).
-  Every note cites at least one.
+- Cite only files, by path and line (for example `bible/canon/ledger.tsv:14`). Every note cites at least one.
 - A memory advises; a file binds. A recalled lesson or a skill may tell you where to look; it
   never supports a note by itself. Open the file and cite it.
 - If the knowledge server is unreachable, work from the repository alone and say so in `summary`.

@@ -47,6 +47,10 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 - Findings that would change the show end in a `## Pivot proposals` section: for each, its class
   (`P0` to `P3`), what it touches, and a hypothesis written before any test. You propose; the
   showrunner triages. You never write a scene, a line or a beat.
+- **not-ours list** `research/not-ours.tsv`: one row per name you meet that belongs to someone else (a
+  character, place, creature, work or mark), with the columns `name`, `holder` and `link` (where the name
+  was seen). Start the file with that header row if there is none. A trend's format, subject or rhythm
+  can be used; its character, sound and shot stay with their owner, so list each such name.
 
 Lints this stage must pass: `provenance`, `references`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.

@@ -53,8 +53,12 @@ orchestrator decides; low-severity nits become `follow-up` issues instead of blo
 - Run tasks in parallel only when their file sets are disjoint. Hot files (global styles, the main
   server/router file, lock files) go one lane at a time.
 - When something is missing or ambiguous: do not guess and do not widen scope. Post `[BUILDER] BLOCKED`.
-- **Merge only through `orch merge --apply`:** VERIFIED on the current head, SAFE if risky, head
-  contains the current base, every CI check green, no `merge:hold`. One merge per run.
+- **Merge only through `orch merge --apply`:** VERIFIED on the current head, SAFE if risky, no
+  `merge:hold`, and the base stays green with it. Two ways to know that. Strict: the head contains the
+  current base and every CI check on it is green; one merge per run. Train (`TRAIN_MAX` in `orch.env`,
+  only while the last finished CI run on the base is green): the gate merges the verified PRs onto the
+  base in a scratch worktree, runs GATES on that tree, merges them all if it passes and checks that the
+  base's tree is the tested tree. A red train merges nothing; a PR that fails alone gets a fixer.
 - Workers never merge, never push to protected branches, never skip hooks, never approve PRs, never post
   another role's marker, and never touch the orchestrator's resources (reserved ports, shared
   containers, logged-in browsers, the issue tracker, deploys). `hooks/worker-guard.mjs` enforces this.
