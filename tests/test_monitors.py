@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import blind, gitstate, ledger, monitors, tickets  # noqa: E402
+from kit.lib import blind, gitstate, ledger  # noqa: E402
+from kit.lib import monitors, tickets  # noqa: E402
 from test_tick import LABEL, Case, World, lines  # noqa: E402,F401
 
 LINE = "NEED - monitor budget: {cap} is passed for {scope}"
