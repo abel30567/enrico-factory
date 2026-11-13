@@ -4,7 +4,7 @@ room: story
 kind: maker
 analog: cutter
 stage: cut
-writes: episodes/*/cut/**
+writes: episodes/*/cut/**, episodes/*/reel/**
 reads: episodes/**, bible/**
 checked_by: editor
 may_not: edit another role's files

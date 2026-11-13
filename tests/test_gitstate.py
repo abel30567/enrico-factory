@@ -157,6 +157,29 @@ class RefsTest(RepoTest):
             gitstate.show(self.root, "no-such-ref", "README.md")
 
 
+class FilesTest(RepoTest):
+    def test_files(self):
+        self.write("bible/amendments/A-2.json", "{}\n")
+        self.write("bible/amendments/A-10.json", "{}\n")
+        self.write("bible/amendments/notes/A-7.json", "{}\n")
+        self.write("bible/amendments-old/A-1.json", "{}\n")
+        sha = self.commit_all("amendments")
+        found = ["bible/amendments/A-10.json", "bible/amendments/A-2.json", "bible/amendments/notes/A-7.json"]
+        self.assertEqual(gitstate.files(self.root, "main", "bible/amendments"), found)
+        self.assertEqual(gitstate.files(self.root, sha, "bible/amendments/"), found)
+        self.assertEqual(gitstate.files(self.root, "main", "media"), ["media/manifest.tsv"])
+
+    def test_absent_directory_or_a_file_is_empty(self):
+        self.assertEqual(gitstate.files(self.root, "main", "bible/amendments"), [])
+        self.assertEqual(gitstate.files(self.root, self.m1, "notes.txt"), [])
+        self.assertEqual(gitstate.files(self.root, "main", "notes.txt"), [])
+        self.assertEqual(gitstate.files(self.root, "main", "README.md/"), [])
+
+    def test_bad_ref_raises(self):
+        with self.assertRaises(GitError):
+            gitstate.files(self.root, "no-such-ref", "media")
+
+
 class CommitsTest(RepoTest):
     """Criterion 1."""
 

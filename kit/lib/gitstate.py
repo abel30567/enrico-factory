@@ -96,6 +96,14 @@ def show(root, ref, path):
     return git(root, "cat-file", "blob", spec)
 
 
+def files(root, ref, directory):
+    """The sorted paths of the files under ``directory`` at ``ref``, recursive; [] when ``directory`` is absent
+    or is a file there."""
+    out = git(root, "--literal-pathspecs", "ls-tree", "-r", "-z", "--name-only", "--full-tree", head(root, ref),
+              "--", directory.rstrip("/") + "/")
+    return sorted(_split(out))
+
+
 def _rows(text):
     return [] if text is None else text.splitlines()
 

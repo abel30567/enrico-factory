@@ -273,7 +273,7 @@ class JsonTest(unittest.TestCase):
                          [(6, 5, True), (8, 7, True), (17, 15, False)])
         for o in found:
             self.assertEqual(sorted(o), ["lockable", "pull", "rules", "ticket"])
-            self.assertEqual([r["number"] for r in o["rules"]], list(range(1, 12)))
+            self.assertEqual([r["number"] for r in o["rules"]], list(range(1, 13)))
             self.assertTrue(all(sorted(r) == ["name", "number", "ok", "reason"] for r in o["rules"]))
         self.assertEqual([r for r in found[2]["rules"] if not r["ok"]],
                          [{"name": "selected", "number": 5, "ok": False, "reason": "ticket #15 selected PR #16"}])
