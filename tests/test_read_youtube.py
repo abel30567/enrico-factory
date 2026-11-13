@@ -587,5 +587,133 @@ class B13Register(unittest.TestCase):
         self.assertEqual(row["checks"], [{"kind": "secret", "name": "external.youtube"}])
 
 
+
+def hashtags(value):
+    return isinstance(value, list) and all(isinstance(h, str) and h != "" for h in value)
+
+
+class B14DeclaredWatch(Base):
+    LINE = "run: research/topics/harbour-tales.json: youtube is not {hashtags}\n"
+
+    def setUp(self):
+        super().setUp()
+        self.w.commit_topic({"youtube": {"hashtags": ["harbourtales"]}})
+        self.calls = []
+
+    def run_with(self, **names):
+        tool = fake_tool(read=lambda call: self.calls.append(call) or {"videos": []}, **names)
+        with mock.patch.object(reads, "load_tool", return_value=tool):
+            return self.w.run()
+
+    def test_a_declared_watch_is_read(self):
+        code, out, err = self.run_with(WATCH={"hashtags": hashtags})
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual([c["topic"] for c in self.calls], [{"hashtags": ["harbourtales"]}])
+
+    def test_an_undeclared_or_bad_watch_is_refused(self):
+        def loud(value):
+            print(SEED)
+            print(SEED, file=sys.stderr)
+            raise RuntimeError(SEED)
+
+        committed = None
+        for watch, check in (({"hashtags": ["harbourtales"], "words": ["Wickabel"]}, hashtags), ({}, hashtags),
+                             ({"hashtags": [""]}, hashtags), ({"hashtags": ["harbourtales"]}, loud),
+                             ({"hashtags": ["harbourtales"]}, lambda v: 1)):
+            with self.subTest(watch=watch, check=check):
+                if watch != committed:
+                    self.w.commit_topic({"youtube": watch})
+                    committed = watch
+                self.assertEqual(self.run_with(WATCH={"hashtags": check}), (2, "", self.LINE))
+                self.assertEqual(self.calls, [])
+                self.assertFalse((self.w.state / STORED).exists())
+
+    def test_a_tool_without_watch_keeps_the_default(self):
+        self.assertEqual(self.run_with(),
+                         (2, "", "run: research/topics/harbour-tales.json: youtube is not {words, region, days}\n"))
+        self.assertEqual(self.calls, [])
+
+    def test_a_watch_that_breaks_the_interface(self):
+        for watch in ({}, ["hashtags"], {"hashtags": "list"}):
+            with self.subTest(watch=watch):
+                self.assertEqual(self.run_with(WATCH=watch),
+                                 (2, "", "run: read tool youtube does not follow the read interface\n"))
+                self.assertEqual(self.calls, [])
+
+
+class B15StoredFields(Base):
+    def run_with(self, returned, **names):
+        tool = fake_tool(read=lambda call: returned, **names)
+        with mock.patch.object(reads, "load_tool", return_value=tool):
+            return self.w.run()
+
+    def test_a_declared_field_is_stored(self):
+        code, out, err = self.run_with({"videos": [], "hashtags": [{"name": "a"}]}, STORED=("hashtags",))
+        self.assertEqual((code, err), (0, ""))
+        doc = json.loads((self.w.state / STORED).read_text())
+        self.assertEqual(doc["hashtags"], [{"name": "a"}])
+        self.assertEqual(sorted(doc), ["hashtags", "platform", "read_at", "topic", "videos"])
+
+    def test_anything_else_breaks_the_interface(self):
+        for returned in ({"videos": []}, {"videos": [], "hashtags": [], "more": 1}, {"videos": [], "hashtags": {1, 2}}):
+            with self.subTest(returned=returned):
+                self.assertEqual(self.run_with(returned, STORED=("hashtags",)),
+                                 (1, "", "run: read harbour-tales youtube failed: tool broke the interface\n"))
+                self.assertFalse((self.w.state / STORED).exists())
+
+    def test_a_stored_that_breaks_the_interface(self):
+        for stored in (["hashtags"], ("videos",), ("topic",), ("Hashtags",), ("a", "a"), (1,)):
+            with self.subTest(stored=stored):
+                self.assertEqual(self.run_with({"videos": []}, STORED=stored),
+                                 (2, "", "run: read tool youtube does not follow the read interface\n"))
+                self.assertFalse(self.w.state.exists())
+
+
+class B16Settings(Base):
+    def setUp(self):
+        super().setUp()
+        key = self.w.secrets / "external.tiktok"
+        key.write_text(SEED + "\n")
+        os.chmod(key, 0o600)
+        self.key = key
+        self.w.write_settings(TIKTOK_ADVERTISER_ID="1234567890", TIKTOK_COUNTRY="GB")
+        self.calls = []
+
+    def run_with(self):
+        tool = fake_tool(RESOURCE="external.tiktok", read=lambda call: self.calls.append(call) or {"videos": []})
+        with mock.patch.object(reads, "load_tool", return_value=tool):
+            return self.w.run()
+
+    def test_the_settings_reach_the_call(self):
+        code, out, err = self.run_with()
+        self.assertEqual((code, err), (0, ""))
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0]["settings"], {"TIKTOK_ADVERTISER_ID": "1234567890", "TIKTOK_COUNTRY": "GB"})
+        self.assertEqual(sorted(self.calls[0]), ["api", "read_at", "secrets", "settings", "topic"])
+        self.assertEqual(self.calls[0]["secrets"], {"external.tiktok": str(self.key)})
+
+    def test_a_missing_setting_is_refused(self):
+        self.w.write_settings(TIKTOK_COUNTRY=None)
+        code, out, err = self.run_with()
+        self.assertEqual((code, out), (2, ""))
+        self.assertTrue(err.startswith("run: resource external.tiktok is not usable: "), err)
+        self.assertEqual(self.calls, [])
+        self.assertIsNone(self.w.budget())
+
+
+class B17Rows(unittest.TestCase):
+    def test_the_rows(self):
+        register, problems = resources.load(resources.REGISTER)
+        self.assertEqual(problems, [])
+        rows = {r["id"]: r for r in register["resources"]}
+        self.assertEqual(rows["external.instagram"]["checks"],
+                         [{"kind": "secret", "name": "external.instagram"},
+                          {"kind": "setting", "name": "INSTAGRAM_USER_ID"}])
+        self.assertEqual(rows["external.tiktok"]["checks"],
+                         [{"kind": "secret", "name": "external.tiktok"},
+                          {"kind": "setting", "name": "TIKTOK_ADVERTISER_ID"},
+                          {"kind": "setting", "name": "TIKTOK_COUNTRY"}])
+
+
 if __name__ == "__main__":
     unittest.main()

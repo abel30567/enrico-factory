@@ -11,7 +11,8 @@ The read is stored as `<STATE_DIR>/reads/<topic>/<platform>/<stamp>.json` (`kit/
 
 Without `--apply` nothing is deleted, counted or called: each line says what would be done. Exit 0 stored
 or would read, 1 the read failed, 2 refused or the resource is down. Nothing a tool prints, raises or
-returns other than its videos and a reason out of its own `REASONS` is repeated anywhere.
+returns other than its videos, the fields of its `STORED` and a reason out of its own `REASONS` is repeated
+anywhere.
 """
 
 import importlib.util
@@ -28,9 +29,10 @@ from kit.lib.tools import Down, Failed
 TOOLS_DIR = Path(__file__).resolve().parent / "tools" / "reads"
 EXPIRY_S = 30 * 24 * 3600
 BUDGET_DIR = "read-budget"
-WATCH_KEYS = ["days", "region", "words"]
 REGION = re.compile(r"[A-Z]{2}")
 WHOLE = re.compile(r"[0-9]+")
+STORED_NAME = re.compile(r"[a-z][a-z_]*")
+RESERVED = ("platform", "read_at", "topic", "videos")
 Refused = cmd_run.Refused
 
 
@@ -49,12 +51,19 @@ def load_tool(platform):
 def _follows(tool, platform):
     budget = getattr(tool, "BUDGET", None)
     reasons = getattr(tool, "REASONS", None)
+    watch = getattr(tool, "WATCH", WATCH)
+    stored = getattr(tool, "STORED", ())
     return (getattr(tool, "PLATFORM", None) == platform
             and isinstance(getattr(tool, "RESOURCE", None), str) and tool.RESOURCE != ""
             and isinstance(reasons, tuple) and all(isinstance(r, str) for r in reasons)
             and isinstance(getattr(tool, "API", None), str)
             and isinstance(budget, tuple) and len(budget) == 2 and isinstance(budget[0], str)
             and isinstance(budget[1], int) and not isinstance(budget[1], bool) and budget[1] >= 0
+            and isinstance(watch, dict) and len(watch) > 0
+            and all(isinstance(k, str) and callable(c) for k, c in watch.items())
+            and isinstance(stored, tuple)
+            and all(isinstance(s, str) and STORED_NAME.fullmatch(s) and s not in RESERVED for s in stored)
+            and len(set(stored)) == len(stored)
             and callable(getattr(tool, "read", None)))
 
 
@@ -98,8 +107,33 @@ def _whole(value, low, high=None):
             and (high is None or value <= high))
 
 
-def _watch(p, topic, platform):
-    """The platform's part of the topic file on the base: ``{words, region, days}``."""
+def _words(value):
+    return isinstance(value, list) and len(value) > 0 and all(isinstance(w, str) and w != "" for w in value)
+
+
+def _region(value):
+    return isinstance(value, str) and REGION.fullmatch(value) is not None
+
+
+def _days(value):
+    return _whole(value, 1, 365)
+
+
+# The watch of a read tool without ``WATCH``: each key of the platform's part of the topic file and its check.
+WATCH = {"words": _words, "region": _region, "days": _days}
+
+
+def _valid(check, value):
+    """True when ``check(value)`` returns True; what it prints or raises is dropped."""
+    try:
+        with cmd_run._silenced():
+            return check(value) is True
+    except (Exception, SystemExit):
+        return False
+
+
+def _watch(p, tool, topic, platform):
+    """The platform's part of the topic file on the base: exactly the keys of the tool's ``WATCH``, each valid."""
     rel, base = trends.topic_file(topic), production.base(p)
     text = gitstate.show(p.root, base, rel)
     if text is None:
@@ -110,13 +144,10 @@ def _watch(p, topic, platform):
         doc = None
     if not isinstance(doc, dict) or platform not in doc:
         raise Refused(f"{rel} does not watch {platform}")
-    watch = doc[platform]
-    if not (isinstance(watch, dict) and sorted(watch) == WATCH_KEYS
-            and isinstance(watch["words"], list) and watch["words"]
-            and all(isinstance(w, str) and w for w in watch["words"])
-            and isinstance(watch["region"], str) and REGION.fullmatch(watch["region"])
-            and _whole(watch["days"], 1, 365)):
-        raise Refused(f"{rel}: {platform} is not {{words, region, days}}")
+    watch, checks = doc[platform], getattr(tool, "WATCH", WATCH)
+    if not (isinstance(watch, dict) and sorted(watch) == sorted(checks)
+            and all(_valid(check, watch[key]) for key, check in checks.items())):
+        raise Refused(f"{rel}: {platform} is not {{{', '.join(checks)}}}")
     return watch
 
 
@@ -169,9 +200,11 @@ def _call(tool, call, doc, rel, name, topic, platform):
         return (failure.reason if failure.reason in tool.REASONS else cmd_run.TOOL_FAILED), None, None
     except (Exception, SystemExit):
         return cmd_run.CRASHED, None, None
-    if not (isinstance(returned, dict) and list(returned) == ["videos"] and isinstance(returned["videos"], list)):
+    names = ("videos", *getattr(tool, "STORED", ()))
+    if not (isinstance(returned, dict) and all(isinstance(k, str) for k in returned)
+            and sorted(returned) == sorted(names) and isinstance(returned["videos"], list)):
         return cmd_run.BROKE, None, None
-    doc = {**doc, "videos": returned["videos"]}
+    doc = {**doc, **{k: returned[k] for k in names}}
     try:
         trends._check_read(rel, name, doc, topic, platform)
         return None, doc["videos"], json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False) + "\n"
@@ -190,7 +223,7 @@ def main(p, topic, platform, apply):
     read_at = production.now()
     stamp = read_at.replace("-", "").replace(":", "")
     _expire(state, platform, _time(stamp), apply)
-    watch = _watch(p, topic, platform)
+    watch = _watch(p, tool, topic, platform)
     resource, values, register = cmd_run._resource(platform, tool, p.root)
     api = _api(p, tool, platform)
     limit = _limit(p, tool)
@@ -215,6 +248,9 @@ def main(p, topic, platform, apply):
         "secrets": {c["name"]: os.path.abspath(os.path.join(secrets_dir, c["name"]))
                     for c in resource["checks"] if c["kind"] == "secret"},
     }
+    settings = {c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"}
+    if settings:
+        call["settings"] = settings
     doc = {"platform": platform, "read_at": read_at, "topic": topic}
     try:
         reason, videos, text = _call(tool, call, doc, rel, name, topic, platform)
