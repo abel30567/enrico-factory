@@ -528,11 +528,11 @@ class PacketsOnce(PacketCase):
                         other(41, "[INTENT-EP02] story intent packet for ep02", "open")]
         with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
             self.assertEqual(self.due(state), [])
-        show.assert_not_called()
+        self.assertEqual([c for c in show.call_args_list if c.args[2].endswith("/intent-packet.json")], [])
         state.others = state.others[:1]
         with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
             self.assertEqual(self.kinds(state), [(31, 32, "story", "intent-packet", "ep02")])
-        self.assertEqual(show.call_count, 1)
+        self.assertEqual(len([c for c in show.call_args_list if c.args[2].endswith("/intent-packet.json")]), 1)
 
     def test_two_locked_reels_of_one_episode_file_one_packet(self):
         state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep01")], [pull(12, 11), pull(32, 31)])

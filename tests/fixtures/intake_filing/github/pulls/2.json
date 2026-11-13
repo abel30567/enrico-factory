@@ -1,0 +1,12 @@
+{
+ "base_ref": "main",
+ "body": "Ticket: #1\n",
+ "created_at": "2026-11-10T09:30:00Z",
+ "head_ref": "reel/REEL-EP01-editorial-1",
+ "labels": [],
+ "merged_at": "2026-11-10T10:00:00Z",
+ "number": 2,
+ "state": "merged",
+ "ticket": 1,
+ "title": "[REEL-EP01] reel for ep01"
+}
