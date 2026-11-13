@@ -39,6 +39,7 @@ exact head commit. Tooling: `.agents/orchestrator/` (`orch help`).
 | `[BUILDER] BLOCKED` | builder/fixer | Missing / What was tried / Resume from (branch @ sha) |
 | `[ORCHESTRATOR] …` | orchestrator | binding rulings, merge notes |
 | `[ORCHESTRATOR] LAUNCH <role> <id>` | `launch.sh` | the exact prompt the worker was given, its sha256, model and base, posted on the issue (builder) or PR (verifier, fixer, blast radius) before the worker starts. A record, not a ruling; verifiers read the builder's as acceptance criteria |
+| `[ORCHESTRATOR] USAGE <role> <id>` | `usage.py --post` (every tick) | what the finished run used: model, turns, minutes, tokens and dollars as the harness or the fleet reports them, with the same fields as JSON. Posted where the run's LAUNCH record is. A record, not a ruling |
 
 A verdict counts only if it is newer than the last READY/ADDRESSED and its `Reviewed head` is the
 current head (or only the base branch was merged in since). After **3 verifier rounds** the

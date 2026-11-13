@@ -7,7 +7,7 @@
 #   scout.py status                                                 one line per drafter
 #
 # A drafter is read-only: it researches the repository in its own clone and uploads one file, the draft.
-# `collect` saves it as $STATE/inputs/ISSUE-<N>.draft.md (or <KEY>.draft.md). Nothing reaches GitHub from here: the orchestrator
+# `collect` saves it as $STATE/inputs/ISSUE-<N>.draft.md (or <KEY>.draft.md). Only what the drafter used reaches GitHub from here (usage.py, an `[ORCHESTRATOR] USAGE` comment on the issue): the orchestrator
 # reviews the draft, rules on what it left open, files it as the issue body and labels the issue status:ready.
 # A note file holds lines `<N>: <the orchestrator's triage note for that issue>`; the drafter gets its own line.
 import json, re, subprocess, sys, time
@@ -162,7 +162,18 @@ def main():
         size = out.stat().st_size if out.exists() else 0
         ok = a.get("status") == "done" and got.returncode == 0 and size >= 4000
         r[3] = "1"; save(rs)
+        # the drafter's run and launch, written as a worker's are, so usage.py posts what it used on its issue
+        turns = re.search(r"turns=(\d+)", note)
+        (STATE / "runs" / f"drafter-{r[0]}.json").write_text(json.dumps({
+            "type": "result", "is_error": not ok, "result": str(a.get("exit_reason")), "num_turns": int(turns.group(1)) if turns else 0,
+            "duration_ms": (a.get("ended_at") or 0) - (a.get("started_at") or a.get("ended_at") or 0),
+            "fleet": {k: a.get(k) for k in ("instance_type", "cost_usd", "inference_usd", "restart_count", "exit_reason")}}) + "\n")
+        with open(STATE / "launches.tsv", "a") as f:
+            f.write("\t".join([time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(r[2]))), "drafter", r[0], "", MODEL, "",
+                               f"issue:{r[0]}" if r[0].isdigit() else ""]) + "\n")
         print(f"=== #{r[0]} {a.get('status')} ({a.get('exit_reason')}) draft {'saved ' + str(out) if ok else 'MISSING or short'} ({size} bytes)\n{text}\n")
+    if cmd == "collect":
+        subprocess.run(["python3", "-I", str(ORCH / "usage.py"), "--post"])
     return 0
 
 

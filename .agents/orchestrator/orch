@@ -27,7 +27,7 @@ L
   board)    py board.py "$@" ;;
   risk)     py risk.py "$@" ;;
   check-rules) exec node "$D/check-rules.mjs" "$@" ;;
-  usage)    py usage.py ;;
+  usage)    py usage.py "$@" ;;
   cleanup)  exec "$D/cleanup-idle.sh" ;;
   sync-jira) py tracker/jira-sync.py "$@" ;;
   logs)     . "$D/config.sh"; id=${1:?worker id, e.g. PROJ-12 or V34}
@@ -64,7 +64,7 @@ watching
   orch check-rules [--base REF]       stale paths/scripts in CLAUDE.md, AGENTS.md, rules; --base: only new ones
   orch board [--apply]                kanban (secret gist); `board setup|sync --apply` for a GitHub Project
   orch logs ID [N]                    tail a worker's log + result (ID = KEY, V<PR>, BR<PR>)
-  orch usage                          tokens and minutes per worker run
+  orch usage [--post [--dry-run]]     tokens, minutes and dollars per worker run; --post: one USAGE comment per finished run
   orch stop ID | freeze | unfreeze    stop one worker | stop all new launches | resume
   orch cleanup                        delete finished worktrees
   orch sync-jira [--apply]            optional: mirror Jira tickets into tracked issues

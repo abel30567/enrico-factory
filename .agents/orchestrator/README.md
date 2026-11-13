@@ -20,7 +20,7 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 | `task.sh` | Creates a tracked issue (`ISSUE-<n>` key, or your own key). |
 | `doctor.sh` | Checks tools, login, config, labels, branch protection. |
 | `cleanup-idle.sh` | Removes finished worktrees whose work is pushed. |
-| `usage.py` | Token and minute ledger from worker results. |
+| `usage.py` | Token, minute and dollar ledger from worker results. `--post` (every tick) puts each finished run on its issue or PR as an `[ORCHESTRATOR] USAGE` comment. |
 | `hooks/worker-guard.mjs` | PreToolUse hook that blocks forbidden worker commands (tests alongside). |
 | `tracker/jira-sync.py` | Optional one-way Jira → GitHub issue mirror. |
 | `adapters/` | Run non-Claude agent CLIs as workers. |

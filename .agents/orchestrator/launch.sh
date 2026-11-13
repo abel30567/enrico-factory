@@ -80,6 +80,8 @@ printf '%s\n' "$PROMPT" > "$STATE/runs/$ROLE-$ID.prompt.md"
 if [ "$ROLE" = builder ]; then RKIND=issue; RNUM=$ISSUE; RBASE="origin/$BASE@$(git rev-parse --short "origin/$BASE")"
 else RKIND=pr; RNUM=$PR; RBASE="PR #$PR head $(pr_field "$PR" headRefOid | cut -c1-7)"; fi
 [ -n "$RNUM" ] || { echo "REFUSED: no issue to register the $ROLE prompt on (create it with orch task)"; exit 2; }
+# the earlier run of this worker is about to lose its JSON: post what it used first (usage.py)
+python3 -I "$ORCH_DIR/usage.py" --post >/dev/null 2>&1 || true
 GH_REPO="$GH_REPO" python3 -I "$ORCH_DIR/register-prompt.py" "$ROLE" "$ID" "$RKIND" "$RNUM" \
   "$STATE/runs/$ROLE-$ID.prompt.md" "$MODEL" "$WT" "$RBASE" || { echo "REFUSED: could not register the prompt on GitHub"; exit 2; }
 ENVV=(ORCH_ROLE="$ROLE" ORCH_KEY="$KEY" ORCH_PR="$PR" ORCH_BASE="$BASE" ORCH_MODEL="$MODEL" ORCH_PORT="$PORT"
@@ -97,5 +99,5 @@ else
   PID=$(python3 -I "$ORCH_DIR/detach.py" "$LOG" "$OUT" env "${ENVV[@]}" nice -n 10 "${CMD[@]}" "$STATE/runs/$ROLE-$ID.prompt.md")
 fi
 echo "$PID" > "$STATE/state/$ID.pid"
-printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$ROLE" "$ID" "${PR:-}" "$MODEL" "$PID" >> "$STATE/launches.tsv"
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$ROLE" "$ID" "${PR:-}" "$MODEL" "$PID" "$RKIND:$RNUM" >> "$STATE/launches.tsv"
 echo "$ROLE $ID pid=$PID port=$PORT wt=$WT${ISSUE:+ issue=#$ISSUE}"

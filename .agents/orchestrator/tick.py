@@ -340,6 +340,11 @@ if branch != BASE:
 elif sh("git", "pull", "-q", "--ff-only")[1]:
     say("NEED", "orchestrator checkout did not fast-forward; push or fix it before trusting the harness")
 
+# what each finished run used goes on its issue or pull request (usage.py); a failed post is retried next tick
+if APPLY:
+    for line in sh("python3", "-I", str(ORCH / "usage.py"), "--post")[0].splitlines():
+        say("ACTION" if line.startswith("usage: posted") or "recorded" in line else "ERROR", line)
+
 ALIVE0 = workers_alive()
 launched = 0
 changed = False   # a worker started, a label changed or a PR merged: the board is out of date
@@ -422,7 +427,7 @@ for i in sorted(ready or [], key=lambda i: i["number"]):
         cs = i["comments"]
         blocked = max((c["createdAt"] for c in cs if first_line(c).startswith("[BUILDER] BLOCKED")), default="")
         ruled = max((c["createdAt"] for c in cs if first_line(c).startswith("[ORCHESTRATOR]")
-                     and not first_line(c).startswith("[ORCHESTRATOR] LAUNCH")), default="")
+                     and not first_line(c).startswith(("[ORCHESTRATOR] LAUNCH", "[ORCHESTRATOR] USAGE"))), default="")
         if blocked > ruled:
             say("NEED", f"{tag} builder BLOCKED on the issue: rule on it in an [ORCHESTRATOR] comment; the next tick relaunches")
             mark(n, "BLOCKED", "builder BLOCKED"); continue
