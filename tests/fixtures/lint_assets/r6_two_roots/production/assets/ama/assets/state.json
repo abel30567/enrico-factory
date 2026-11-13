@@ -1,0 +1,20 @@
+{
+  "asset": "ama",
+  "kind": "character",
+  "sha256": "02a6efa44deef545bc56c1aae1e1d9feb53d505bb269a2abd6efe8d8f4e237f2",
+  "triangles": 100000,
+  "materials": 3,
+  "textures": [
+    {"name": "ama_body", "width": 4096, "height": 4096},
+    {"name": "ama_face", "width": 2048, "height": 2048}
+  ],
+  "height_m": 1.7,
+  "skeleton": {
+    "bones": [
+      {"name": "root", "parent": null},
+      {"name": "spine", "parent": "root"},
+      {"name": "head", "parent": null}
+    ],
+    "weights_normalised": true
+  }
+}

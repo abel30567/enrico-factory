@@ -479,8 +479,8 @@ class CommitTest(RepoTest):
             shas.append(gitstate.commit(path, ["out.txt"], "same message", "writer"))
         self.assertIsNotNone(shas[0])
         self.assertEqual(shas[0], shas[1])
-        dates = gitstate.git(self.tmp / "one", "log", "-1", "--format=%aI %cI").split()
-        self.assertEqual(dates, ["2026-11-11T10:00:00+00:00"] * 2)
+        dates = gitstate.git(self.tmp / "one", "log", "-1", "--format=%at %ct").split()
+        self.assertEqual(dates, ["1794391200"] * 2)
 
 
 class RestoreTest(RepoTest):
