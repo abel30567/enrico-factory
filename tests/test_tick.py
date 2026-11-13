@@ -460,7 +460,7 @@ class Timeout(Case):
         [blocked] = [c for c in w.comments(6) if c["created_at"] == later(251)]
         self.assertEqual((blocked["role"], blocked["body"].split("\n")[0]), ("writer", "[WRITER] BLOCKED"))
         self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
 
         # Criterion 10: the markers lint accepts it, and refuses it under a program's role.
         comments = w.comments(6)
@@ -723,8 +723,8 @@ class DeadRun(Case):
         [blocked] = self.after_launch(w, 6, "writer")
         self.assertEqual(blocked["body"].split("\n")[0], "[WRITER] BLOCKED")
         self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
-        self.assertEqual(len(w.ops("post")), 2)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(len(w.ops("post")), 4)
         # Criterion 6: a maker's worktree is kept.
         self.assertEqual(run.worktree, w.state / "worktrees" / "writer-6-1")
         self.assertTrue(run.worktree.is_dir())
@@ -1345,12 +1345,12 @@ class Workers(Case):
         w = self.capped()
         w.add(18, "2026-11-11T12:05:00Z", "painter", "[PAINTER] BLOCKED\n")
         out = self.ticked(w, "--apply")
-        self.assertEqual(lines(out), ["NEED #18 blocked the maker is BLOCKED on #18",
+        self.assertEqual(lines(out), ["STEP #18 launch foreman on #18",
                                       "WAIT #19 running painter launched at 2026-11-11T12:00:00Z",
-                                      "STEP #20 launch painter on #20",
+                                      "WAIT #20 ready 2 running, MAX_WORKERS is 2",
                                       "WAIT #21 ready 2 running, MAX_WORKERS is 2"])
-        self.assertTrue(out.endswith("tick: 1 steps, 1 need, 2 wait, 0 failed\n"), out)
-        self.assertEqual(self.launches(w, 20), ["[FOREMAN] LAUNCH painter 20-1"])
+        self.assertTrue(out.endswith("tick: 1 steps, 0 need, 3 wait, 0 failed\n"), out)
+        self.assertEqual(self.launches(w, 20), [])
 
     def test_no_cap(self):
         """Behaviour 4, the clean twin: no line, and an empty value."""

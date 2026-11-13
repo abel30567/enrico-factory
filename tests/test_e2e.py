@@ -785,11 +785,13 @@ class Refusals(Case):
         for line in (f"Missing: {missing}", *extra):
             self.assertIn(line, body)
         self.assertEqual(sorted(p.name for p in (w.github / "pulls").glob("*.json")), ["2.json"])
+        self.assertEqual(self.ticked(w, apply=True), ["STEP #3 launch showrunner on #3"])
         for _ in range(2):
             self.assertEqual(self.ticked(w, apply=True), ["NEED #3 blocked the maker is BLOCKED on #3"])
         self.assertIn(LABEL, w.record("issues", 3)["labels"])
         self.assertEqual([first(c) for c in w.comments(3)].count("[SHOWRUNNER] LAUNCH story-writer 3-1"), 1)
-        self.assertEqual(len([c for c in w.comments(3) if " LAUNCH " in first(c)]), 1)
+        self.assertEqual([first(c) for c in w.comments(3) if " LAUNCH " in first(c)],
+                         ["[SHOWRUNNER] LAUNCH story-writer 3-1", "[SHOWRUNNER] LAUNCH showrunner 3-1"])
 
     def test_maker_returns_a_checkers_marker(self):
         w = self.world()

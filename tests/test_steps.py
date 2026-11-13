@@ -34,7 +34,7 @@ BEATS = {
     "lint-error": ("lint-error", "wake", "chief", 5),
     "lint-fail": ("notes", "launch", "writer", 5),
     "relaunch-maker": ("running", "none", "writer", 5),
-    "maker-blocked": ("blocked", "wake", "chief", 5),
+    "maker-blocked": ("blocked", "launch", "chief", 5),
     "relaunch-again": ("running", "none", "writer", 5),
     "addressed": ("lint", "lint", None, 5),
     "lint-pass": ("review", "launch", "editor", 5),
@@ -156,7 +156,7 @@ class BeatsChainTest(ChainCase):
         self.until("launch-maker")
         self.w.apply({"comment": {"number": 3, "id": 900, "created_at": "2026-11-11T10:05:00Z", "role": "writer",
                                   "body": "[WRITER] BLOCKED\nMissing: the format\n"}})
-        self.assertEqual(short(self.next()), ("blocked", "wake", "chief", None))
+        self.assertEqual(short(self.next()), ("blocked", "launch", "chief", None))
 
     def test_ruling_on_the_ticket(self):
         self.until("notes-3")

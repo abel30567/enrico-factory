@@ -128,14 +128,14 @@ def _missing(meta, outcome):
 
 
 def _judgment_problems(meta, result):
-    """An orchestrator's result that does not answer its launch: a ruling on a pull request, a
-    selection among the launch's pitches on a ticket."""
+    """An orchestrator's result that does not answer its launch: a ruling on a pull request or on a
+    ticket with no pitch exported, a selection among the launch's pitches on a ticket."""
     marker = result["marker"]
     if meta["pull"] is not None:
         if marker == "SELECTED":
             return ["result.marker: SELECTED does not answer a launch on a pull request"]
         return []
-    if marker == "RULING":
+    if marker == "RULING" and meta["pulls"]:
         return ["result.marker: RULING does not answer a launch on a ticket"]
     if marker == "SELECTED" and result["selected"] not in meta["pulls"]:
         return [f"result.selected: #{result['selected']} is not a pitch of this launch"]

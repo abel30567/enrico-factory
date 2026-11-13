@@ -95,6 +95,22 @@ def _ruling(p, state, ticket, pull):
     return found
 
 
+def _ticket_ruling(p, state, ticket):
+    """The body of the newest ``RULING`` of the room's orchestrator on the ticket that is newer than a
+    ``BLOCKED`` of a maker of the stage there, or None."""
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    makers = {p.actors[r] for r in production.stage_roles(entry, "maker")}
+    actor = p.actors[production.orchestrator(p, ticket["room"])]
+    blocked, found = False, None
+    for comment in sorted(state.ticket_comments.get(ticket["number"], []), key=_order):
+        m = markers.parse(comment["body"])
+        if m and m.verb == "BLOCKED" and m.actor in makers:
+            blocked = True
+        elif m and m.verb == "RULING" and m.actor == actor and blocked:
+            found = comment["body"]
+    return found
+
+
 def _joined(parts):
     return "\n\n".join(part.rstrip("\n") for part in parts)
 
@@ -107,8 +123,15 @@ def _judged(state, ticket, pull):
     return sorted(found, key=lambda x: x["number"])
 
 
-def _orchestrator_task(p, ticket, pull, judged):
+def _orchestrator_task(p, ticket, pull, judged, blocked):
     entry = production.stage(p, ticket["room"], ticket["stage"])
+    if blocked is not None and pull is not None:
+        n = pull["number"]
+        return _joined([f"Judgment 4, a blocked worker, on pull request #{n} at head {pull['git']['head']}. "
+                        f"Its files are in pr-{n}/.", blocked["body"]])
+    if blocked is not None:
+        return _joined([f"Judgment 4, a blocked worker, on ticket #{ticket['number']}. "
+                        "The launch it answers has no pull request.", blocked["body"]])
     if pull is not None:
         n = pull["number"]
         parts = [f"Judgment 1, a ruling after three rounds of notes, on pull request #{n} at head "
@@ -159,11 +182,15 @@ def _operator_task(root, role, ticket, pull, found):
     return "\n".join(lines)
 
 
-def _default_task(p, state, kind, ticket, pull, judged):
+def _default_task(p, state, kind, ticket, pull, judged, blocked=None):
     if kind == "orchestrator":
-        return _orchestrator_task(p, ticket, pull, judged)
+        return _orchestrator_task(p, ticket, pull, judged, blocked)
     if kind == "maker" and pull is None:
-        return f"Do the stage {ticket['stage']} for unit {ticket['unit']}."
+        parts = [f"Do the stage {ticket['stage']} for unit {ticket['unit']}."]
+        ruling = _ticket_ruling(p, state, ticket)
+        if ruling is not None:
+            parts.append(ruling)
+        return _joined(parts)
     n = pull["number"]
     if kind == "maker":
         summary = pull["summary"]
@@ -303,16 +330,24 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     ok, reason = tickets.upstream(p, state, ticket, root)
     if not ok:
         raise LaunchError(reason)
-    # Checks 8 and 6 for an orchestrator: not running on the number given, and a judgment is due there.
+    # Checks 8 and 6 for an orchestrator: not running on the number given, and a judgment is due there:
+    # a ruling or a blocked maker on a pull, a selection or a blocked maker on the ticket.
+    blocked = None
     if kind == "orchestrator":
         comments = pull["comments"] if pull is not None else state.ticket_comments.get(t, [])
         if _running(p, comments, role):
             raise LaunchError(f"{role} is already running on #{number}")
+        found = [e for e in steps.all_steps(p, state, ticket, root, now)
+                 if e["pull"] == (number if pull is not None else None)]
+        stuck = bool(found) and found[0]["state"] == "blocked" and found[0]["role"] == role
         if pull is not None:
-            found = [e for e in steps.all_steps(p, state, ticket, root, now) if e["pull"] == number]
-            due = bool(found) and found[0]["state"] == "ruling"
+            due = stuck or bool(found) and found[0]["state"] == "ruling"
+            if stuck:
+                blocked = next(c for c in pull["comments"] if c["id"] == pull["summary"]["maker"]["id"])
         else:
             due = steps.next_step(p, state, ticket, root, now)["state"] == "selection"
+            if not due and stuck:
+                due, blocked = True, steps.blocked_on_ticket(p, state, ticket)
         if not due:
             raise LaunchError(f"no judgment is due on #{number}")
     # Check 6
@@ -369,6 +404,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     head = pull["git"]["head"] if pull is not None else None
     branch = None
     judged = _judged(state, ticket, pull) if kind == "orchestrator" else []
+    if pull is None and blocked is not None:
+        judged = []
     if kind in BRANCHED:
         branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
         if pull is None and _branch_exists(root, branch):
@@ -383,7 +420,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     elif kind == "operator":
         task = _operator_task(root, role, ticket, pull, requested)
     else:
-        task = _default_task(p, state, kind, ticket, pull, judged)
+        task = _default_task(p, state, kind, ticket, pull, judged, blocked)
     issue = gh.issue(t)
     values = {
         "REPO": production.setting(p, "REPO"),
