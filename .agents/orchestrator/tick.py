@@ -19,7 +19,7 @@
 #      KEY slug "<issue body>". `status:ready` is the orchestrator's judgement (dependencies closed, files
 #      disjoint from work in flight); the launch itself is mechanical. At most MAX_ATTEMPTS launches per issue.
 #   3. orch merge --apply (at most one merge); a CONFLICT gets a fixer.
-#   4. orch board sync --apply (after an action, else every 30 min).
+#   4. orch board sync --apply (after a launch, a hold or a merge, else every 30 min).
 # Output: ACTION lines (what it did), NEED lines (judgement for the orchestrator's wake), WAIT, STATE.
 import datetime as dt, fcntl, json, os, re, subprocess, sys
 from pathlib import Path
@@ -64,19 +64,17 @@ def say(kind, msg):
 
 
 def act(desc, *cmd):
-    global acted
     if not APPLY:
         say("PLAN", desc); return ""
     out, rc = sh(*cmd)
-    acted = True
     say("ACTION" if rc == 0 else "ERROR", f"{desc}: {out.splitlines()[-1] if out else rc}")
     return out
 
 
 def launch(desc, *cmd):
     """act() for a step that starts a worker (counted against MAX_AGENTS)."""
-    global launched
-    launched += 1
+    global launched, changed
+    launched += 1; changed = True
     return act(desc, *cmd)
 
 
@@ -339,7 +337,7 @@ elif sh("git", "pull", "-q", "--ff-only")[1]:
 
 ALIVE0 = workers_alive()
 launched = 0
-acted = False
+changed = False   # a worker started, a label changed or a PR merged: the board is out of date
 GUARDS = static_guards()
 guarded("")   # the WAIT guard line, once, even when nothing would start
 PREV = last_states()
@@ -380,6 +378,7 @@ for p in prs:
                 launch(f"{tag} {reason}", str(ORCH / "orch"), "launch", "fixer", str(n),
                        "Address every finding F1..Fn in the latest [VERIFIER] CHANGES REQUESTED comment, then post [BUILDER] ADDRESSED.")
         elif kind == "hold":
+            changed = True
             act(f"{tag} hold after {step[1]} fix rounds", "gh", "pr", "edit", str(n), "-R", R, "--add-label", "merge:hold,status:blocked")
         elif kind == "br":
             reason = f"launch blast radius ({', '.join(step[1])})"
@@ -459,9 +458,9 @@ for num, key in merged:
                 "(dependencies closed, files disjoint from work in flight)")
 
 # 4. board
-if acted or not BOARD_STAMP.exists() or NOW.timestamp() - BOARD_STAMP.stat().st_mtime > 1800:
-    act("board sync", str(ORCH / "orch"), "board", "sync", "--apply")
-    if APPLY:
+if changed or merged or not BOARD_STAMP.exists() or NOW.timestamp() - BOARD_STAMP.stat().st_mtime > 1800:
+    out = act("board sync", str(ORCH / "orch"), "board", "sync", "--apply")
+    if APPLY and "rate limit" not in out and "error" not in out.lower():   # a failed sync is retried next tick
         BOARD_STAMP.touch()
 
 # state for the orchestrator's wake
