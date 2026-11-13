@@ -1,0 +1,9 @@
+{
+ "body": "",
+ "headers": {
+  "Location": "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=invented-upload-1"
+ },
+ "read_at": "2026-11-13",
+ "reference": "https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol",
+ "status": 200
+}

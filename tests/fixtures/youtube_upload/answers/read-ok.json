@@ -1,0 +1,22 @@
+{
+ "body": {
+  "items": [
+   {
+    "id": "inventedVid01",
+    "processingDetails": {
+     "processingStatus": "processing"
+    },
+    "status": {
+     "privacyStatus": "private",
+     "uploadStatus": "uploaded"
+    }
+   }
+  ]
+ },
+ "headers": {
+  "Content-Type": "application/json; charset=UTF-8"
+ },
+ "read_at": "2026-11-13",
+ "reference": "https://developers.google.com/youtube/v3/docs/videos",
+ "status": 200
+}

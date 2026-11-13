@@ -1,0 +1,18 @@
+{
+ "body": {
+  "error": {
+   "code": 403,
+   "errors": [
+    {
+     "reason": "quotaExceeded"
+    }
+   ]
+  }
+ },
+ "headers": {
+  "Content-Type": "application/json; charset=UTF-8"
+ },
+ "read_at": "2026-11-13",
+ "reference": "https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol",
+ "status": 403
+}
