@@ -1,0 +1,8 @@
+{
+  "job": "9bba5cc31288823df15e545ff3b5c195ce91cdde88283b7e7ce52f328b121a9d",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "gil_rig.uasset", "sha256": "573593ad11e134677298dac1d8154d81499cfcfbe275155ddd7bd6cd530798e9", "bytes": 2097152}]
+}

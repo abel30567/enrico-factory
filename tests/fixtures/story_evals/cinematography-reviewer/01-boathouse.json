@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Q1-2 is a 28 mm lens with both figures small in frame: a wide shot, not the medium two-shot the shot file asks for.",
+      "evidence": "production/ep01/Q1-2/layout/state.json"
+    }
+  ]
+}

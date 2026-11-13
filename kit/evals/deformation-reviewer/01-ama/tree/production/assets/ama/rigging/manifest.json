@@ -1,0 +1,8 @@
+{
+  "job": "16f6de9b35d7796312b20b09d96730b867f93c08f7d0b3771233f40f21eec0b7",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "ama_rig.uasset", "sha256": "4c38cd80ea7201eafbd6956768ae36543fe77b3f32e09069e73adc45f70bf5e0", "bytes": 2097152}]
+}

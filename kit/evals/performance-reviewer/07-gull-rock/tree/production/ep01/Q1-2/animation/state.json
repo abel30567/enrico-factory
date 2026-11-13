@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-2",
+  "stage": "animation",
+  "fps": 24,
+  "frames": {"first": 12, "last": 23},
+  "actors": [{"id": "wen", "kind": "character", "asset": "asset:wen", "sha256": "f741046fdac8702d179fc5f2f45fd03b356f925175d8fb2d072c0a93e238b43f", "scale": [1, 1, 1], "height_m": 1.7, "start": {"location": [0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0.8, 0, 0], "rotation": [0, 0, 90]}}, {"id": "dax", "kind": "character", "asset": "asset:dax", "sha256": "4b79be6a5c777ed09b7b10b6601f002f10149444bd37b98b6f3706e0018767d7", "scale": [1, 1, 1], "height_m": 1.8, "start": {"location": [1.6, 0, 0], "rotation": [0, 0, -90]}, "end": {"location": [1.6, 0, 0], "rotation": [0, 0, -90]}}, {"id": "lantern", "kind": "prop", "asset": "asset:lantern", "sha256": "c5220b3c4266890f047190c18dc4243e0dac079d43ca8065899c4f9f3cf124ef", "scale": [1, 1, 1], "height_m": 0.3, "start": {"location": [0.3, 0, 1], "rotation": [0, 0, 0]}, "end": {"location": [1.2, 0, 1], "rotation": [0, 0, 0]}}],
+  "camera": {"focal_mm": {"min": 50, "max": 50}, "sensor_mm": [36, 20.25], "start": {"location": [0.5, -4, 1.5], "rotation": [0, 0, 0]}, "end": {"location": [0.5, -4, 1.5], "rotation": [0, 0, 0]}},
+  "framing": [{"frame": 12, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 12, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 13, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 13, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 14, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 14, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 15, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 15, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 16, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 16, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 17, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 17, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 18, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 18, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 19, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 19, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 20, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 20, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 21, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 21, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 22, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 22, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 23, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 23, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}],
+  "line_flips": [],
+  "motion": [{"actor": "wen", "foot_slide_mm": 1, "penetration_mm": 1, "float_mm": 1, "limit_violations": 0, "max_step_deg": 12}, {"actor": "dax", "foot_slide_mm": 1, "penetration_mm": 1, "float_mm": 1, "limit_violations": 0, "max_step_deg": 12}],
+  "lipsync": [{"line": "L1", "actor": "dax", "offset_frames": 0}, {"line": "L2", "actor": "dax", "offset_frames": 0}],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

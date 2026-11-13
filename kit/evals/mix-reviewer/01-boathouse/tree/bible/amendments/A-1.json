@@ -1,0 +1,6 @@
+{
+  "class": "canon",
+  "changes": {"bible/canon/characters/wen.md": "adds Wen, the ferry keeper", "bible/canon/characters/dax.md": "adds Dax, the old boatman"},
+  "why": "the quay episode needs its ferry keeper and its boatman",
+  "evidence": {"episodes/ep01/script.md": "Wen and Dax on the quay"}
+}

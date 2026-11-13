@@ -1,0 +1,8 @@
+{
+  "job": "3d591ec4143bbeb13b82dda869ad2f942422e4d2793ee9ec6c070bb3d5b928f7",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "dov_rig.uasset", "sha256": "b046236962ff05521c453742aec1d3cc749718b13ce949cea0a2d1bb2b380acf", "bytes": 2097152}]
+}

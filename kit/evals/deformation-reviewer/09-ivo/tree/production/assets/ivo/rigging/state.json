@@ -1,0 +1,6 @@
+{
+  "asset": "ivo",
+  "rig_sha256": "883609666d8bed3105648eedbb8ad3a7af75db98075d5828e6f492b45c5fb840",
+  "joints": [{"name": "pelvis", "min": [-180, -180, -180], "max": [180, 180, 180]}, {"name": "spine_01", "min": [-30, -30, -30], "max": [60, 30, 30]}, {"name": "neck", "min": [-40, -5, -30], "max": [40, 5, 30]}, {"name": "head", "min": [-20, -30, -20], "max": [20, 30, 20]}, {"name": "upperarm_l", "min": [-60, -90, -90], "max": [170, 90, 90]}, {"name": "upperarm_r", "min": [-60, -90, -90], "max": [170, 90, 90]}, {"name": "lowerarm_l", "min": [0, 0, 0], "max": [0, 145, 0]}, {"name": "lowerarm_r", "min": [0, 0, 0], "max": [0, 145, 0]}, {"name": "thigh_l", "min": [-30, -45, -30], "max": [120, 45, 30]}, {"name": "thigh_r", "min": [-30, -45, -30], "max": [120, 45, 30]}, {"name": "calf_l", "min": [0, 0, 0], "max": [0, 150, 0]}, {"name": "calf_r", "min": [0, 0, 0], "max": [0, 150, 0]}],
+  "rom": {"poses": 24, "limit_violations": 0, "penetration_mm": 3}
+}

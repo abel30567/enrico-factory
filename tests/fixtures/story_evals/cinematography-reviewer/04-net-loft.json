@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "dax is framed on frames 12 and 13 only and leaves the frame for the rest of the two-shot.",
+      "evidence": "production/ep01/Q1-2/layout/state.json"
+    }
+  ]
+}

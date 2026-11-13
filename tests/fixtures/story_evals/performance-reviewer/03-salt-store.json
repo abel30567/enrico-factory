@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "L2 is Dax's line but the lip sync puts it in Wen's mouth.",
+      "evidence": "production/ep01/Q1-2/animation/state.json"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "job": "99d98d2e9d90e6f9c8d581b1f31b6e97a34e84a4b87c6ec41733af3c812b9ac9",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "bo_rig.uasset", "sha256": "f8ec138a4b81bc3ac9576547e52a1f7ff11b65b8960c38316e26cdb5cb3b5d6e", "bytes": 2097152}]
+}

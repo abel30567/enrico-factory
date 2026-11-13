@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "dax is missing from the final render's scene, though the shot file and the lighting preview hold him.",
+      "evidence": "production/ep01/Q1-2/render/state.json"
+    }
+  ]
+}

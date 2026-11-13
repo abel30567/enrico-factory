@@ -1,0 +1,10 @@
+{
+  "id": "Q1-3",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": ["wen"],
+  "set": "reed-bank",
+  "camera": "close-up on Wen",
+  "action": "Wen looks out to sea."
+}

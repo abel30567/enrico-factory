@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Frame 23 turns blue, mean color [0.12, 0.27, 0.48] against the warm preview.",
+      "evidence": "production/ep01/Q1-2/render/render.json"
+    }
+  ]
+}

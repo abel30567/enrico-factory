@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The music stem's sha256 in mix.json is the sha256 of no output of the job's manifest.",
+      "evidence": "production/ep01/conform/mix.json"
+    }
+  ]
+}

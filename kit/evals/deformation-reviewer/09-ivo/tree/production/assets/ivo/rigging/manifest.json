@@ -1,0 +1,8 @@
+{
+  "job": "e10c8e53e02628d15627d2b483f6cb69832c2a109ed608a40a8d16ef50e73ecd",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "ivo_rig.uasset", "sha256": "883609666d8bed3105648eedbb8ad3a7af75db98075d5828e6f492b45c5fb840", "bytes": 2097152}]
+}
