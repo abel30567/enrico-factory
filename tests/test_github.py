@@ -1138,7 +1138,6 @@ class NoGhStartedTest(unittest.TestCase):
         self.assertEqual(_gh_calls, [])
 
 
-
 class BodyFitsTest(unittest.TestCase):
     """ISSUE-243 behaviour 2: the role line counts toward the limit."""
 
