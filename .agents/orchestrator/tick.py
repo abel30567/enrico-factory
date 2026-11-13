@@ -158,6 +158,10 @@ def limit_hit():
     time it names, else for LIMIT_WINDOW_S after it was written; never longer than LIMIT_MAX_HOLD_S. Every
     repository's worker logs count: the workers share the accounts."""
     since = NOW.timestamp() - LIMIT_MAX_HOLD_S
+    try:   # touched by the orchestrator when the workers move to an account that is not out of usage
+        since = max(since, (STATE / "state" / "limit-cleared").stat().st_mtime)
+    except OSError:
+        pass
     hold = None
     for f in [*ALL_STATE.glob("*/logs/*"), *ALL_STATE.glob("*/runs/*.json")]:
         try:
