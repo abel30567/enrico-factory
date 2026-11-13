@@ -1,0 +1,13 @@
+{
+ "body": {
+  "error": {
+   "code": 4,
+   "fbtrace_id": "AinventedTrace004",
+   "message": "Application request limit reached",
+   "type": "OAuthException"
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.facebook.com/docs/graph-api/guides/error-handling",
+ "status": 400
+}
