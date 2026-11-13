@@ -1,0 +1,14 @@
+{
+ "body_json": {
+  "detail": {
+   "code": "invalid_api_key",
+   "message": "Invalid API key.",
+   "request_id": "req-fixture-0003",
+   "status": "invalid_api_key",
+   "type": "authentication_error"
+  }
+ },
+ "read": "2026-11-13",
+ "reference": "https://elevenlabs.io/docs/developers/resources/errors",
+ "status": 401
+}

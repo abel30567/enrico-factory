@@ -1,0 +1,14 @@
+{
+ "body_json": {
+  "detail": {
+   "code": "invalid_request",
+   "message": "Not audio.",
+   "request_id": "req-fixture-0005",
+   "status": "ok",
+   "type": "invalid_request"
+  }
+ },
+ "read": "2026-11-13",
+ "reference": "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert",
+ "status": 200
+}

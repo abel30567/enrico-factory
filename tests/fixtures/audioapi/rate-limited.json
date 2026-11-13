@@ -1,0 +1,14 @@
+{
+ "body_json": {
+  "detail": {
+   "code": "rate_limit_exceeded",
+   "message": "Too many requests.",
+   "request_id": "req-fixture-0004",
+   "status": "rate_limit_exceeded",
+   "type": "rate_limit_error"
+  }
+ },
+ "read": "2026-11-13",
+ "reference": "https://elevenlabs.io/docs/developers/resources/errors",
+ "status": 429
+}

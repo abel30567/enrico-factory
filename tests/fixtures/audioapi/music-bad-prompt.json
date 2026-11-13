@@ -1,0 +1,17 @@
+{
+ "body_json": {
+  "detail": {
+   "code": "invalid_request",
+   "data": {
+    "prompt_suggestion": "A brooding indie rock track with layered guitars and a steady drum groove."
+   },
+   "message": "The prompt names a band or musician, or uses copyrighted lyrics.",
+   "request_id": "req-fixture-0001",
+   "status": "bad_prompt",
+   "type": "invalid_request"
+  }
+ },
+ "read": "2026-11-13",
+ "reference": "https://elevenlabs.io/docs/cookbooks/music/quickstart",
+ "status": 400
+}
