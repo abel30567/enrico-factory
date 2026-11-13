@@ -156,6 +156,45 @@ class Blocking(unittest.TestCase):
         self.assertIsNone(down.blocking(w.p, w.gh.issues("open"), "ghost"))
 
 
+class Waiting(unittest.TestCase):
+    """ISSUE-249, behaviour 5: a read never writes, and what cannot be read is not a wait."""
+
+    NOW = "2026-11-11T12:00:00Z"
+
+    def accounts(self, w, data):
+        w.state.mkdir(mode=0o700, exist_ok=True)
+        (w.state / down.ACCOUNTS).write_text(json.dumps(data))
+
+    def test_every_account_out_of_usage(self):
+        w = World(self)
+        self.accounts(w, {"acct-one": "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T17:00:00Z"})
+        before = sorted(os.listdir(w.state))
+        self.assertEqual(down.waiting(w.p, [], "critic", self.NOW), ("CHECKER", "2026-11-11T17:00:00Z"))
+        self.assertEqual(sorted(os.listdir(w.state)), before)
+        self.assertIsNone(down.waiting(w.p, [], "critic", "2026-11-11T17:00:00Z"))
+        self.assertIsNone(down.waiting(w.p, [], "judge", self.NOW))
+
+    def test_no_state_directory(self):
+        w = World(self)
+        self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
+        self.assertFalse(w.state.exists())
+
+    def test_not_an_object(self):
+        w = World(self)
+        self.accounts(w, [])
+        self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
+
+    def test_a_time_in_another_format(self):
+        w = World(self)
+        self.accounts(w, {"acct-one": "2026-11-11T18:00:00+00:00", "acct-two": "2026-11-11T18:00:00+00:00"})
+        self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
+
+    def test_no_accounts_setting(self):
+        w = World(self, ACCOUNTS_CHECKER="")
+        self.accounts(w, {"acct-one": "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T18:00:00Z"})
+        self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
+
+
 class Source(unittest.TestCase):
     """The label is spelled in one file of the kit."""
 

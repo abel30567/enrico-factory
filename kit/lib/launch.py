@@ -317,9 +317,14 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         if not Path(pair_dir).is_dir():
             raise LaunchError("the pair directory is not an existing directory")
     # Check 9: a resource the role needs is down.
-    found = down.blocking(p, gh.issues("open"), role)
+    issues = gh.issues("open")
+    found = down.blocking(p, issues, role)
     if found is not None:
         raise LaunchError(f"resource {found[0]} is down (#{found[1]})")
+    # Check 10: no account of the role's slot has usage left.
+    found = down.waiting(p, issues, role, now)
+    if found is not None:
+        raise LaunchError(f"slot {found[0]} is out of usage until {found[1]}")
 
     n = tickets.launches(state, t, role) + 1
     run_id = f"{number}-{n}"
