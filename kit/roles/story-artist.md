@@ -48,6 +48,8 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   `panel: media:<id>`. `duration` is seconds, above zero. Each character is a file
   `bible/canon/characters/<id>.md` and the set a file `bible/canon/places/<id>.md`.
 - Every scene of the sequence and every beat it carries has at least one shot.
+- A shot shows only subjects that have a canon sheet. Do not draw, name in `action` or ask for in a
+  request a character, creature or place with none.
 - A panel is only an image already in `media/manifest.tsv`. A panel that does not exist yet is
   asked for in `episodes/<ep>/sequences/<Q>/shots/requests/<id>.json`: `{for, prompt, refs}`, `for`
   the shot id, `prompt` the whole prompt text, `refs` reference images, each `media:<id>`. The media

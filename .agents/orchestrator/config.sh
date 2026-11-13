@@ -19,6 +19,7 @@ PORT_BASE=8161                              # each worker gets its own port from
 MAX_CODE_FILES=15                           # PRs touching more code files than this are risky
 CODE_EXT="ts|tsx|js|jsx|mjs|cjs|mts|py|go|rb|java|kt|cs|rs|php|swift|css|scss|vue|svelte"
 MERGE_METHOD="merge"                        # merge | squash | rebase (merge keeps stacked PRs sane)
+TRAIN_MAX=1                                 # >1: the merge gate may merge that many PRs per run as a train (merge-gate.py)
 DISK_MIN_GB=6                               # refuse launches below this much free disk
 DISK_CLEAN_GB=10                            # run cleanup-idle.sh below this much free disk
 BOARD_TITLE="Dev board"

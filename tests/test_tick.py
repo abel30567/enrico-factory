@@ -1032,6 +1032,61 @@ class ResourceDown(Case):
 
 
 
+class OutOfUsage(Case):
+    """ISSUE-249: a launch step whose slot has no account with usage left is a WAIT line until the time
+    written, and no launch is started."""
+
+    def at(self, minutes):
+        os.environ["FACTORY_NOW"] = later(minutes)
+
+    def test_the_tick_waits(self):
+        """Behaviour 1."""
+        w = self.world((19, 20))
+        envelope = ROOT / "tests" / "fixtures" / "harness" / "envelopes" / "out-of-usage-status.stdout"
+        out = {"match": "You are the inspector", "stdout": envelope.read_text(), "exit": 1}
+        w.steps(out, dict(out), INSPECTOR_APPROVED)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 launch inspector on PR #20"])
+        found = [(c["role"], c["body"].split("\n")[0]) for c in w.comments(20)][1:]
+        self.assertEqual(found, [("foreman", "[FOREMAN] LAUNCH inspector 20-1"), ("inspector", "[INSPECTOR] BLOCKED")])
+        before = w.snapshot()
+        wait = "WAIT #19 review slot CHECKER is out of usage until 2026-11-11T17:00:00Z"
+        for minutes in (10, 299):
+            self.at(minutes)
+            for args in ((), ("--apply",)):
+                out = self.ticked(w, *args)
+                self.assertEqual(lines(out), [wait])
+                self.assertTrue(out.endswith("tick: 0 steps, 0 need, 1 wait, 0 failed\n"), out)
+                self.assertEqual(w.snapshot(), before)
+        self.at(300)
+        self.dry_then_apply(w, ["STEP #19 launch inspector on PR #20"])
+        found = [(c["role"], c["body"].split("\n")[0]) for c in w.comments(20)][3:]
+        self.assertEqual(found, [("foreman", "[FOREMAN] LAUNCH inspector 20-2"),
+                                 ("inspector", "[INSPECTOR] APPROVED")])
+        self.assertEqual(w.ops("create_issue"), [])
+
+    def accounts(self, w):
+        w.state.mkdir(mode=0o700, parents=True, exist_ok=True)
+        (w.state / "accounts.json").write_text(json.dumps({"acct-one": "2026-11-11T13:00:00Z",
+                                                           "acct-two": "2026-11-11T12:30:00Z"}))
+
+    def test_the_earliest_time_both_slots(self):
+        """Behaviour 2: an account name in two slots is out of usage in both."""
+        w = self.world((18, 19, 20))
+        self.accounts(w)
+        before = w.snapshot()
+        self.assertEqual(lines(self.ticked(w, "--apply")), [
+            "WAIT #18 ready slot MAKER is out of usage until 2026-11-11T12:30:00Z",
+            "WAIT #19 review slot CHECKER is out of usage until 2026-11-11T12:30:00Z"])
+        self.assertEqual(w.snapshot(), before)
+
+    def test_the_earliest_time_both_slots_twin(self):
+        w = self.world((18, 19, 20))
+        self.accounts(w)
+        self.at(30)
+        self.assertEqual(lines(self.ticked(w)), ["STEP #18 launch painter on #18",
+                                                 "STEP #19 launch inspector on PR #20"])
+
+
 FILED_BODY = ("Do the stage render for unit ep01.\n\n"
               "Upstream: #9 frames ep01, locked by PR #10.\n"
               "Filed by factory tick.\n")
