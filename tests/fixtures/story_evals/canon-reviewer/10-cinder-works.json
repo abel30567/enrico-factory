@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "A-2 adds pim as a house subject; its sheet is Wickabel of research/not-ours.tsv under a new name: the lantern-glass abdomen, the blue flame, the three ribbons and the three-note call.",
+      "evidence": "bible/canon/characters/pim.md:5; research/skarrowfen.md:5; research/not-ours.tsv:3"
+    }
+  ]
+}
