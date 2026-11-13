@@ -1,0 +1,12 @@
+{
+ "source": "https://fal.ai/docs/model-apis/model-endpoints/queue",
+ "read": "2026-11-13",
+ "status": 200,
+ "body": {
+  "request_id": "7c1f5e2a-4d3b-4a8e-9b61-0f2d8c4a7e19",
+  "response_url": "{base}/requests/7c1f5e2a-4d3b-4a8e-9b61-0f2d8c4a7e19",
+  "status_url": "{base}/requests/7c1f5e2a-4d3b-4a8e-9b61-0f2d8c4a7e19/status",
+  "cancel_url": "{base}/requests/7c1f5e2a-4d3b-4a8e-9b61-0f2d8c4a7e19/cancel",
+  "queue_position": 0
+ }
+}

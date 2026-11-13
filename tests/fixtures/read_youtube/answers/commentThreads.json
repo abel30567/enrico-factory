@@ -1,0 +1,116 @@
+{
+ "reference": "https://developers.google.com/youtube/v3/docs/commentThreads/list",
+ "read_on": "2026-11-13",
+ "answers": [
+  {
+   "query": {
+    "maxResults": "20",
+    "order": "relevance",
+    "part": "snippet",
+    "textFormat": "plainText",
+    "videoId": "yt-a"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#commentThreadListResponse",
+    "etag": "etag-commentThread",
+    "pageInfo": {
+     "totalResults": 2,
+     "resultsPerPage": 2
+    },
+    "items": [
+     {
+      "kind": "youtube#commentThread",
+      "etag": "etag-t-yt-a-1",
+      "id": "t-yt-a-1",
+      "snippet": {
+       "channelId": "ch-1",
+       "videoId": "yt-a",
+       "canReply": true,
+       "totalReplyCount": 0,
+       "isPublic": true,
+       "topLevelComment": {
+        "kind": "youtube#comment",
+        "etag": "etag-c-yt-a-1",
+        "id": "c-yt-a-1",
+        "snippet": {
+         "videoId": "yt-a",
+         "textDisplay": "Wickabel!",
+         "textOriginal": "Wickabel!",
+         "likeCount": 2,
+         "publishedAt": "2026-11-12T10:00:00Z"
+        }
+       }
+      }
+     },
+     {
+      "kind": "youtube#commentThread",
+      "etag": "etag-t-yt-a-2",
+      "id": "t-yt-a-2",
+      "snippet": {
+       "channelId": "ch-1",
+       "videoId": "yt-a",
+       "canReply": true,
+       "totalReplyCount": 0,
+       "isPublic": true,
+       "topLevelComment": {
+        "kind": "youtube#comment",
+        "etag": "etag-c-yt-a-2",
+        "id": "c-yt-a-2",
+        "snippet": {
+         "videoId": "yt-a",
+         "textDisplay": "Skarrowfen, Skarrowfen.",
+         "textOriginal": "Skarrowfen, Skarrowfen.",
+         "likeCount": 2,
+         "publishedAt": "2026-11-12T10:00:00Z"
+        }
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "query": {
+    "maxResults": "20",
+    "order": "relevance",
+    "part": "snippet",
+    "textFormat": "plainText",
+    "videoId": "yt-b"
+   },
+   "status": 403,
+   "body": {
+    "error": {
+     "code": 403,
+     "message": "The video identified by the videoId parameter has disabled comments.",
+     "errors": [
+      {
+       "message": "The video identified by the videoId parameter has disabled comments.",
+       "domain": "youtube.commentThread",
+       "reason": "commentsDisabled"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "query": {
+    "maxResults": "20",
+    "order": "relevance",
+    "part": "snippet",
+    "textFormat": "plainText",
+    "videoId": "yt-c"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#commentThreadListResponse",
+    "etag": "etag-commentThread",
+    "pageInfo": {
+     "totalResults": 0,
+     "resultsPerPage": 0
+    },
+    "items": []
+   }
+  }
+ ]
+}

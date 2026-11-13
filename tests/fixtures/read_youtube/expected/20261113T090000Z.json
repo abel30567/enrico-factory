@@ -1,0 +1,69 @@
+{
+ "platform": "youtube",
+ "read_at": "2026-11-13T09:00:00Z",
+ "topic": "harbour-tales",
+ "videos": [
+  {
+   "author": "ch-1",
+   "author_views": [
+    2100,
+    2000,
+    1900,
+    1800,
+    1700,
+    1600,
+    1500,
+    1400,
+    1300,
+    1200,
+    1100
+   ],
+   "comments": 41,
+   "duration_s": 45,
+   "followers": 12000,
+   "id": "yt-a",
+   "likes": 320,
+   "link": "https://www.youtube.com/watch?v=yt-a",
+   "order": 1,
+   "published_at": "2026-11-10T08:00:00Z",
+   "title": "Skarrowfen Wickabel",
+   "top_comments": [
+    "Wickabel!",
+    "Skarrowfen, Skarrowfen."
+   ],
+   "views": 5400
+  },
+  {
+   "author": "ch-2",
+   "author_views": [
+    0
+   ],
+   "comments": 0,
+   "duration_s": 250,
+   "followers": null,
+   "id": "yt-b",
+   "likes": null,
+   "link": "https://www.youtube.com/watch?v=yt-b",
+   "order": 2,
+   "published_at": "2026-11-11T09:00:00Z",
+   "title": "Wickabel Skarrowfen",
+   "top_comments": null,
+   "views": 880
+  },
+  {
+   "author": null,
+   "author_views": null,
+   "comments": null,
+   "duration_s": null,
+   "followers": null,
+   "id": "yt-c",
+   "likes": null,
+   "link": "https://www.youtube.com/watch?v=yt-c",
+   "order": 3,
+   "published_at": null,
+   "title": null,
+   "top_comments": [],
+   "views": null
+  }
+ ]
+}

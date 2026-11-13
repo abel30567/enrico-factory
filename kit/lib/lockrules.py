@@ -3,10 +3,11 @@
 Pure: nothing here writes to GitHub or git, nor posts anything. It reads the state ``kit.lib.tickets``
 loaded, git through ``kit.lib.gitstate`` and the blinding key through ``kit.lib.blind``.
 
-``evaluate`` always returns twelve rules, in order: the ten of section 9, then (rule 11) that a released
-episode's files are never changed, and (rule 12, ``bible-version``) that every edit list the pull request
-changes names the newest amendment of its head. A reason is one line of fixed words, ids and paths; it never
-quotes a comment's prose.
+``evaluate`` always returns thirteen rules, in order: the ten of section 9, then (rule 11) that a released
+episode's files are never changed, (rule 12, ``bible-version``) that every edit list the pull request
+changes names the newest amendment of its head, and (rule 13, ``keep``) that a lab maker's pull carries the
+change of a ``KEEP`` row of ``lab/results.tsv`` on the base. A reason is one line of fixed words, ids and
+paths; it never quotes a comment's prose.
 """
 
 from __future__ import annotations
@@ -15,10 +16,10 @@ import json
 import re
 from typing import NamedTuple
 
-from kit.lib import blind, frontmatter, gitstate, ledger, markers, production, tickets
+from kit.lib import blind, frontmatter, gitstate, lab, ledger, markers, production, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
-         "base", "released", "bible-version")
+         "base", "released", "bible-version", "keep")
 CANON_REVIEWER = "canon-reviewer"
 CHARTER = "bible/charter.md"
 AMENDMENT_CLASSES = ("charter", "arc", "canon")
@@ -26,6 +27,7 @@ VOTE_CLASSES = ("charter", "arc")
 VOTE_ACTOR = "BRAINTRUST"
 VOTE_MIN = 5
 RELEASE = "distribution/{}/release.json"
+LAB_ROOM = "lab"
 AMENDMENTS = "bible/amendments"
 
 _AMENDMENT = re.compile(r"bible/amendments/A-\d+\.json")
@@ -242,6 +244,31 @@ def _writes(p, room, maker, changed):
     return "; ".join(reasons)
 
 
+def _lab_writes(p, room, changed):
+    """Rule 7 for a lab pull: no frozen path, and every path is config of ``room``."""
+    kit = p.kit.relative_to(p.root).as_posix()
+    frozen_globs = ["lab/**", f"{kit}/evals/**"]
+    roles = {f"{kit}/roles/{role}.md" for role, doc in p.roles.items() if doc["meta"].get("room") == room}
+    lints = {}
+    for e in p.pipeline:
+        for name in e.get("lint") or []:
+            lints.setdefault(name, set()).add(e["room"])
+    lints = {f"{kit}/lib/lints/{name}.py" for name, rooms in lints.items()
+             if not name.startswith("_") and rooms == {room}}
+    frozen, outside = [], []
+    for path in changed:
+        if production.matches(path, frozen_globs):
+            frozen.append(path)
+        elif path not in roles and path not in lints:
+            outside.append(path)
+    reasons = []
+    if frozen:
+        reasons.append(f"frozen for the lab: {', '.join(frozen)}")
+    if outside:
+        reasons.append(f"outside the config of room {room}: {', '.join(outside)}")
+    return "; ".join(reasons)
+
+
 def _answered(p, state, ticket, pull, notes, checker, note):
     """A later ADDRESSED says the note was changed, or a later RULING by the room's orchestrator, on the
     pull or the ticket, names the checker and the note."""
@@ -347,11 +374,42 @@ def _bible_version(pull, root):
     return "; ".join(reasons)
 
 
+def is_lab(p, maker) -> bool:
+    """The pull's maker has a role file whose room is the lab."""
+    return maker is not None and maker in p.roles and p.roles[maker]["meta"].get("room") == LAB_ROOM
+
+
+def _keep(pull, root):
+    """A ``KEEP`` row of the log on the base names a commit of the pull, and the pull carries its change."""
+    base = pull["base_ref"]
+    text = gitstate.show(root, base, lab.PATH)
+    try:
+        rows = lab.read(text) if text is not None else []
+    except lab.LabError as e:
+        return f"{lab.PATH} on {base}: {e}"
+    shas = {c["sha"] for c in pull["git"]["commits"]}
+    candidates = [row for row in rows if row["kind"] == "run" and row["verdict"] == "KEEP" and row["commit"] in shas]
+    if not candidates:
+        return f"no KEEP in {lab.PATH} on {base} names a commit of PR #{pull['number']}"
+    head, changed = pull["git"]["head"], set(pull["git"]["changed"])
+    differs = []
+    for row in candidates:
+        kept = set(gitstate.changed(root, base, row["commit"]))
+        texts = {path for path in changed & kept
+                 if gitstate.show(root, head, path) != gitstate.show(root, row["commit"], path)}
+        differs = sorted((changed ^ kept) | texts)
+        if not differs:
+            return ""
+    row = candidates[-1]
+    return f"PR #{pull['number']} differs from KEEP {row['commit']} of loop {row['loop']}: {', '.join(differs)}"
+
+
 def evaluate(p, state, ticket, pull, root) -> list[Rule]:
-    """The twelve rules for locking ``pull`` on ``ticket``, every one evaluated."""
+    """The thirteen rules for locking ``pull`` on ``ticket``, every one evaluated."""
     entry = production.stage(p, ticket["room"], ticket["stage"])
     changed = pull["git"]["changed"]
     maker = maker_role(entry, pull)
+    in_lab = is_lab(p, maker)
     no_maker = f"no maker of stage {entry['stage']} has posted READY"
     reasons = [
         _lint(entry, pull),
@@ -360,17 +418,19 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _upstream(p, state, ticket, root),
         _selected(state, ticket, entry, pull),
         _amendment(entry, pull, root),
-        _writes(p, ticket["room"], maker, changed) if maker else no_maker,
+        (_lab_writes(p, ticket["room"], changed) if in_lab else _writes(p, ticket["room"], maker, changed))
+        if maker else no_maker,
         _repeat_notes(p, state, ticket, entry, pull),
         _gate(p, state, ticket, entry, pull, maker) if maker else no_maker,
         _base(ticket, pull, root),
         _released(pull, root),
         _bible_version(pull, root),
+        _keep(pull, root) if in_lab else "",
     ]
     return [Rule(number, name, not reason, reason)
             for number, (name, reason) in enumerate(zip(NAMES, reasons), 1)]
 
 
 def lockable(rules) -> bool:
-    """All twelve rules hold."""
+    """All the rules hold."""
     return len(rules) == len(NAMES) and all(rule.ok for rule in rules)

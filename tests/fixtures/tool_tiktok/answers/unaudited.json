@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "unaudited_client_can_only_post_to_private_accounts",
+   "log_id": "20261113090000000000000000039184",
+   "message": "Please review our integration guidelines."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 403
+}

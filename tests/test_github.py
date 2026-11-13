@@ -398,10 +398,10 @@ class GhTest(unittest.TestCase):
         self.assertEqual(str(e.exception), "issues: exit 1 (HTTP 502)")
 
     def test_pulls(self):
-        got = self.gh(ok(gh_fixture("pr_list.json"))).pulls("all")
-        self.assertEqual(self.fake.argvs(), [[
-            "gh", "pr", "list", "-R", REPO, "--state", "all", "--limit", "1000", "--json",
-            "number,title,body,state,labels,headRefName,baseRefName,createdAt,mergedAt"]])
+        got = self.gh(ok(gh_fixture("pull_pages.json"))).pulls("all")
+        self.assertEqual(self.fake.argvs(), [["gh", "api", "--paginate", "--slurp",
+                                              f"repos/{REPO}/pulls?state=all&per_page=100"]])
+        self.assertEqual(self.fake.calls[0][1]["input"], "")
         self.assertEqual([(p["number"], p["state"], p["ticket"]) for p in got],
                          [(3, "open", 1), (4, "merged", None), (5, "closed", 2)])
         self.assertEqual(got[1], {
@@ -409,8 +409,30 @@ class GhTest(unittest.TestCase):
             "head_ref": "feat/4-fix", "base_ref": "main", "ticket": None, "created_at": "2026-11-02T11:00:00Z",
             "merged_at": "2026-11-02T12:00:00Z"})
         self.assertEqual(got[0]["labels"], ["risky"])
-        # gh's "closed" also lists merged pulls; the adapter keeps only state "closed".
-        self.assertEqual([p["number"] for p in self.gh(ok(gh_fixture("pr_list.json"))).pulls("closed")], [5])
+        # The REST API calls a merged pull closed; the adapter keeps "closed" and "merged" apart.
+        for state, numbers in (("closed", [5]), ("merged", [4])):
+            self.assertEqual([p["number"] for p in self.gh(ok(gh_fixture("pull_pages.json"))).pulls(state)], numbers)
+            self.assertEqual(self.fake.argvs()[0][4], f"repos/{REPO}/pulls?state=closed&per_page=100")
+
+    def test_pulls_past_1000(self):
+        pull = json.loads(gh_fixture("pull_pages.json"))[1][0]
+        numbers = list(range(1001, 0, -1))
+        pages = [[{**pull, "number": n} for n in numbers[at:at + 100]] for at in range(0, len(numbers), 100)]
+        self.assertEqual([len(page) for page in pages], [100] * 10 + [1])
+        got = self.gh(ok(json.dumps(pages))).pulls("all")
+        self.assertEqual([p["number"] for p in got], list(range(1, 1002)))
+
+    def test_pull_with_no_body(self):
+        pull = json.loads(gh_fixture("pull_pages.json"))[1][0]
+        got = self.gh(ok(json.dumps([[{**pull, "body": None}]]))).pulls("all")
+        self.assertEqual(got[0]["body"], "")
+        self.assertIsNone(got[0]["ticket"])
+
+    def test_pulls_paging_fails_part_way(self):
+        g = self.gh((1, "", "gh: Bad Gateway (HTTP 502)"))
+        with self.assertRaises(GitHubError) as e:
+            g.pulls("all")
+        self.assertEqual(str(e.exception), "pulls: exit 1 (HTTP 502)")
 
     def test_bad_state_runs_nothing(self):
         g = self.gh()
@@ -525,16 +547,17 @@ class GhTest(unittest.TestCase):
             self.assertEqual(str(e.exception), text)
 
     def test_open_pull_creates(self):
-        n = self.gh(ok(gh_fixture("pr_list.json")), ok('{"number": 6}')).open_pull(
+        n = self.gh(ok(gh_fixture("pull_pages.json")), ok('{"number": 6}')).open_pull(
             "feat/2-font", "main", "Font", "Ticket: #2")
         self.assertEqual(n, 6)
         self.assertEqual(self.fake.argvs()[1], ["gh", "api", "-X", "POST", f"repos/{REPO}/pulls", "--input", "-"])
-        self.assertEqual(self.fake.argvs()[0][:8], ["gh", "pr", "list", "-R", REPO, "--state", "open", "--limit"])
+        self.assertEqual(self.fake.argvs()[0], ["gh", "api", "--paginate", "--slurp",
+                                                f"repos/{REPO}/pulls?state=open&per_page=100"])
         self.assertEqual(self.fake.stdin(1), {"title": "Font", "body": "Ticket: #2", "head": "feat/2-font",
                                               "base": "main"})
 
     def test_open_pull_reuses_open_head(self):
-        n = self.gh(ok(gh_fixture("pr_list.json"))).open_pull("feat/1-opening", "main", "x", "y")
+        n = self.gh(ok(gh_fixture("pull_pages.json"))).open_pull("feat/1-opening", "main", "x", "y")
         self.assertEqual(n, 3)
         self.assertEqual(len(self.fake.calls), 1)
 

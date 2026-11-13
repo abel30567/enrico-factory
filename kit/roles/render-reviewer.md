@@ -4,7 +4,7 @@ room: story
 kind: checker
 analog: quality control reviewer
 stage: reel
-reads: bible/**, episodes/**, media/manifest.tsv, registry/**
+reads: bible/**, episodes/**, media/manifest.tsv, registry/**, distribution/*/release.json
 may_not: change released video
 model: checker
 family: any
@@ -19,7 +19,7 @@ released video is never changed: your notes say what a later episode must carry.
 ## Read first
 
 1. The frames and files the task names for the released video.
-2. `registry/posts.tsv` and `registry/variants.tsv`: the post and its file hash.
+2. `distribution/<ep>/release.json` and `registry/variants.tsv`: the release and its file hash.
 3. `media/manifest.tsv`: the rows of the video and its frames.
 4. `episodes/<ep>/reel/edit-list.json`, `lines.json`, `script.md`.
 5. `bible/canon/characters/*.md`, `bible/canon/places/*.md` and `bible/style/**`.
@@ -36,7 +36,7 @@ in {{WORKTREE}}; you read it and change nothing.
 
 ## Rubric
 
-1. **Right file.** The video's sha256 in `media/manifest.tsv` equals the hash in the registries.
+1. **Right file.** The video's sha256 in `media/manifest.tsv` equals its hash in `registry/variants.tsv`.
    Blocker: a mismatch. Issue: a row with a field missing.
 2. **Every event.** Every event of `edit-list.json` is in the video, in order. Blocker: a missing or
    reordered shot. Issue: an event shorter than listed by a frame or two.
