@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The model sheet of rook is Orrel of research/not-ours.tsv under a new name: a heron in an ankle-long blue oilskin, a scarf with two white stripes, a black patch over the left eye and a brass whistle on a cord.",
+      "evidence": "bible/style/model-sheets/rook.md:9; bible/style/model-sheets/rook.md:12; research/skarrowfen.md:5"
+    }
+  ]
+}
