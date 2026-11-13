@@ -1194,5 +1194,119 @@ class OutOfUsage(unittest.TestCase):
         self.refused("slot CHECKER is out of usage until 2026-11-11T18:00:00Z", "reviewer", 7)
 
 
+CUT = re.compile(r"^prompt cut: the first (\d+) of (\d+) lines are shown; "
+                 r"the whole prompt is runs/(\S+)/prompt\.md under STATE_DIR$")
+
+
+def notes_task(w, end="\n", lines=1000):
+    task = w.tmp / "task.md"
+    task.write_text("".join(f"Note {i:04d}: " + "x" * 88 + end for i in range(1, lines + 1)))
+    return task
+
+
+def budget(role):
+    """The longest record, in characters, that `role` can post."""
+    return next(n for n in range(github.BODY_MAX, 0, -1) if github.fits("a" * (n - 1) + "\n", role))
+
+
+class LongMakerTask(unittest.TestCase):
+    """ISSUE-243 behaviours 3 and 6: a record that would not fit is cut after its last whole line that fits."""
+
+    def launched(self, end="\n"):
+        w = World(self)
+        before = len(w.gh.comments(5))
+        run = w.prepare("drafter", 5, task_file=notes_task(w, end))
+        comments = w.gh.comments(5)
+        self.assertEqual(len(comments), before + 1)
+        return run, comments[-1], (run.dir / "prompt.md").read_text()
+
+    def test_the_record_is_cut(self):
+        run, comment, text = self.launched()
+        body = comment["body"]
+        lines = body.split("\n")
+        digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+        self.assertEqual(lines[:2], ["[SHOWLEAD] LAUNCH drafter 5-1", f"prompt sha256: {digest}"])
+        m = CUT.match(lines[2])
+        self.assertIsNotNone(m, lines[2])
+        k, n = int(m.group(1)), int(m.group(2))
+        self.assertEqual(m.group(3), "drafter-5-1")
+        self.assertEqual(n, text.count("\n"))
+        self.assertTrue(0 < k < n, (k, n))
+        self.assertEqual(lines[3:9], ["model: maker-model-1", "family: any", "harness: 0.0.0 (fake)",
+                                      f"base: {run.meta['base_sha']}", "head: none", ""])
+        inner, fence = fenced(body)
+        prompt_lines = text.split("\n")
+        self.assertEqual(inner, "".join(x + "\n" for x in prompt_lines[:k]))
+        self.assertTrue(github.fits(body, "showlead"))
+        start, closing, end = body.rpartition("\n" + fence + "\n")
+        longer = start + "\n" + prompt_lines[k] + closing + end
+        self.assertEqual(len(longer), len(body) + len(prompt_lines[k]) + 1)
+        self.assertFalse(github.fits(longer, "showlead"))
+        self.assertEqual(run.meta["prompt_sha256"], digest)
+        self.assertEqual(run.meta["launch_comment"], comment["id"])
+        self.assertEqual(json.loads((run.dir / "run.json").read_text())["launch_comment"], comment["id"])
+
+    def test_lines_end_only_at_a_newline(self):
+        run, comment, text = self.launched(end="\f\n")
+        self.assertIn("\f\n", text)
+        m = CUT.match(comment["body"].split("\n")[2])
+        self.assertIsNotNone(m)
+        self.assertEqual(int(m.group(2)), text.count("\n"))
+        inner, _ = fenced(comment["body"])
+        self.assertTrue(text.startswith(inner) and inner.endswith("\n"), inner[-20:])
+        self.assertEqual(inner.count("\n"), int(m.group(1)))
+
+
+class RecordAtTheLimit(unittest.TestCase):
+    """ISSUE-243 behaviour 4: a record of exactly the limit is posted whole; one character more is cut."""
+
+    def record(self, extra):
+        w = World(self)
+        task = w.tmp / "task.md"
+        task.write_text("Pad: " + "y" * extra + "\n")
+        run = w.prepare("drafter", 5, task_file=task)
+        return w.gh.comments(5)[-1]["body"], (run.dir / "prompt.md").read_text()
+
+    def test_the_boundary(self):
+        small, _ = self.record(0)
+        extra = budget("showlead") - len(small)
+        body, text = self.record(extra)
+        self.assertTrue(github.fits(body, "showlead"))
+        self.assertFalse(github.fits(body + "a", "showlead"))
+        self.assertFalse(any(line.startswith("prompt cut:") for line in body.split("\n")))
+        self.assertEqual(fenced(body)[0], text)
+
+        body, text = self.record(extra + 1)
+        lines = body.split("\n")
+        self.assertIsNotNone(CUT.match(lines[2]), lines[2])
+        self.assertTrue(github.fits(body, "showlead"))
+        self.assertEqual(stated_sha(body), hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+
+class LongRuling(unittest.TestCase):
+    """ISSUE-243 behaviour 5: a ruling over long rounds is launched with its record cut."""
+
+    def test_long_ruling(self):
+        w = World(self)
+        added = rounds(w)
+        pad = "".join("p" * 99 + "\n" for _ in range(300))
+        path = w.dir / "comments" / "7.json"
+        comments = json.loads(path.read_text())
+        for c in comments:
+            if c["id"] in added and c["body"].startswith(("[DRAFTER] ADDRESSED\n", "[REVIEWER] NOTES\n")):
+                first, rest = c["body"].split("\n", 1)
+                c["body"] = first + "\n" + pad + rest
+        path.write_text(json.dumps(comments, indent=1, sort_keys=True) + "\n")
+        run = w.prepare("showlead", 7)
+        body = w.gh.comments(7)[-1]["body"]
+        text = (run.dir / "prompt.md").read_text()
+        self.assertTrue(body.startswith("[SHOWLEAD] LAUNCH showlead 7-1\n"), body[:80])
+        m = CUT.match(body.split("\n")[2])
+        self.assertIsNotNone(m, body.split("\n")[2])
+        self.assertEqual(m.group(3), "showlead-7-1")
+        self.assertEqual(stated_sha(body), hashlib.sha256(text.encode("utf-8")).hexdigest())
+        self.assertTrue(github.fits(body, "showlead"))
+
+
 if __name__ == "__main__":
     unittest.main()
