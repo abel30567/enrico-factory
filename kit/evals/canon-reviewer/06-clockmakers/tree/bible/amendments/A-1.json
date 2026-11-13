@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/idra.md": "adds the sheet",
+    "bible/canon/characters/selm.md": "adds the sheet",
+    "bible/canon/ledger.tsv": "adds the rows marked A-1"
+  },
+  "why": "The first canon of the show.",
+  "evidence": {
+    "bible/charter.md": "The show follows the clockmakers of Tessel"
+  }
+}

@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A2
+Changed in: A-2
 
 Wren builds boats. She has joined the river guild.
 

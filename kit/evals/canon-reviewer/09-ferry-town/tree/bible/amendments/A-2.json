@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "the row kell / age becomes 40 (was 34)",
+    "bible/canon/characters/kell.md": "updates the sheet"
+  },
+  "why": "Kell is six years older than A1 said, so that he served on the flood boats.",
+  "evidence": {
+    "bible/charter.md": "The show follows the crew of the Sound ferry"
+  }
+}

@@ -101,9 +101,10 @@ End with one JSON object, the result object, and nothing after it:
 
 ## Blocked
 
-Return `BLOCKED` only when you cannot do the work from the files: a board of the episode is not
-locked, or the cut cannot fit the runtime without dropping a beat. Fill
-`blocked` with:
+Return `BLOCKED` only when you cannot do the work from the files: a sequence of the episode has no
+shot under `shots/`, or the cut cannot fit the runtime without dropping a beat. A file of an earlier
+stage in your worktree is locked: it reached the base branch by a merged pull request, and that
+merge is the lock. No file records a lock; do not ask for one. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;

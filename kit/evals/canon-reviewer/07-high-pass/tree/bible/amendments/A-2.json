@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the row pass / reopened",
+    "bible/canon/characters/garret.md": "gets the first caravan"
+  },
+  "why": "In year 9 the high pass reopens. Garret and Tamsin guide the first caravan over it, and Tamsin marks the new path with cairns.",
+  "evidence": {
+    "bible/charter.md": "The show follows the guides of the high pass"
+  }
+}

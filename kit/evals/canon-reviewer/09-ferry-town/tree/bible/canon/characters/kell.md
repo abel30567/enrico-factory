@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A2
+Changed in: A-2
 
 Kell, 40, is the ferry master. He served on the flood boats.
 

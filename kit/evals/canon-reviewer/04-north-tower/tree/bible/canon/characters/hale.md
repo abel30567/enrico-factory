@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A1
+Changed in: A-1
 
 Hale is the captain of the tower watch.
 

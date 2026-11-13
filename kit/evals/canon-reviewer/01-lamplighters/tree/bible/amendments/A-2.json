@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the row mara / birthplace",
+    "bible/canon/characters/mara.md": "rewrites the sheet"
+  },
+  "why": "Mara was born in Velle, a river town, and came to Ostry at nine to live with her aunt. This gives her an outsider's eye on the town she lights.",
+  "evidence": {
+    "bible/charter.md": "The show follows the lamplighters of Ostry, a hill town, through one year"
+  }
+}

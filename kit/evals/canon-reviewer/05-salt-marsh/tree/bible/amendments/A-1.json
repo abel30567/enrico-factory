@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/nessa.md": "adds the sheet",
+    "bible/canon/ledger.tsv": "adds the rows marked A-1"
+  },
+  "why": "The first canon of the show.",
+  "evidence": {
+    "bible/charter.md": "The show follows the salt makers of the Wash marsh"
+  }
+}

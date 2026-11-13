@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "the row ada / home becomes Orchard House (was the mill)",
+    "bible/canon/characters/ada.md": "gets the move"
+  },
+  "why": "The mill burns at the end of the first season, and Ada moves to Orchard House for good.",
+  "evidence": {
+    "bible/charter.md": "The show follows the cider makers of Hollin vale through the seasons"
+  }
+}

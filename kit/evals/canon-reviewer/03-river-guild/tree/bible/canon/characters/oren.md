@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A2
+Changed in: A-2
 
 Oren is a ferryman, grey-eyed and right-handed, who taught Wren to row.
 

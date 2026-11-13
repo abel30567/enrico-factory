@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the row selm / trade",
+    "bible/canon/characters/selm.md": "adds the year 1 flashback"
+  },
+  "why": "A flashback marked year 1, before Selm's death: he teaches Idra to set a balance wheel.",
+  "evidence": {
+    "bible/charter.md": "The show follows the clockmakers of Tessel"
+  }
+}

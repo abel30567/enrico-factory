@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the row pell / born_in",
+    "bible/canon/characters/pell.md": "gets her childhood in Harrow"
+  },
+  "why": "Pell grew up in Harrow, a fishing village, red-haired and loud.",
+  "evidence": {
+    "bible/charter.md": "The show follows the stall keepers of the Grey Street winter market"
+  }
+}

@@ -3,7 +3,7 @@
 ## B1 pickup
 duration: 8
 
-Last time: a lantern left at the well, still burning at dawn.
+Each dawn a lantern stands at the well, still burning.
 
 ## B2 event
 duration: 40

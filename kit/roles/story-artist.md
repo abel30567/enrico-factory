@@ -101,9 +101,10 @@ End with one JSON object, the result object, and nothing after it:
 
 ## Blocked
 
-Return `BLOCKED` only when you cannot do the work from the files: the sequence or the style lock
-is not locked, or a character or set it needs has no sheet. Fill
-`blocked` with:
+Return `BLOCKED` only when you cannot do the work from the files: the sequence's `sequence.json` or
+the style lock under `bible/style/` is missing, or a character or set it needs has no sheet. A file
+of an earlier stage in your worktree is locked: it reached the base branch by a merged pull request,
+and that merge is the lock. No file records a lock; do not ask for one. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
