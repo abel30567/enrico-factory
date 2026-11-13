@@ -4,7 +4,7 @@ room: story
 kind: checker
 analog: series bible editor
 stage: bible
-reads: bible/**, episodes/**, research/**, sources/**, registry/**
+reads: bible/**, episodes/**, research/**, sources/**, distribution/*/release.json
 may_not: fix the work
 model: checker
 family: any
@@ -21,7 +21,7 @@ not make this work, and you do not change it.
 1. `bible/amendments/A-<n>.json`: the amendment the task names.
 2. The files under `bible/charter.md` and `bible/canon/**` the amendment changes.
 3. `bible/canon/ledger.tsv`: the canon ledger, as it stands on the head.
-4. `registry/posts.tsv` and `episodes/<ep>/ledger.json` of every released episode.
+4. `episodes/<ep>/ledger.json` of each released episode: one with a `distribution/<ep>/release.json`.
 5. `research/**` and `sources/**` the changed lines cite, and `research/not-ours.tsv` where there is one.
 
 When two files disagree, this order wins: the rules of power, the charter, the production
@@ -42,7 +42,7 @@ in {{WORKTREE}}; you read it and change nothing.
 2. **No silent contradiction.** Compare changed rows and sheets with `bible/canon/ledger.tsv`. Same
    subject and attribute means same value, unless the amendment changes that row. Blocker: a
    contradiction the amendment does not declare. Issue: two rows that say nearly the same thing.
-3. **Released canon kept.** For each episode `registry/posts.tsv` lists as released, open its
+3. **Released canon kept.** For each released episode (Read first 4; none is `n/a`), open its
    `ledger.json`. No fact it asserts is changed. Blocker: the amendment contradicts a released fact.
    Issue: a released fact becomes awkward but stays true.
 4. **Sourced.** Every changed row and list item carries its tag, and every `[text]` or `[art]` source

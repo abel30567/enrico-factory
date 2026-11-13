@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "scope_not_authorized",
+   "log_id": "20261113090000000000000000081352",
+   "message": "The user did not authorize the scope required for completing this request."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 401
+}

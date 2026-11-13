@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "url_ownership_unverified",
+   "log_id": "20261113090000000000000000025232",
+   "message": "Please review our URL ownership verification rules."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-upload-video",
+ "status": 403
+}

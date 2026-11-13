@@ -1,0 +1,168 @@
+{
+ "reference": "https://developers.google.com/youtube/v3/docs/playlistItems/list",
+ "read_on": "2026-11-13",
+ "answers": [
+  {
+   "query": {
+    "maxResults": "21",
+    "part": "contentDetails",
+    "playlistId": "UU-ch-1"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#playlistItemListResponse",
+    "etag": "etag-playlistItem",
+    "pageInfo": {
+     "totalResults": 12,
+     "resultsPerPage": 12
+    },
+    "items": [
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-0",
+      "id": "UU-ch-1-0",
+      "contentDetails": {
+       "videoId": "yt-a",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-1",
+      "id": "UU-ch-1-1",
+      "contentDetails": {
+       "videoId": "yt-d11",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-2",
+      "id": "UU-ch-1-2",
+      "contentDetails": {
+       "videoId": "yt-d10",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-3",
+      "id": "UU-ch-1-3",
+      "contentDetails": {
+       "videoId": "yt-d09",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-4",
+      "id": "UU-ch-1-4",
+      "contentDetails": {
+       "videoId": "yt-d08",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-5",
+      "id": "UU-ch-1-5",
+      "contentDetails": {
+       "videoId": "yt-d07",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-6",
+      "id": "UU-ch-1-6",
+      "contentDetails": {
+       "videoId": "yt-d06",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-7",
+      "id": "UU-ch-1-7",
+      "contentDetails": {
+       "videoId": "yt-d05",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-8",
+      "id": "UU-ch-1-8",
+      "contentDetails": {
+       "videoId": "yt-d04",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-9",
+      "id": "UU-ch-1-9",
+      "contentDetails": {
+       "videoId": "yt-d03",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-10",
+      "id": "UU-ch-1-10",
+      "contentDetails": {
+       "videoId": "yt-d02",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-1-11",
+      "id": "UU-ch-1-11",
+      "contentDetails": {
+       "videoId": "yt-d01",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "query": {
+    "maxResults": "21",
+    "part": "contentDetails",
+    "playlistId": "UU-ch-2"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#playlistItemListResponse",
+    "etag": "etag-playlistItem",
+    "pageInfo": {
+     "totalResults": 2,
+     "resultsPerPage": 2
+    },
+    "items": [
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-2-0",
+      "id": "UU-ch-2-0",
+      "contentDetails": {
+       "videoId": "yt-b",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#playlistItem",
+      "etag": "etag-UU-ch-2-1",
+      "id": "UU-ch-2-1",
+      "contentDetails": {
+       "videoId": "yt-q",
+       "videoPublishedAt": "2026-11-01T00:00:00Z"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from test_lockrules import FIX, ROOT, World  # noqa: E402
 
-from kit.lib import cmd_lock, github, lint  # noqa: E402
+from kit.lib import cmd_lock, github, lint, lockrules  # noqa: E402
 from kit.lib.github import GitHubError  # noqa: E402
 
 
@@ -273,7 +273,7 @@ class JsonTest(unittest.TestCase):
                          [(6, 5, True), (8, 7, True), (17, 15, False)])
         for o in found:
             self.assertEqual(sorted(o), ["lockable", "pull", "rules", "ticket"])
-            self.assertEqual([r["number"] for r in o["rules"]], list(range(1, 13)))
+            self.assertEqual([r["number"] for r in o["rules"]], list(range(1, len(lockrules.NAMES) + 1)))
             self.assertTrue(all(sorted(r) == ["name", "number", "ok", "reason"] for r in o["rules"]))
         self.assertEqual([r for r in found[2]["rules"] if not r["ok"]],
                          [{"name": "selected", "number": 5, "ok": False, "reason": "ticket #15 selected PR #16"}])
