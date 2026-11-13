@@ -10,6 +10,14 @@ one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked 
 a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
 step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
 
+Before the filings, the producer's monitors (``kit.lib.monitors``, system brief section 11) read every ticket
+whatever ``--room`` says: one ``NEED - monitor <name>: ...`` line per trip, and with ``--apply`` one issue per
+trip labelled ``needs:orchestrator`` unless an open issue has its title. Each step is the one
+``monitors.instead`` gives: a budget trip stops the run (``WAIT #<n> budget ...``), a canon contradiction and a
+re-break are ``NEED`` lines, and after ``monitors.NO_WIN_ROUNDS`` twice lost blind rounds the step is
+``STEP #<n> close #<n>``, which with ``--apply`` closes the ticket. A monitor that cannot be read prints
+``FAIL - monitor <name>: <message>`` and the tick goes on.
+
 With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
 while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls that no marker answers
 (``steps.running``), counted when the tick starts, plus one per launch step this tick takes. Over the cap the
@@ -36,8 +44,8 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, cmd_run, down, filing, finish, github,  # noqa: E402
-                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, production, steps,
-                     tickets)
+                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, monitors, production,
+                     steps, tickets)
 
 LABEL = "needs:orchestrator"
 LOCK_DIR = "tick.lock"
@@ -140,6 +148,7 @@ class Tick:
         self.counts = {"STEP": 0, "NEED": 0, "WAIT": 0, "FAIL": 0}
         self.locked_rooms = set()
         self.open_issues = None
+        self.trips = []
         self.state = tickets.load(p, gh, p.root)
         self.running = 0
         if cap is not None:
@@ -192,9 +201,13 @@ class Tick:
         try:
             entries = steps.all_steps(*args)
             first = steps.next_step(*args)
+            first = monitors.instead(self.p, self.trips, ticket, first)
+            entries = [monitors.instead(self.p, self.trips, ticket, entry) for entry in entries]
         except ERRORS as error:
             self.say(f"FAIL #{n} read: {_message(error)}")
             return
+        if first["state"] == "no-convergence":
+            entries = [first]
         state = self.state
         lines = [self.say(self.entry(state, ticket, entry, first)) for entry in entries]
         if first not in entries:
@@ -243,6 +256,8 @@ class Tick:
             if line.startswith("STEP "):
                 self.running += 1
             return line
+        if step == "close":
+            return self.take(n, "close", f"STEP #{n} close #{n}", lambda: self.gh.close_issue(n))
         if step == "lint":
             return self.take(n, "lint", f"STEP #{n} lint PR #{m}", lambda: self.lint(m))
         if step == "blind":
@@ -257,6 +272,31 @@ class Tick:
         launch_id = _launch_id(comments, role)
         return self.take(n, "timeout", f"STEP #{n} timeout {role} {launch_id}",
                          lambda: self.timeout(role, launch_id))
+
+    def monitor(self):
+        """One line per trip of ``monitors.trips``; with ``--apply``, its ``[MONITOR]`` issue unless one is open."""
+        try:
+            text = gitstate.show(self.p.root, production.base(self.p), ledger.PATH)
+            rows = ledger.read(text) if text is not None else []
+        except (ledger.LedgerError, *ERRORS) as error:
+            self.say(f"FAIL - monitor budget: {error if isinstance(error, ledger.LedgerError) else _message(error)}")
+            rows = None
+        self.trips = monitors.trips(self.p, self.state, rows, self.now)
+        for trip in self.trips:
+            name = trip["monitor"]
+            if "error" in trip:
+                self.say(f"FAIL - monitor {name}: {_message(trip['error'])}")
+                continue
+            self.say(f"NEED - {trip['line']}")
+            if not self.apply:
+                continue
+            try:
+                if self.open_issues is None:
+                    self.open_issues = self.gh.issues("open")
+                if not any(issue["title"] == trip["title"] for issue in self.open_issues):
+                    self.gh.create_issue(trip["title"], trip["body"], [LABEL])
+            except ERRORS as error:
+                self.say(f"FAIL - monitor {name}: {_message(error)}")
 
     def down(self, role):
         """``down.blocking`` for ``role``; the open issues are read once per tick, at the first launch."""
@@ -375,6 +415,7 @@ def _tick(p, gh, rooms, apply) -> int:
     tick = Tick(p, gh, apply, now, cap)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
+    tick.monitor()
     tick.file(rooms)
     try:
         for room in rooms:
