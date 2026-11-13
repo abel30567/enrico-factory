@@ -16,8 +16,12 @@ from pathlib import Path
 from kit.lib import frontmatter, harness, lint, roles
 
 CASE_KEYS = {"seeded": ("catches",), "clean": (), "replay": ("lint", "expect_files"),
-             "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",)}
-CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay", "refusal"), "judge": ("pair",)}
+             "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",), "verdict": ("verdicts",)}
+CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay", "refusal", "verdict"), "judge": ("pair",),
+              "analyst": ("verdict",)}
+# The kinds whose suite needs at least one case; a role of another kind may have none.
+NEEDS_CASES = ("checker", "maker", "judge")
+VERDICTS = ("usable", "not usable")
 SIDES = ("old", "new")
 PLACES = 4
 MEASURED_RUNS = 5
@@ -79,6 +83,12 @@ def _spec_problem(spec, role_kind, lint_ids):
             return f"missing key {key!r}"
     if kind not in CASE_KINDS.get(role_kind, ()):
         return f"a {kind} case does not fit a role of kind {role_kind}"
+    if kind == "verdict":
+        verdicts = spec["verdicts"]
+        if not isinstance(verdicts, dict) or not verdicts \
+                or any(not isinstance(vid, str) or not vid for vid in verdicts) \
+                or any(value not in VERDICTS for value in verdicts.values()):
+            return "verdicts is not an object of video id to usable or not usable"
     if kind == "seeded":
         if not _is_strings(spec["catches"]) or not spec["catches"]:
             return "catches is not a non-empty list of regexes"
@@ -146,7 +156,7 @@ def load(kit, role):
     suite = Path(kit) / "evals" / role
     paths = sorted((p for p in suite.iterdir() if p.is_dir()), key=lambda p: p.name) \
         if suite.is_dir() else []
-    if not paths and role_kind in CASE_KINDS:
+    if not paths and role_kind in NEEDS_CASES:
         raise EvalError(f"{role}: no cases in evals/{role}/")
     # Only a maker may hold replay and refusal cases, the only ones that name lints.
     lint_ids = set(lint.discover()) if role_kind == "maker" else set()
@@ -211,6 +221,38 @@ def _grade_refusal(case, result, run_dir):
     return passed, detail
 
 
+def _found_verdicts(case, result, run_dir):
+    """``{video id: set of verdicts}`` the result gives: a maker's from the notes of its trend cards
+    (``research/trends/*.tsv`` in ``run_dir``), an analyst's from the start of its notes' text."""
+    found = {}
+    if case.role_kind == "analyst":
+        for note in result.get("notes", []):
+            for vid in case.spec["verdicts"]:
+                m = re.match(re.escape(vid) + r" (usable|not usable): \S", note["text"])
+                if m:
+                    found.setdefault(vid, set()).add(m.group(1))
+        return found
+    for path in sorted(Path(run_dir).glob("research/trends/*.tsv")):
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
+            fields = line.split("\t")
+            m = re.match(r"(usable|not usable): \S", fields[5]) if len(fields) == 6 else None
+            if m:
+                found.setdefault(fields[2], set()).add(m.group(1))
+    return found
+
+
+def _grade_verdict(case, result, run_dir):
+    """A verdict case passes when each video's verdicts are exactly the case's one."""
+    want = "SYMPTOMS" if case.role_kind == "analyst" else "READY"
+    if result["marker"] != want:
+        return False, f"marker {result['marker']}, not {want}"
+    found = _found_verdicts(case, result, run_dir)
+    wrong = sorted(vid for vid, verdict in case.spec["verdicts"].items() if found.get(vid) != {verdict})
+    if wrong:
+        return False, "wrong or no verdict: " + ", ".join(wrong)
+    return True, "every verdict right"
+
+
 def _grade_pair(case, result, run):
     choice = harness.PREFERS.get(result["marker"])
     if choice is None:
@@ -225,7 +267,7 @@ def grade(case, result, run=1, run_dir=None):
     """``{"case", "kind", "marker", "pass", "detail"}`` for one result of one case.
 
     ``run`` is the run index (it decides the sides of a pair case); ``run_dir`` is the directory the
-    role worked in (a replay or refusal case's files and lints are read there). A result that is None
+    role worked in (a replay or refusal case's files and lints, a maker's trend cards, are read there). A result that is None
     or fails ``harness.validate_result`` does not pass and has marker None.
     """
     graded = {"case": case.id, "kind": case.kind, "marker": None, "pass": False, "detail": "no result"}
@@ -243,6 +285,8 @@ def grade(case, result, run=1, run_dir=None):
         passed, detail = _grade_replay(case, result, run_dir)
     elif case.kind == "refusal":
         passed, detail = _grade_refusal(case, result, run_dir)
+    elif case.kind == "verdict":
+        passed, detail = _grade_verdict(case, result, run_dir)
     else:
         passed, detail = _grade_pair(case, result, run)
     graded.update(marker=result["marker"], detail=detail)
@@ -269,8 +313,9 @@ def metrics(kind, graded):
 
     A checker: catch rate on seeded cases less false-alarm rate on clean ones (a clean case that does
     not pass and is not ``BLOCKED`` counts as an alarm). A maker: lint pass rate on replay cases and,
-    with a refusal case, refusal rate; its score is the share passed over both kinds. A judge:
-    agreement.
+    with a refusal case, refusal rate; its score is the share passed over both kinds; with a verdict
+    case, also verdict rate. A maker with verdict cases only, and an analyst: verdict rate, its score.
+    A judge: agreement.
     A blocked case counts in each denominator and in no numerator; ``blocked`` is the number of
     graded cases whose marker is ``BLOCKED``. A rate with no case to count is None, and then there is
     no score: ``EvalError``.
@@ -279,10 +324,14 @@ def metrics(kind, graded):
         rates = {"catch_rate": _rate(graded, "seeded", _passed),
                  "false_alarm_rate": _rate(graded, "clean",
                                            lambda g: g["pass"] is False and not _blocked(g))}
+    elif kind == "analyst" or kind == "maker" and graded and all(g["kind"] == "verdict" for g in graded):
+        rates = {"verdict_rate": _rate(graded, "verdict", _passed)}
     elif kind == "maker":
         rates = {"lint_pass_rate": _rate(graded, "replay", _passed)}
         if any(g["kind"] == "refusal" for g in graded):
             rates["refusal_rate"] = _rate(graded, "refusal", _passed)
+        if any(g["kind"] == "verdict" for g in graded):
+            rates["verdict_rate"] = _rate(graded, "verdict", _passed)
     elif kind == "judge":
         rates = {"agreement": _rate(graded, "pair", _passed)}
     else:
@@ -293,7 +342,7 @@ def metrics(kind, graded):
     values = list(rates.values())
     if kind == "checker":
         score = values[0] - values[1]
-    elif kind == "maker":
+    elif "lint_pass_rate" in rates:
         counted = [g for g in graded if g["kind"] in ("replay", "refusal")]
         score = sum(_passed(g) for g in counted) / len(counted)
     else:

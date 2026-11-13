@@ -5,7 +5,7 @@ kind: maker
 analog: story researcher
 stage: research
 writes: research/**
-reads: bible/**, episodes/**, research/**, sources/**, playbook/**
+reads: bible/**, brand/**, episodes/**, research/**, sources/**, playbook/**
 checked_by: fact-checker
 may_not: write story; skip the source and evidence fields
 model: maker
@@ -51,6 +51,12 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   character, place, creature, work or mark), with the columns `name`, `holder` and `link` (where the name
   was seen). Start the file with that header row if there is none. A trend's format, subject or rhythm
   can be used; its character, sound and shot stay with their owner, so list each such name.
+- **trend verdicts**: the launcher puts `.snapshot/` in {{WORKTREE}} when the topic is watched (each
+  platform's ranking and read) and writes `research/trends/<topic>.<platform>.tsv`. Judge each video you
+  name: it fits the charter and `brand/**`, a format in `.factory/formats/` can tell it, `velocity` says
+  it still rises, and what it uses is a format, a subject or a rhythm, never its character, sound or shot.
+  Start the `note` of its first card row with `usable: ` or `not usable: `, then the symptom. The evidence,
+  and a pivot proposal naming the part used, go in `research/<topic>.md`. Copy no count, title or comment.
 
 Lints this stage must pass: `provenance`, `references`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.
