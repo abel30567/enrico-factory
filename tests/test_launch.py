@@ -1074,6 +1074,106 @@ class RulingPassedOn(unittest.TestCase):
 
 
 
+class BlockedMakerLaunch(OrchestratorRefusal, unittest.TestCase):
+    """ISSUE-242 behaviour 4: the orchestrator's launch for a maker whose latest marker is BLOCKED."""
+
+    BLOCKED = "[DRAFTER] BLOCKED\n\nMissing: the tide table\nWhat was tried: the bible\nResume from: here\n"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def test_on_a_pull(self):
+        w = self.w
+        w.comment(7, 50, "2026-11-10T12:00:00Z", "drafter", self.BLOCKED)
+        before = len(w.gh.comments(7))
+        run = w.prepare("showlead", 7)
+        comments = w.gh.comments(7)
+        self.assertEqual(len(comments), before + 1)
+        record = comments[-1]
+        self.assertTrue(record["body"].startswith("[SHOWLEAD] LAUNCH showlead 7-1\n"), record["body"])
+        head = w.head(PULL_REF)
+        self.assertIn(f"\nhead: {head}\n", record["body"])
+        workdir = w.state / "worktrees" / "showlead-7-1"
+        self.assertEqual(sorted(p.name for p in workdir.iterdir()), ["pr-7"])
+        self.assertEqual(tree(workdir / "pr-7"), files_at(w, PULL_REF))
+        self.assertEqual(set(run.meta), RUN_KEYS | {"pulls"})
+        self.assertEqual((run.meta["pull"], run.meta["pulls"]), (7, [7]))
+        text = (run.dir / "prompt.md").read_text()
+        self.assertEqual(task_of(text), f"Judgment 4, a blocked worker, on pull request #7 at head {head}. "
+                                        "Its files are in pr-7/.\n\n" + self.BLOCKED.rstrip("\n"))
+
+    def test_on_a_ticket(self):
+        w = self.w
+        w.comment(5, 50, "2026-11-10T12:00:00Z", "showlead", "[SHOWLEAD] LAUNCH drafter 5-1\n")
+        w.comment(5, 51, "2026-11-10T12:30:00Z", "drafter", self.BLOCKED)
+        run = w.prepare("showlead", 5)
+        record = w.gh.comments(5)[-1]
+        self.assertTrue(record["body"].startswith("[SHOWLEAD] LAUNCH showlead 5-1\n"), record["body"])
+        self.assertIn("\nhead: none\n", record["body"])
+        workdir = w.state / "worktrees" / "showlead-5-1"
+        self.assertEqual(run.worktree, workdir)
+        self.assertEqual(list(workdir.iterdir()), [])
+        self.assertEqual(set(run.meta), RUN_KEYS | {"pulls"})
+        self.assertEqual((run.meta["pull"], run.meta["head_sha"], run.meta["pulls"]), (None, None, []))
+        text = (run.dir / "prompt.md").read_text()
+        self.assertEqual(task_of(text), "Judgment 4, a blocked worker, on ticket #5. The launch it answers has no "
+                                        "pull request.\n\n" + self.BLOCKED.rstrip("\n"))
+
+    def test_after_a_ruling_on_the_pull(self):
+        # Seeded defect: the BLOCKED has its ruling; the maker is due, not the orchestrator.
+        w = self.w
+        w.comment(7, 50, "2026-11-10T12:00:00Z", "drafter", self.BLOCKED)
+        w.comment(7, 51, "2026-11-10T13:00:00Z", "showlead", "[SHOWLEAD] RULING\n\nUse last year's table.\n")
+        self.refused(w, "no judgment is due on #7", "showlead", 7)
+
+
+class RulingOnTheTicketPassedOn(unittest.TestCase):
+    """ISSUE-242 behaviour 5: a maker relaunched on a ticket after a RULING on its BLOCKED gets the
+    ruling as the last part of its task; with no such ruling its prompt is the one `main` builds."""
+
+    RULING = "[SHOWLEAD] RULING\n\nUse last year's tide table.\n\nLaunch: 5-1\n"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def main_prompt(self, run):
+        """The prompt `main` builds for the drafter's launch on ticket #5, as `main`'s launch.py does."""
+        w = self.w
+        values = {"REPO": "example/tide-show", "WORKTREE": str(run.worktree), "RULES": production.rules_text(w.p),
+                  "TICKET": f"#5 [BT-1] Beats for ep01\n\n{w.gh.issue(5)['body']}",
+                  "BRANCH": run.meta["branch"], "TASK": "Do the stage beats for unit ep01."}
+        text = prompt.render(w.p.roles["drafter"]["body"], values)
+        return text if text.endswith("\n") else text + "\n"
+
+    def launched(self):
+        run = self.w.prepare("drafter", 5)
+        text = (run.dir / "prompt.md").read_text()
+        record = self.w.gh.comments(5)[-1]["body"]
+        self.assertTrue(record.startswith("[SHOWLEAD] LAUNCH drafter 5-"), record)
+        return run, text, stated_sha(record)
+
+    def test_the_ruling_ends_the_task(self):
+        w = self.w
+        w.comment(5, 50, "2026-11-10T12:00:00Z", "showlead", "[SHOWLEAD] LAUNCH drafter 5-1\n")
+        w.comment(5, 51, "2026-11-10T12:30:00Z", "drafter", "[DRAFTER] BLOCKED\nMissing: the tide table\n")
+        w.comment(5, 52, "2026-11-10T13:00:00Z", "showlead", "[SHOWLEAD] LAUNCH showlead 5-1\n")
+        w.comment(5, 53, "2026-11-10T13:30:00Z", "showlead", self.RULING)
+        run, text, sha = self.launched()
+        self.assertEqual(run.meta["id"], "5-2")
+        self.assertEqual(task_of(text), "Do the stage beats for unit ep01.\n\n" + self.RULING.rstrip("\n"))
+        self.assertNotEqual(sha, hashlib.sha256(self.main_prompt(run).encode("utf-8")).hexdigest())
+
+    def test_no_ruling_twin(self):
+        run, text, sha = self.launched()
+        self.assertEqual(sha, hashlib.sha256(self.main_prompt(run).encode("utf-8")).hexdigest())
+
+    def test_a_ruling_with_no_blocked_twin(self):
+        self.w.comment(5, 53, "2026-11-10T13:30:00Z", "showlead", self.RULING)
+        run, text, sha = self.launched()
+        self.assertEqual(sha, hashlib.sha256(self.main_prompt(run).encode("utf-8")).hexdigest())
+        self.assertNotIn("RULING", text)
+
+
 class ResourceDown(unittest.TestCase):
     """ISSUE-94: a launch whose resource is down is refused before anything is created or posted."""
 

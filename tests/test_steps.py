@@ -574,5 +574,112 @@ class SelectionEntryTest(ChainCase):
         self.check(("selection", "launch", "chief", None))
 
 
+class BlockedMakerTest(ChainCase):
+    """ISSUE-242 behaviours 1 and 2: tick starts the orchestrator once for a BLOCKED maker, on a pull and on
+    a ticket, and the maker again after its RULING."""
+    FIXTURE, TICKET = "steps", 3
+
+    def post(self, cid, minute, role, body, number=5):
+        self.w.apply(comment(number, cid, minute, role, body))
+
+    def test_on_a_pull_the_orchestrator_is_launched(self):
+        self.until("maker-blocked")
+        self.assertEqual(short(self.next()), ("blocked", "launch", "chief", 5))
+        self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #5")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.assertEqual(short(self.next()), ("running", "none", "chief", 5))
+
+    def test_on_a_pull_a_blocked_orchestrator_wakes(self):
+        self.until("maker-blocked")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post(901, 21, "chief", "[CHIEF] BLOCKED\nMissing: the charter\n")
+        self.assertEqual(short(self.next()), ("blocked", "wake", "chief", 5))
+        self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #5")
+
+    def test_on_a_pull_a_ruling_launches_the_maker(self):
+        for number in (5, 3):
+            with self.subTest(number=number):
+                self.setUp()
+                self.until("maker-blocked")
+                if number == 5:
+                    # On the ticket the RULING is one by hand: a LAUNCH on #5 is answered on #5 only.
+                    self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+                self.post(901, 21, "chief", "[CHIEF] RULING\nUse the episode-circle format.\n", number=number)
+                self.assertEqual(short(self.next()), ("blocked", "launch", "writer", 5))
+                self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #5 and has a ruling")
+                self.assertEqual([short(e) for e in self.all()], [("blocked", "launch", "writer", 5)])
+
+    def test_on_a_pull_a_ruling_older_than_the_blocked(self):
+        # Seeded defect: the ruling answers an earlier question, not this BLOCKED.
+        self.until("relaunch-maker")
+        self.post(900, 6, "chief", "[CHIEF] RULING\nToo early.\n")
+        self.until("maker-blocked")
+        self.assertEqual(short(self.next()), ("blocked", "launch", "chief", 5))
+
+    def test_on_a_pull_a_ruling_of_another_actor(self):
+        # Seeded defect: only the room's orchestrator rules.
+        self.until("maker-blocked")
+        self.post(900, 20, "editor", "[EDITOR] RULING\nNot mine to give.\n")
+        self.assertEqual(short(self.next()), ("blocked", "launch", "chief", 5))
+
+    def test_on_a_pull_a_second_blocked_wakes(self):
+        self.until("maker-blocked")
+        self.post(900, 20, "chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post(901, 21, "chief", "[CHIEF] RULING\nUse the episode-circle format.\n")
+        self.post(902, 22, "chief", "[CHIEF] LAUNCH writer 5-2\n")
+        self.assertEqual(short(self.next()), ("running", "none", "writer", 5))
+        self.post(903, 23, "writer", "[WRITER] BLOCKED\nMissing: the format, still\n")
+        self.assertEqual(short(self.next()), ("blocked", "wake", "chief", 5))
+
+    def ticket_blocked(self):
+        self.until("launch-maker")
+        self.post(900, 5, "writer", "[WRITER] BLOCKED\nMissing: the format\n", number=3)
+
+    def test_on_a_ticket_the_orchestrator_is_launched(self):
+        self.ticket_blocked()
+        self.assertEqual(short(self.next()), ("blocked", "launch", "chief", None))
+        self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #3")
+        self.post(901, 6, "chief", "[CHIEF] LAUNCH chief 3-1\n", number=3)
+        self.assertEqual(short(self.next()), ("running", "none", "chief", None))
+
+    def test_on_a_ticket_a_ruling_frees_the_pitch(self):
+        self.ticket_blocked()
+        self.post(901, 6, "chief", "[CHIEF] LAUNCH chief 3-1\n", number=3)
+        self.post(902, 7, "chief", "[CHIEF] RULING\nUse the episode-circle format.\n", number=3)
+        self.assertEqual(short(self.next()), ("ready", "launch", "writer", None))
+        self.assertEqual([short(e) for e in self.all()], [("ready", "launch", "writer", None)])
+        self.post(903, 8, "chief", "[CHIEF] LAUNCH writer 3-2\n", number=3)
+        self.assertEqual(short(self.next()), ("running", "none", "writer", None))
+
+    def test_on_a_ticket_a_second_blocked_wakes(self):
+        # Seeded defect: the maker launched after the ruling is BLOCKED again.
+        self.ticket_blocked()
+        self.post(901, 6, "chief", "[CHIEF] LAUNCH chief 3-1\n", number=3)
+        self.post(902, 7, "chief", "[CHIEF] RULING\nUse the episode-circle format.\n", number=3)
+        self.post(903, 8, "chief", "[CHIEF] LAUNCH writer 3-2\n", number=3)
+        self.post(904, 9, "writer", "[WRITER] BLOCKED\nMissing: the format, still\n", number=3)
+        self.assertEqual(short(self.next()), ("blocked", "wake", "chief", None))
+        self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #3")
+
+
+class SelectionAfterABlockTest(ChainCase):
+    """ISSUE-242 behaviour 3: a launch of the orchestrator older than the ticket's newest maker launch
+    does not turn the selection into a wake."""
+    FIXTURE, TICKET = "pitches", 1
+
+    def ruled(self, minute):
+        self.until("approved-5")
+        self.w.apply(comment(1, 900, minute, "chief", "[CHIEF] LAUNCH chief 1-1\n"))
+        self.w.apply(comment(1, 901, minute, "chief", "[CHIEF] RULING\nUse the second hook.\n"))
+
+    def test_an_older_launch_is_not_the_selection_s(self):
+        self.ruled(0)
+        self.assertEqual(short(self.next()), ("selection", "launch", "chief", None))
+
+    def test_a_newer_launch_is_the_selection_s_twin(self):
+        self.ruled(20)
+        self.assertEqual(short(self.next()), ("selection", "wake", "chief", None))
+
+
 if __name__ == "__main__":
     unittest.main()

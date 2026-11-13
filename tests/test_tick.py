@@ -992,6 +992,47 @@ class Judgment(Case):
 
 
 
+class BlockedMaker(Case):
+    """ISSUE-242 behaviour 7: tick starts the room's orchestrator once for a BLOCKED maker on a pull, and
+    the maker again after its RULING."""
+
+    KEEPER_RULING = step("You are the keeper", {
+        "marker": "RULING", "summary": "The draft keeps its length; write the second scene.",
+        "evidence": [{"criterion": "writer BLOCKED", "result": "ruled", "command": "story/ep02/draft.md"}]})
+
+    def blocked(self, *fake):
+        w = self.world((5, 6))
+        w.steps(*fake)
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "writer", 6)
+        os.environ["FACTORY_NOW"] = later(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 timeout writer 6-1"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("writer", "[WRITER] BLOCKED"))
+        return w
+
+    def keeper_launches(self, w):
+        return [b for _, b in firsts(w.comments(6)) if " LAUNCH keeper " in b]
+
+    def test_a_ruling_launches_the_maker(self):
+        w = self.blocked(self.KEEPER_RULING)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-2:], [("keeper", "[KEEPER] LAUNCH keeper 6-1"),
+                                                      ("keeper", "[KEEPER] RULING")])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch writer on PR #6"])
+        self.assertEqual(w.ops("add_label"), [])
+        self.assertEqual(self.keeper_launches(w), ["[KEEPER] LAUNCH keeper 6-1"])
+
+    def test_no_answer_wakes_once(self):
+        w = self.blocked()
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-2:], [("keeper", "[KEEPER] LAUNCH keeper 6-1"),
+                                                      ("keeper", "[KEEPER] BLOCKED")])
+        for _ in range(2):
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(5, LABEL)])
+        self.assertEqual(self.keeper_launches(w), ["[KEEPER] LAUNCH keeper 6-1"])
+
+
 class ResourceDown(Case):
     """ISSUE-94, behaviour 7: a launch step whose role must wait is a WAIT line, and no launch is started."""
 
@@ -1404,3 +1445,15 @@ class Workers(Case):
         self.assertEqual(self.running(w, 19)[0], 1)
         w.add(20, later(5), "inspector", "[INSPECTOR] APPROVED\n")
         self.assertEqual(self.running(w, 19)[0], 0)
+
+    def test_a_launch_set_aside_by_a_ruling(self):
+        """ISSUE-242 behaviour 10: the maker launch a RULING set aside is not running."""
+        w = World(self.addCleanup, (18,))
+        for minutes, role, body in [(0, "foreman", "[FOREMAN] LAUNCH painter 18-1\n"),
+                                    (5, "painter", "[PAINTER] BLOCKED\nMissing: the palette\n"),
+                                    (6, "foreman", "[FOREMAN] LAUNCH foreman 18-1\n")]:
+            w.add(18, later(minutes), role, body)
+        self.assertEqual(self.running(w, 18)[0], 1)
+        w.add(18, later(7), "foreman", "[FOREMAN] RULING\n\nUse the night palette.\n")
+        w.add(18, later(8), "foreman", "[FOREMAN] LAUNCH painter 18-2\n")
+        self.assertEqual(self.running(w, 18)[0], 1)

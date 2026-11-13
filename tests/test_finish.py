@@ -975,6 +975,42 @@ class SelectionPosted(Judgment, unittest.TestCase):
         self.assert_left_nothing()
 
 
+class RulingOnATicket(Judgment, unittest.TestCase):
+    """ISSUE-242 behaviour 6: a ruling for a blocked maker on a ticket, a launch with no pitch exported, is
+    posted on the ticket."""
+
+    RULING = {"marker": "RULING", "summary": "Write the outline from the charter alone.",
+              "evidence": [{"criterion": "writer BLOCKED", "result": "ruled", "command": "bible/charter.md:3"}]}
+
+    def setUp(self):
+        self.w = World(self)
+        add_comment(self.w, 3, 30, "2026-11-10T09:00:00Z", "keeper", "[KEEPER] LAUNCH writer 3-1\n")
+        add_comment(self.w, 3, 31, "2026-11-10T09:30:00Z", "writer", "[WRITER] BLOCKED\nMissing: the bible\n")
+
+    def test_ruling(self):
+        code, body = self.supervise(3, result_step(KEEPER, self.RULING))
+        self.assertEqual(code, 0)
+        self.assertEqual(self.run_.meta["pulls"], [])
+        lines = body.rstrip("\n").split("\n")
+        self.assertEqual(lines[0], "[KEEPER] RULING")
+        self.assertEqual(lines[-2:], ["Launch: 3-1", "head none manifest none"])
+        self.assertEqual(markers.parse(body), markers.Marker("KEEPER", "RULING", ()))
+        self.assert_left_nothing()
+
+    def test_ruling_on_a_run_with_pitches(self):
+        # Seeded defect: the same result on a run that exported two pitches.
+        w = self.w
+        w.steps(result_step(KEEPER, self.RULING))
+        run = launch.prepare(w.p, w.gh, w.root, "keeper", 3, now=NOW)
+        run = run._replace(meta={**run.meta, "pulls": [6, 7]})
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = finish.supervise(w.p, w.gh, w.root, run)
+        self.assertEqual(code, 3)
+        [body] = [c["body"] for c in w.by(3, "keeper") if markers.parse(c["body"]).verb != "LAUNCH"]
+        self.assert_blocked(body, "a valid result (result.marker: RULING does not answer a launch on a ticket)",
+                            "ticket #3", "head none manifest none")
+
+
 class NoJudgment(Judgment, unittest.TestCase):
     """Behaviour 8: a harness that exits without a result posts the launcher's BLOCKED on the number given.
     Clean twins: RulingPosted.test_ruling and SelectionPosted.test_selected."""
