@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "access_token_invalid",
+   "log_id": "20261113090000000000000000096635",
+   "message": "The access token is invalid or not found in the request."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 401
+}
