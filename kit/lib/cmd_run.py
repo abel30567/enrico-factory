@@ -35,6 +35,7 @@ if __name__ == "__main__":
 
 from kit.lib import cmd_gate, down, gitstate, github, ledger, production, resources, tickets  # noqa: E402
 from kit.lib.tools import Down, Failed  # noqa: E402
+from kit.lib import release  # noqa: E402
 
 TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 TOOL_NAME = re.compile(r"[a-z][a-z0-9-]*")
@@ -279,6 +280,8 @@ def _run(p, gh, state, rows, target, apply, number=None):
         _write_result(job_dir, verdict, usd, compute_min, reason, outputs)
     if verdict == DONE and outputs:
         _manifest(p, gh, pull["head_ref"], digest, outputs)
+    if verdict == DONE:
+        release.write(p, gh, request, job_dir, outputs)
     ticket = request["ticket"]
     ledger.append(p, gh, p.root, {
         "time": production.now(), "kind": "run", "hash": digest, "ticket": ticket["number"],
