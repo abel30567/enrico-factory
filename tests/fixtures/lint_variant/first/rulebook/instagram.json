@@ -1,0 +1,22 @@
+{"platform": "instagram",
+ "kinds": {
+  "reels": {
+   "container": {"value": null, "source": null, "read_at": null},
+   "codec": {"value": null, "source": null, "read_at": null},
+   "aspects": {"value": null, "source": null, "read_at": null},
+   "resolution": {"value": null, "source": null, "read_at": null},
+   "min_fps": {"value": null, "source": null, "read_at": null},
+   "max_fps": {"value": null, "source": null, "read_at": null},
+   "min_seconds": {"value": null, "source": null, "read_at": null},
+   "max_seconds": {"value": null, "source": null, "read_at": null},
+   "max_bytes": {"value": null, "source": null, "read_at": null},
+   "caption_zone": {"value": null, "source": null, "read_at": null},
+   "mark_zone": {"value": null, "source": null, "read_at": null},
+   "title_max_chars": {"value": null, "source": null, "read_at": null},
+   "caption_max_chars": {"value": null, "source": null, "read_at": null}
+  }
+ },
+ "disclosure": {"field": "is_ai_generated", "value": true, "source": "https://developers.facebook.com/docs/instagram-platform/content-publishing", "read_at": "2026-11-11"},
+ "policy": [
+  {"field": "media_type", "value": "REELS", "source": "https://developers.facebook.com/docs/instagram-platform/content-publishing", "read_at": "2026-11-11"}
+ ]}

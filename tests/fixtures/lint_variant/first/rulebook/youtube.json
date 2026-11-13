@@ -1,0 +1,37 @@
+{"platform": "youtube",
+ "kinds": {
+  "shorts": {
+   "container": {"value": null, "source": null, "read_at": null},
+   "codec": {"value": null, "source": null, "read_at": null},
+   "aspects": {"value": null, "source": null, "read_at": null},
+   "resolution": {"value": null, "source": null, "read_at": null},
+   "min_fps": {"value": null, "source": null, "read_at": null},
+   "max_fps": {"value": null, "source": null, "read_at": null},
+   "min_seconds": {"value": null, "source": null, "read_at": null},
+   "max_seconds": {"value": null, "source": null, "read_at": null},
+   "max_bytes": {"value": null, "source": null, "read_at": null},
+   "caption_zone": {"value": null, "source": null, "read_at": null},
+   "mark_zone": {"value": null, "source": null, "read_at": null},
+   "title_max_chars": {"value": null, "source": null, "read_at": null},
+   "caption_max_chars": {"value": null, "source": null, "read_at": null}
+  },
+  "long": {
+   "container": {"value": null, "source": null, "read_at": null},
+   "codec": {"value": null, "source": null, "read_at": null},
+   "aspects": {"value": null, "source": null, "read_at": null},
+   "resolution": {"value": null, "source": null, "read_at": null},
+   "min_fps": {"value": null, "source": null, "read_at": null},
+   "max_fps": {"value": null, "source": null, "read_at": null},
+   "min_seconds": {"value": null, "source": null, "read_at": null},
+   "max_seconds": {"value": null, "source": null, "read_at": null},
+   "max_bytes": {"value": null, "source": null, "read_at": null},
+   "caption_zone": {"value": null, "source": null, "read_at": null},
+   "mark_zone": {"value": null, "source": null, "read_at": null},
+   "title_max_chars": {"value": null, "source": null, "read_at": null},
+   "caption_max_chars": {"value": null, "source": null, "read_at": null}
+  }
+ },
+ "disclosure": {"field": "status.containsSyntheticMedia", "value": true, "source": "https://developers.google.com/youtube/v3/docs/videos", "read_at": "2026-11-11"},
+ "policy": [
+  {"field": "status.privacyStatus", "value": "private", "source": "https://developers.google.com/youtube/v3/docs/videos/insert", "read_at": "2026-11-11"}
+ ]}
