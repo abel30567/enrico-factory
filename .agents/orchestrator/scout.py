@@ -145,7 +145,10 @@ def main():
     for r in rs:
         if r[3] != "0":
             continue
-        d = fleet.call(c, "GET", f"/admin/fleet/status?id={r[1]}", timeout=30)
+        try:
+            d = fleet.call(c, "GET", f"/admin/fleet/status?id={r[1]}", timeout=30)
+        except OSError as e:   # a network fault: leave the row for the next run
+            print(f"#{r[0]} status read failed: {str(e)[:80]}"); continue
         a = d.get("agent") or {}
         age = (int(time.time()) - int(r[2])) // 60
         note = next((e.get("note", "") for e in d.get("events", []) if "turns=" in e.get("note", "")), "")
