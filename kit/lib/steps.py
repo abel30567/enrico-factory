@@ -18,11 +18,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from kit.lib import jobs, markers, production, tickets
+from kit.lib import harness, jobs, markers, production, tickets
 
 RUN_TIMEOUT_MIN = "120"
 RUN_ATTEMPTS = 2
 RUN_MARGIN_MIN = 10
+# The reasons of a launcher's BLOCKED for an outage that the launch checks wait out (a resource down, no
+# usage left): the role is launched again, as before ISSUE-327.
+OUTAGES = tuple(harness.PHRASES[s] for s in ("login_ended", "out_of_usage", "proxy_down")) + (
+    "every account's login has ended", "every account is out of usage")
 
 
 def _entry(state, step, role=None, pull=None, reason=""):
@@ -163,6 +167,32 @@ def _operator_left(p, entry, pull, role):
     return mine is not None and (theirs is None or _order(mine) > _order(theirs))
 
 
+def _outage(body):
+    """Whether a ``BLOCKED`` body is a launcher's for an outage in ``OUTAGES``."""
+    return any(line.startswith(f"Missing: a valid result ({o}") for line in body.splitlines() for o in OUTAGES)
+
+
+def _reviewer_blocked(p, state, ticket, entry, pull, role):
+    """Whether the checker or judge ``role``, which has no counting verdict on the pull, is BLOCKED: its
+    newest marker there among the verbs its kind may post is ``BLOCKED``, not for an outage, and no maker's
+    ``READY`` or ``ADDRESSED`` and no ``RULING`` of the room's orchestrator is newer."""
+    verbs = markers.MAY_POST.get(p.kinds.get(role), ())
+    marked = _marked(pull["comments"])
+    newest = None
+    for comment, m in marked:
+        if m.actor == _actor(p, role) and m.verb in verbs:
+            newest = (comment, m)
+    if newest is None or newest[1].verb != "BLOCKED" or _outage(newest[0]["body"]):
+        return False
+    blocked = newest[0]
+    makers = production.stage_roles(entry, "maker")
+    if any(m.verb in ("READY", "ADDRESSED") and m.actor.lower() in makers and _order(c) > _order(blocked)
+           for c, m in marked):
+        return False
+    comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
+    return not _ruling_after(p, ticket, comments, blocked)
+
+
 def _job_rows(p, ticket, entry, pull, found):
     """The rows read before the lint for a pull with a request, or None."""
     n, role = pull["number"], found["operator"]
@@ -210,8 +240,9 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         blocked = next(c for c in pull["comments"] if c["id"] == summary["maker"]["id"])
         comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
         if _ruling_after(p, ticket, comments, blocked):
-            return _entry("blocked", "launch", _maker_of(p, entry, pull), n,
-                          f"the maker is BLOCKED on #{n} and has a ruling")
+            actor = summary["maker"]["actor"].lower()
+            role = actor if p.kinds.get(actor) == "operator" else _maker_of(p, entry, pull)
+            return _entry("blocked", "launch", role, n, f"the maker is BLOCKED on #{n} and has a ruling")
         role = production.orchestrator(p, ticket["room"])
         if _launched(pull["comments"], role):
             return _wake(p, ticket, "blocked", n, f"the maker is BLOCKED on #{n}")
@@ -239,15 +270,26 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     if lint and lint["verb"] == "FAIL" or noted:
         why = f"[LINT] FAIL on #{n}" if lint and lint["verb"] == "FAIL" else f"{noted[0]} NOTES on #{n}"
         return _entry("notes", "launch", _maker_of(p, entry, pull), n, why)
+    stuck = None
     for role, verdict in summary["checkers"].items():
         if verdict is None:
+            if _reviewer_blocked(p, state, ticket, entry, pull, role):
+                stuck = stuck or role
+                continue
             return _entry("review", "launch", role, n, f"{role} has no counting verdict on #{n}")
+    if stuck:
+        return _wake(p, ticket, "review", n, f"{stuck} is BLOCKED on #{n}")
     for role, verdict in summary["judges"].items():
         if verdict is None:
+            if _reviewer_blocked(p, state, ticket, entry, pull, role):
+                stuck = stuck or role
+                continue
             unit = (ticket["room"], ticket["stage"], ticket["unit"])
             if entry.get("blind") and tickets.is_locked(state, *unit) and not has_key(pull):
                 return _entry("judging", "blind", role, n, f"{ticket['unit']} has a locked version and #{n} no key")
             return _entry("judging", "launch", role, n, f"{role} has no counting verdict on #{n}")
+    if stuck:
+        return _wake(p, ticket, "judging", n, f"{stuck} is BLOCKED on #{n}")
     if found:
         row = _job_steps(p, ticket, pull, found)
         if row:
