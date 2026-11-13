@@ -18,8 +18,9 @@ Then, still before the filings, the producer's monitors (``kit.lib.monitors``, s
 read every ticket whatever ``--room`` says: one ``NEED - monitor <name>: ...`` line per trip, and with
 ``--apply`` one issue per trip labelled ``needs:orchestrator`` unless an open issue has its title. Each step is the one
 ``monitors.instead`` gives: a budget trip stops the run (``WAIT #<n> budget ...``), a canon contradiction and a
-re-break are ``NEED`` lines, and after twice ``monitors.NO_WIN_ROUNDS`` lost blind rounds the step is
-``STEP #<n> close #<n>``, which with ``--apply`` closes the ticket. A monitor that cannot be read prints
+re-break are ``NEED`` lines, charter drift holds the lock of the summary stage (``NEED #<n> charter-drift ...``),
+and after twice ``monitors.NO_WIN_ROUNDS`` lost blind rounds the step is ``STEP #<n> close #<n>``, which with
+``--apply`` closes the ticket. A monitor that cannot be read prints
 ``FAIL - monitor <name>: <message>`` and the tick goes on.
 
 With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
@@ -226,6 +227,7 @@ class Tick:
             return
         if first["state"] == "no-convergence":
             entries = [first]
+        entries = [e for i, e in enumerate(entries) if e["state"] != "charter-drift" or e not in entries[:i]]
         state = self.state
         lines = [self.say(self.entry(state, ticket, entry, first)) for entry in entries]
         if first not in entries:
@@ -299,7 +301,8 @@ class Tick:
         except (ledger.LedgerError, *ERRORS) as error:
             self.say(f"FAIL - monitor budget: {error if isinstance(error, ledger.LedgerError) else _message(error)}")
             rows = None
-        self.trips = monitors.trips(self.p, self.state, rows, self.now)
+        self.trips = monitors.trips(self.p, self.state, rows, self.now,
+                                    lambda path: gitstate.show(self.p.root, production.base(self.p), path))
         for trip in self.trips:
             name = trip["monitor"]
             if "error" in trip:
