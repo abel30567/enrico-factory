@@ -1,0 +1,10 @@
+{
+ "body": {
+  "error": "invalid_grant",
+  "error_description": "Refresh token is invalid or expired.",
+  "log_id": "invented-log-1"
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/docs/en/oauth-refresh-a-user-access-token",
+ "status": 400
+}

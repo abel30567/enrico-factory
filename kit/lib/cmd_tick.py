@@ -10,6 +10,10 @@ one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked 
 a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
 step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
 
+Before the filings, it refreshes each grant that is due (``kit.lib.grants``): one line ``STEP - refresh <id>``,
+and with ``--apply`` the refresh, which stores the rotated token in the key file. A refresh that fails is
+``FAIL - refresh <id>: <reason>``.
+
 With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
 while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls that no marker answers
 (``steps.running``), counted when the tick starts, plus one per launch step this tick takes. Over the cap the
@@ -36,8 +40,8 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, cmd_run, down, filing, finish, github,  # noqa: E402
-                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, production, steps,
-                     tickets)
+                     gitstate, grants, harness, launch, ledger, lintpost, lockrules, markers, production,
+                     resources, steps, tickets)
 
 LABEL = "needs:orchestrator"
 LOCK_DIR = "tick.lock"
@@ -182,6 +186,18 @@ class Tick:
             def create(found=found):
                 self.gh.create_issue(found["title"], found["body"], found["labels"])
             self.say(self.take(n, "file", f"STEP #{n} file {found['stage']} {found['unit']}", create))
+
+    def refresh(self):
+        """One ``STEP - refresh <id>`` line per grant that is due; with ``--apply``, the refresh."""
+        secrets_dir = resources.expand(production.setting(self.p, "SECRETS_DIR", ""))
+        for rid in grants.due(secrets_dir, self.now):
+            line = f"STEP - refresh {rid}"
+            if self.apply:
+                try:
+                    grants.refresh(secrets_dir, rid, self.now)
+                except grants.Failed as failed:
+                    line = f"FAIL - refresh {rid}: {failed}"
+            self.say(line)
 
     # -- one ticket
 
@@ -375,6 +391,7 @@ def _tick(p, gh, rooms, apply) -> int:
     tick = Tick(p, gh, apply, now, cap)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
+    tick.refresh()
     tick.file(rooms)
     try:
         for room in rooms:
