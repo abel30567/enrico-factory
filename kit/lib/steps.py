@@ -7,13 +7,18 @@ then the entry for maker launches that have no pull yet. Each entry is
 
 Rows 1 to 5 are read on the ticket; rows 6 to 12 on each open pull, and a pull none of them applies
 to is at row 14. Row 13 and the choice among pulls at row 14 are read on the ticket again.
+
+A pull with a request at a stage with an operator (``kit.lib.jobs``) has more rows: before the lint, a
+failed job, the operator's launch to write the jobs and its launch to report on them; in the place of
+row 14, a stopped job, the gate and the run of each job. A ``gate`` or ``run`` entry also has ``job``,
+the job path.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from kit.lib import markers, production, tickets
+from kit.lib import jobs, markers, production, tickets
 
 RUN_TIMEOUT_MIN = "120"
 RUN_ATTEMPTS = 2
@@ -127,14 +132,67 @@ def _ruled_after(comments, comment):
     return any(m.verb == "RULING" and _order(c) > _order(comment) for c, m in _marked(comments))
 
 
-def _maker_of(entry, summary):
-    """The maker whose marker is the pull's latest, else the stage's first maker."""
-    if summary["maker"]:
-        return summary["maker"]["actor"].lower()
-    return production.stage_roles(entry, "maker")[0]
+def _maker_of(p, entry, pull):
+    """The maker, not an operator, whose marker is the pull's latest, else the stage's first such maker."""
+    names = production.stage_roles(entry, "maker")
+    makers = [r for r in names if p.kinds.get(r) != "operator"] or names
+    found = makers[0]
+    for _, m in _marked(pull["comments"]):
+        if m.verb in markers.MAKER_VERBS and m.actor.lower() in makers:
+            found = m.actor.lower()
+    return found
 
 
-def _pull_step(p, state, ticket, entry, pull, now, has_key):
+def _operator_left(p, entry, pull, role):
+    """Whether the operator's newest marker on the pull is newer than every other maker's newest
+    ``READY`` or ``ADDRESSED``."""
+    others = [r for r in production.stage_roles(entry, "maker") if r != role]
+    mine, theirs = None, None
+    for comment, m in _marked(pull["comments"]):
+        if m.actor == _actor(p, role) and m.verb != "LAUNCH":
+            mine = comment
+        elif m.verb in ("READY", "ADDRESSED") and m.actor.lower() in others:
+            theirs = comment
+    return mine is not None and (theirs is None or _order(mine) > _order(theirs))
+
+
+def _job_rows(p, ticket, entry, pull, found):
+    """The rows read before the lint for a pull with a request, or None."""
+    n, role = pull["number"], found["operator"]
+    for job in found["jobs"]:
+        if job["run"] == "FAILED":
+            return _wake(p, ticket, "job-failed", n, f"job {job['path']} failed on #{n}")
+    k = len(found["uncovered"])
+    if k:
+        if _operator_left(p, entry, pull, role):
+            return _wake(p, ticket, "jobs", n, f"{role} left {k} request(s) without a job on #{n}")
+        return _entry("jobs", "launch", role, n, f"{k} request(s) on #{n} have no job")
+    if all(job["run"] == "DONE" for job in found["jobs"]):
+        launched = _launched(pull["comments"], role)
+        if any(job["gate"] == "PASS" and (not launched or _order(job["gate_comment"]) > _order(launched[-1]))
+               for job in found["jobs"]):
+            k = len(found["jobs"])
+            return _entry("report", "launch", role, n, f"{k} job(s) of #{n} ran and {role} has not reported")
+    return None
+
+
+def _job_steps(p, ticket, pull, found):
+    """The rows read in the place of row 14 for a pull with a request, or None."""
+    n = pull["number"]
+    for job in found["jobs"]:
+        if job["gate"] == "STOP":
+            return _wake(p, ticket, "job-stopped", n, f"job {job['path']} stopped at the gate on #{n}")
+    for job in found["jobs"]:
+        if job["gate"] is None:
+            return {**_entry("gate", "gate", None, n, f"job {job['path']} has no gate decision"), "job": job["path"]}
+    for job in found["jobs"]:
+        if job["run"] is None:
+            return {**_entry("run", "run", None, n, f"job {job['path']} has a PASS and has not run"),
+                    "job": job["path"]}
+    return None
+
+
+def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     """Rows 6 to 12 for one open pull, else row 14 for it."""
     n = pull["number"]
     summary = pull["summary"]
@@ -151,6 +209,11 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key):
             if _launched(pull["comments"], role):
                 return _wake(p, ticket, "ruling", n, why)
             return _entry("ruling", "launch", role, n, why)
+    found = jobs.of(p, root, state, ticket, pull)
+    if found:
+        row = _job_rows(p, ticket, entry, pull, found)
+        if row:
+            return row
     lint = summary["lint"]
     if entry.get("lint"):
         if lint is None:
@@ -160,7 +223,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key):
     noted = sorted(r for r, v in summary["checkers"].items() if v and v["verb"] == "NOTES")
     if lint and lint["verb"] == "FAIL" or noted:
         why = f"[LINT] FAIL on #{n}" if lint and lint["verb"] == "FAIL" else f"{noted[0]} NOTES on #{n}"
-        return _entry("notes", "launch", _maker_of(entry, summary), n, why)
+        return _entry("notes", "launch", _maker_of(p, entry, pull), n, why)
     for role, verdict in summary["checkers"].items():
         if verdict is None:
             return _entry("review", "launch", role, n, f"{role} has no counting verdict on #{n}")
@@ -170,6 +233,10 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key):
             if entry.get("blind") and tickets.is_locked(state, *unit) and not has_key(pull):
                 return _entry("judging", "blind", role, n, f"{ticket['unit']} has a locked version and #{n} no key")
             return _entry("judging", "launch", role, n, f"{role} has no counting verdict on #{n}")
+    if found:
+        row = _job_steps(p, ticket, pull, found)
+        if row:
+            return row
     return _entry("lockable", "lock", None, n, f"#{n} has every counting verdict")
 
 
@@ -224,7 +291,7 @@ def _steps(p, state, ticket, root, now, has_key):
         used = len(open_pulls) + pending
         return _entry("ready", "launch", role, None,
                       f"{used} of {entry['pitches']} pitch(es) in use"), [], None
-    return None, [_pull_step(p, state, ticket, entry, pull, now, has_key) for pull in open_pulls], waiting
+    return None, [_pull_step(p, state, ticket, entry, pull, now, has_key, root) for pull in open_pulls], waiting
 
 
 def _always(pull):

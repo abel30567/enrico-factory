@@ -1,12 +1,14 @@
-"""factory run <job-file> [--root DIR] [--apply]: make the one call of a job the gate passed.
+"""factory run <job-file> [--pull N] [--root DIR] [--apply]: make the one call of a job the gate passed.
 
-The job file is checked as `factory gate` checks it. A job runs once: when the ledger on the base already
-holds its `run` row, that row is printed with ` (already recorded)` and nothing else happens. Otherwise
-the job needs a counting `GATE PASS`, an installed tool (`kit/lib/tools/`) whose resource is usable, and
-a ticket with exactly one open pull. With `--apply` it brings the local base up to GitHub's, calls the
-tool once with the outputs going to `<STATE_DIR>/jobs/<hash>/out/`, adds one manifest row per output on
-the pull's branch, and appends the `run` row with the real cost to the ledger on the base. It posts
-nothing on GitHub. Without `--apply` it makes every check, calls no tool and writes nothing.
+The job file is checked as `factory gate` checks it, with `--pull N` at the head of pull request N. A job
+runs once: when the ledger on the base already holds its `run` row, that row is printed with
+` (already recorded)` and nothing else happens. Otherwise the job needs a counting `GATE PASS`, an
+installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open pull (with
+`--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
+outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
+manifest row per output on the pull's branch, and appends the `run` row with the real cost to the ledger
+on the base. It posts nothing on GitHub. Without `--apply` it makes every check, calls no tool and writes
+nothing.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
@@ -226,8 +228,8 @@ def _manifest(p, gh, branch, digest, outputs):
     gh.push(p.root, branch)
 
 
-def _run(p, gh, state, rows, target, apply):
-    request = cmd_gate._job_request(p, state, target)
+def _run(p, gh, state, rows, target, apply, number=None):
+    request = cmd_gate._job_request(p, state, target, number)
     digest, name = request["hash"], request["tool"]
     expected = {"usd": request["usd"], "compute_min": request["compute_min"]}
     ran = [r for r in rows if r["kind"] == "run" and r["hash"] == digest]
@@ -242,15 +244,14 @@ def _run(p, gh, state, rows, target, apply):
             raise Refused(f"job {digest} has no counting GATE PASS")
         tool = _load_tool(name)
         resource, values, register = _resource(name, tool, p.root)
-    pull = _open_pull(state, request["ticket"]["number"])
+    pull = request["on"] or _open_pull(state, request["ticket"]["number"])
     if not apply:
         print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
         return 0
     if earlier:
         verdict, usd, compute_min, reason, outputs = _read_result(job_dir, digest, expected)
     else:
-        job, _ = cmd_gate._job(p, target)
-        base = production.base(p)
+        job = request["job"]
         secrets_dir = resources.expand(values[register["secrets_dir_setting"]])
         os.makedirs(job_dir.parent, exist_ok=True)
         os.mkdir(job_dir)
@@ -259,7 +260,7 @@ def _run(p, gh, state, rows, target, apply):
         call = {
             "hash": digest, "ticket": request["ticket"]["number"], "caller": request["caller"],
             "expected": job["expected"],
-            "inputs": [{**item, "text": gitstate.show(p.root, base, item["path"])} for item in job["inputs"]],
+            "inputs": [{**item, "text": gitstate.show(p.root, request["ref"], item["path"])} for item in job["inputs"]],
             "out": str(out),
             "settings": {c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"},
             "secrets": {c["name"]: os.path.abspath(os.path.join(secrets_dir, c["name"]))
@@ -289,6 +290,7 @@ def _run(p, gh, state, rows, target, apply):
 def main(argv):
     parser = argparse.ArgumentParser(prog="factory run", description=__doc__.split(": ", 1)[1].split("\n")[0])
     parser.add_argument("job", help="the job file the gate passed")
+    parser.add_argument("--pull", type=int, help="read the job file and its inputs at the head of this pull")
     parser.add_argument("--root", default=".", help="a directory inside the production (default: .)")
     parser.add_argument("--apply", action="store_true", help="make the call and record it")
     args = parser.parse_args(argv)
@@ -303,7 +305,7 @@ def main(argv):
             return 2
         text = gitstate.show(p.root, production.base(p), ledger.PATH)
         rows = ledger.read(text) if text is not None else []
-        return _run(p, gh, state, rows, args.job, args.apply)
+        return _run(p, gh, state, rows, args.job, args.apply, args.pull)
     except (Refused, cmd_gate.Refused) as error:
         print(f"run: {error}", file=sys.stderr)
         return 2

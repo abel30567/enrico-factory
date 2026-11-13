@@ -3,9 +3,10 @@
 ``supervise`` picks an account, builds the environment, the command line and the sandbox profile through
 ``kit.lib.harness`` and ``kit.lib.sandbox``, starts the worker in the run's working directory, waits for
 it and hands the outcome to ``post``. ``post`` is the only place a role's marker is rendered: it refuses
-a result the role may not post, commits a maker's files inside its ``writes`` globs, reads the head and
-the manifest hash from git itself, pushes, opens the pull request and posts. A worker that dies, times
-out or returns no valid result is answered with ``[<ROLE>] BLOCKED``: a missing result is never approval.
+a result the role may not post, commits a maker's or an operator's files inside its ``writes`` globs, reads
+the head and the manifest hash from git itself, pushes, opens the pull request and posts. A worker that
+dies, times out or returns no valid result is answered with ``[<ROLE>] BLOCKED``: a missing result is
+never approval.
 
 Nothing written here (comments, ``supervisor.log``) holds a setting value, a token or a path under
 ``SECRETS_DIR``.
@@ -100,7 +101,7 @@ def render(p, run, result, missing, dropped, head, manifest) -> str:
     if missing is None:
         lines += _result_lines(p, meta, result)
     else:
-        if meta["kind"] == "maker":
+        if meta["kind"] in launch.BRANCHED:
             where = f"{meta['branch']} @ {head}"
         elif meta["pull"] is None:
             where = f"ticket #{meta['ticket']}"
@@ -186,7 +187,7 @@ def post(p, gh, root, run, outcome):
     meta = run.meta
     missing = _missing(meta, outcome)
     result = outcome.result if missing is None else None
-    if meta["kind"] == "maker":
+    if meta["kind"] in launch.BRANCHED:
         missing, dropped, head, number = _finish_maker(p, gh, root, run, result, missing)
         manifest = gitstate.manifest(root, meta["base_ref"], meta["branch"])
     elif meta["kind"] == "orchestrator" and meta["pull"] is None:
@@ -376,7 +377,7 @@ def _log(run, text) -> None:
 def cleanup(root, run) -> None:
     """Remove a checker's, judge's or orchestrator's working directory; a removal that fails is logged,
     never raised."""
-    if run.meta["kind"] == "maker":
+    if run.meta["kind"] in launch.BRANCHED:
         return
     try:
         launch.cleanup(root, run)

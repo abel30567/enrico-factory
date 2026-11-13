@@ -30,8 +30,9 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, down, filing, finish, github, gitstate,  # noqa: E402
-                     harness, launch, ledger, lintpost, lockrules, markers, production, steps, tickets)
+from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, cmd_run, down, filing, finish, github,  # noqa: E402
+                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, production, steps,
+                     tickets)
 
 LABEL = "needs:orchestrator"
 LOCK_DIR = "tick.lock"
@@ -219,6 +220,11 @@ class Tick:
             return self.take(n, "lint", f"STEP #{n} lint PR #{m}", lambda: self.lint(m))
         if step == "blind":
             return self.take(n, "blind", f"STEP #{n} blind PR #{m}", lambda: self.blind(state, m))
+        if step in ("gate", "run"):
+            main = cmd_gate.main if step == "gate" else cmd_run.main
+            argv = [entry["job"], "--pull", str(m), "--root", str(self.p.root), "--apply"]
+            return self.take(n, step, f"STEP #{n} {step} {entry['job']} PR #{m}",
+                             lambda: _main(step, main, argv, (0, 1)))
         # step == "timeout"
         comments = state.pulls[m]["comments"] if m is not None else state.ticket_comments.get(n, [])
         launch_id = _launch_id(comments, role)

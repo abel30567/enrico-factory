@@ -19,16 +19,17 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple
 
-from kit.lib import down, gateway, gitstate, harness, markers, production, prompt, steps, tickets
+from kit.lib import down, gateway, gitstate, harness, jobs, markers, production, prompt, steps, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
 from kit.lib.prompt import PromptError
 
 REFUSED_KINDS = {
-    "operator": "gated launches are not built in wave 2",
     "analyst": "analyst launches are not built in wave 2",
 }
+# The kinds launched on a branch: a maker's own, or the pull request's for an operator.
+BRANCHED = ("maker", "operator")
 
 
 class LaunchError(Exception):
@@ -132,6 +133,30 @@ def _orchestrator_task(p, ticket, pull, judged):
                 if summary[key][role]:
                     parts.append(_body(x, summary[key][role]))
     return _joined(parts)
+
+
+def _media(root, head, digest):
+    """The ids of the manifest rows at ``head`` whose source is ``job <digest>``, comma separated, or none."""
+    text = gitstate.show(root, head, gitstate.MANIFEST) or ""
+    ids = [fields[0] for fields in (line.split("\t") for line in text.splitlines()[1:])
+           if len(fields) == 4 and fields[3] == f"job {digest}"]
+    return ", ".join(ids) or "none"
+
+
+def _operator_task(root, role, ticket, pull, found):
+    n = pull["number"]
+    if found["uncovered"]:
+        lines = [f"Turn each request on pull request #{n} into a job file."]
+        lines += [f"- {request} -> {jobs.job_path(request)}" for request in found["uncovered"]]
+        lines.append(f"Each job names ticket {ticket['number']} and caller {role}. "
+                     "The ticket names the tool and the expected cost.")
+        return "\n".join(lines)
+    lines = [f"Report on the jobs of pull request #{n}. Write no file."]
+    for job in found["jobs"]:
+        row = job["run_row"]
+        lines.append(f"- {job['path']}: job {job['hash']} {row['verdict']} usd {row['usd']} "
+                     f"compute_min {row['compute_min']}; media: {_media(root, pull['git']['head'], job['hash'])}")
+    return "\n".join(lines)
 
 
 def _default_task(p, state, kind, ticket, pull, judged):
@@ -242,7 +267,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     if kind == "orchestrator":
         if role != production.orchestrator(p, ticket["room"]):
             raise LaunchError(f"{role} is not the orchestrator of room {ticket['room']}")
-    elif role not in production.stage_roles(entry, kind):
+    elif role not in production.stage_roles(entry, "maker" if kind == "operator" else kind):
         raise LaunchError(f"stage {ticket['stage']} does not name {role}")
     # Check 5
     ok, reason = tickets.upstream(p, state, ticket, root)
@@ -265,6 +290,20 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         raise LaunchError("give the pull request number")
     elif pull is None and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
         raise LaunchError(f"ticket #{t} has no free pitch; give the pull request number")
+    # An operator writes the jobs of the requests that have none; once every request has one, it reports
+    # on them, and then every job needs a counting GATE PASS and a run.
+    requested = None
+    if kind == "operator":
+        requested = jobs.of(p, root, state, ticket, pull, role)
+        if requested is None:
+            raise LaunchError(f"#{number} has no request for {role}")
+        if not requested["uncovered"]:
+            for job in requested["jobs"]:
+                if job["gate"] != "PASS":
+                    raise LaunchError(f"job {job['hash']} has no counting GATE PASS")
+            for job in requested["jobs"]:
+                if job["run"] is None:
+                    raise LaunchError(f"job {job['hash']} has not run")
     # Check 7
     reasons = gateway.check(p.settings, p.roles[role]["meta"].get("knowledge"))
     if reasons:
@@ -295,7 +334,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     head = pull["git"]["head"] if pull is not None else None
     branch = None
     judged = _judged(state, ticket, pull) if kind == "orchestrator" else []
-    if kind == "maker":
+    if kind in BRANCHED:
         branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
         if pull is None and _branch_exists(root, branch):
             raise LaunchError(f"branch {branch} already exists")
@@ -306,6 +345,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             task = Path(task_file).read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             raise LaunchError("cannot read the task file") from None
+    elif kind == "operator":
+        task = _operator_task(root, role, ticket, pull, requested)
     else:
         task = _default_task(p, state, kind, ticket, pull, judged)
     issue = gh.issue(t)
@@ -316,7 +357,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         "TASK": task,
         "RULES": production.rules_text(p),
     }
-    if kind == "maker":
+    if kind in BRANCHED:
         values["BRANCH"] = branch
     elif kind != "orchestrator":
         values["PR"] = str(number)
@@ -359,7 +400,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
 
     # A relaunched maker's earlier worktree holds its branch; only one under the run worktrees may go.
     stale = []
-    if kind == "maker" and pull is not None:
+    if kind in BRANCHED and pull is not None:
         stale = _checked_out(root, branch)
         mine = trees.resolve()
         if any(mine not in path.parents for path in stale):
@@ -387,7 +428,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         try:
             for path in stale:
                 gitstate.remove_worktree(root, path)
-            if kind == "maker":
+            if kind in BRANCHED:
                 gitstate.add_worktree(root, workdir, branch if pull is not None else base, branch=branch)
             else:
                 gitstate.add_worktree(root, workdir, head)
