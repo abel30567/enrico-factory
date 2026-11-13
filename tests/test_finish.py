@@ -438,7 +438,16 @@ class SeededDefects(unittest.TestCase):
 
     def test_every_account_exhausted(self):
         self.exhaust(*ACCOUNTS)
-        body = self.blocked("writer", 3, "a valid result (every account is out of usage)", ready())
+        before = self.w.comments(3)
+        code, text = self.launch("writer", 3, ready())
+        self.assertEqual((code, text), (1, "launch: slot MAKER is out of usage until 2026-11-12T00:00:00Z\n"))
+        self.assertEqual(self.w.comments(3), before)
+        self.assertFalse((self.w.harness / "fake-harness.calls.jsonl").exists())
+
+    def test_every_account_exhausted_after_the_launch(self):
+        self.exhaust(*ACCOUNTS)
+        with mock.patch("kit.lib.down.waiting", return_value=None):
+            body = self.blocked("writer", 3, "a valid result (every account is out of usage)", ready())
         self.assert_maker_blocked_body(body)
         self.assertFalse((self.w.harness / "fake-harness.calls.jsonl").exists())
 

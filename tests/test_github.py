@@ -281,9 +281,9 @@ class RecordedMergeTest(TmpCase):
         sha = self.r.merge(self.repo, 3, self.tip)
         self.assertEqual(sha, self.git("rev-parse", "HEAD"))
         self.assertEqual(self.git("rev-parse", "HEAD^1", "HEAD^2").split(), [self.base, self.tip])
-        self.assertEqual(self.git("log", "-1", "--format=%s|%an|%ae|%aI|%cI"),
+        self.assertEqual(self.git("log", "-1", "--format=%s|%an|%ae|%at|%ct"),
                          "Merge pull request #3|factory|factory@factory.invalid|"
-                         "2026-11-11T12:00:00Z|2026-11-11T12:00:00Z".replace("Z", "+00:00"))
+                         "1794398400|1794398400")
         pull = self.r.pull(3)
         self.assertEqual((pull["state"], pull["merged_at"]), ("merged", NOW))
         self.assertEqual(log_lines(self.d), [{"op": "merge", "number": 3, "head_sha": self.tip}])
@@ -364,17 +364,38 @@ class GhTest(unittest.TestCase):
             self.assertIsInstance(argv, list)
 
     def test_issues(self):
-        got = self.gh(ok(gh_fixture("issue_list.json"))).issues("all")
-        self.assertEqual(self.fake.argvs(), [["gh", "issue", "list", "-R", REPO, "--state", "all", "--limit", "1000",
-                                              "--json", "number,title,body,state,labels,createdAt"]])
+        got = self.gh(ok(gh_fixture("issue_pages.json"))).issues("all")
+        self.assertEqual(self.fake.argvs(), [["gh", "api", "--paginate", "--slurp",
+                                              f"repos/{REPO}/issues?state=all&per_page=100"]])
         self.assertEqual(self.fake.calls[0][1]["input"], "")
         self.assertEqual(got, [
             {"number": 1, "title": "Draft the opening scene", "body": "The keeper.", "state": "open",
              "labels": ["stage:script", "tracked"], "created_at": "2026-11-01T09:00:00Z"},
             {"number": 2, "title": "Pick a title card font", "body": "Two options.", "state": "closed",
              "labels": ["tracked"], "created_at": "2026-11-01T09:30:00Z"}])
-        self.assertEqual([i["number"] for i in self.gh(ok(gh_fixture("issue_list.json"))).issues("closed")], [2])
-        self.assertEqual(self.fake.argvs()[0][6], "closed")
+        self.assertEqual([i["number"] for i in self.gh(ok(gh_fixture("issue_pages.json"))).issues("closed")], [2])
+        self.assertEqual(self.fake.argvs()[0][4], f"repos/{REPO}/issues?state=closed&per_page=100")
+
+    def test_issues_past_1000(self):
+        issue, pull = json.loads(gh_fixture("issue_pages.json"))[0]
+        numbers = list(range(1001, 0, -1))
+        pages = [[{**issue, "number": n} for n in numbers[at:at + 100]] + [{**pull, "number": 2001 + at}]
+                 for at in range(0, len(numbers), 100)]
+        self.assertEqual([len(page) for page in pages], [101] * 10 + [2])
+        got = self.gh(ok(json.dumps(pages))).issues("all")
+        self.assertEqual(len(got), 1001)
+        self.assertEqual([i["number"] for i in got], list(range(1, 1002)))
+
+    def test_issue_with_no_body(self):
+        first = json.loads(gh_fixture("issue_pages.json"))[1][0]
+        got = self.gh(ok(json.dumps([[{**first, "body": None}]]))).issues("all")
+        self.assertEqual(got[0]["body"], "")
+
+    def test_issues_paging_fails_part_way(self):
+        g = self.gh((1, "", "gh: Bad Gateway (HTTP 502)"))
+        with self.assertRaises(GitHubError) as e:
+            g.issues("all")
+        self.assertEqual(str(e.exception), "issues: exit 1 (HTTP 502)")
 
     def test_pulls(self):
         got = self.gh(ok(gh_fixture("pr_list.json"))).pulls("all")
@@ -1057,7 +1078,7 @@ class GhTlsTimeoutTest(unittest.TestCase):
     """ISSUE-225 behaviour 11: a TLS handshake timeout is run again, three runs at most."""
 
     def test_second_run_answers(self):
-        fake = FakeRun(TLS, ok(gh_fixture("issue_list.json")))
+        fake = FakeRun(TLS, ok(gh_fixture("issue_pages.json")))
         got = Gh(REPO, run=fake, logins=("someone",)).issues("all")
         self.assertEqual([i["number"] for i in got], [1, 2])
         self.assertEqual(len(fake.calls), 2)
@@ -1090,8 +1111,8 @@ class NoGhStartedTest(unittest.TestCase):
         self.assertIs(subprocess.run, _guarded_run)
         with self.assertRaises(AssertionError):
             Gh(REPO).issues()
-        self.assertEqual(_gh_calls.pop(), ["gh", "issue", "list", "-R", REPO, "--state", "open", "--limit",
-                                           "1000", "--json", "number,title,body,state,labels,createdAt"])
+        self.assertEqual(_gh_calls.pop(), ["gh", "api", "--paginate", "--slurp",
+                                           f"repos/{REPO}/issues?state=open&per_page=100"])
         self.assertEqual(_gh_calls, [])
 
 

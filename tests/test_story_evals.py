@@ -238,7 +238,7 @@ class CompletenessTest(unittest.TestCase):
             for case in cases(role):
                 count += 1
                 self.assertEqual(completeness(KIT, case, self.dir / f"{role}-{case.id}" / "run"), [])
-        self.assertEqual(count, 64)
+        self.assertEqual(count, 68)
         self.assertEqual(read_first(KIT, "look-reviewer"),
                          ["bible/canon/ledger.tsv", "bible/charter.md", "media/manifest.tsv"])
 

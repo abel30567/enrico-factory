@@ -66,6 +66,8 @@ in {{WORKTREE}} before you finish and fix every FAIL in your files.
 - write outside your `writes`, or change a file of another stage or another ticket.
 - commit, push, open pull requests, run `gh` or contact GitHub: your only output is the result object.
 - approve your own work: the look reviewer checks it.
+- name another work, its character or a living artist in a style file or a request: describe the look
+  itself, in shapes, marks and palette values.
 
 ## Markers
 

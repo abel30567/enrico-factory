@@ -1,0 +1,78 @@
+[
+ [
+  {
+   "body": "Two options.",
+   "created_at": "2026-11-01T09:30:00Z",
+   "labels": [
+    {
+     "color": "ededed",
+     "default": false,
+     "description": "",
+     "id": 2,
+     "name": "tracked",
+     "node_id": "LA_2"
+    }
+   ],
+   "node_id": "I_2",
+   "number": 2,
+   "state": "closed",
+   "state_reason": "completed",
+   "title": "Pick a title card font",
+   "updated_at": "2026-11-01T09:30:00Z",
+   "user": {
+    "login": "someone"
+   }
+  },
+  {
+   "body": "Ticket: #1",
+   "created_at": "2026-11-01T09:45:00Z",
+   "labels": [],
+   "node_id": "PR_3",
+   "number": 3,
+   "pull_request": {
+    "merged_at": null,
+    "url": "https://api.github.com/repos/owner/project/pulls/3"
+   },
+   "state": "open",
+   "state_reason": null,
+   "title": "Opening scene draft",
+   "updated_at": "2026-11-01T09:45:00Z",
+   "user": {
+    "login": "someone"
+   }
+  }
+ ],
+ [
+  {
+   "body": "The keeper.",
+   "created_at": "2026-11-01T09:00:00Z",
+   "labels": [
+    {
+     "color": "ededed",
+     "default": false,
+     "description": "",
+     "id": 2,
+     "name": "tracked",
+     "node_id": "LA_2"
+    },
+    {
+     "color": "ededed",
+     "default": false,
+     "description": "",
+     "id": 1,
+     "name": "stage:script",
+     "node_id": "LA_1"
+    }
+   ],
+   "node_id": "I_1",
+   "number": 1,
+   "state": "open",
+   "state_reason": null,
+   "title": "Draft the opening scene",
+   "updated_at": "2026-11-01T09:00:00Z",
+   "user": {
+    "login": "someone"
+   }
+  }
+ ]
+]

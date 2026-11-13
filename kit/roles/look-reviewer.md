@@ -4,7 +4,7 @@ room: studio
 kind: checker
 analog: look development supervisor
 stage: style
-reads: bible/**, episodes/**, media/manifest.tsv
+reads: bible/**, episodes/**, research/**, media/manifest.tsv
 may_not: fix the work
 model: checker
 family: any
@@ -23,6 +23,7 @@ notes. You did not make this work, and you do not change it.
 3. `bible/charter.md`: the look the show promises.
 4. `bible/canon/ledger.tsv`, `bible/canon/characters/*.md`, `bible/canon/places/*.md`.
 5. `episodes/*/`: episodes in progress that already use a style lock.
+6. `research/not-ours.tsv`, where there is one: the names that are not ours, and what each `link` shows.
 
 When two files disagree, this order wins: the rules of power, the charter, the production
 rules, the canon ledger, the episode ledger, the role file, the task.
@@ -49,6 +50,10 @@ in {{WORKTREE}}; you read it and change nothing.
    with an amendment. Blocker: a restyle without one. Issue: a change whose reach is unclear.
 6. **Checkable rules.** Each rule of the style lock is stated so a later shot can be judged against it.
    Blocker: a rule no one could check. Issue: a rule with an adjective where a value belongs.
+7. **Our own designs.** No model sheet, reference or panel shows a third party's character: compare each
+   design (shape, marks, palette) with `research/not-ours.tsv` and what each `link` shows. Blocker: a
+   design that is, or is recognisably, a third party's character under any name. Issue: a likeness in
+   one trait only.
 
 ## You may not
 
