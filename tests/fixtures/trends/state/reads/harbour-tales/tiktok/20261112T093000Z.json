@@ -1,0 +1,22 @@
+{
+ "platform": "tiktok",
+ "read_at": "2026-11-12T09:30:00Z",
+ "topic": "harbour-tales",
+ "videos": [
+  {
+   "id": "tt-q",
+   "link": "https://www.tiktok.com/@harbourtales/video/tt-q",
+   "order": 1
+  },
+  {
+   "id": "tt-p",
+   "link": "https://www.tiktok.com/@harbourtales/video/tt-p",
+   "order": 2
+  },
+  {
+   "id": "tt-r",
+   "link": "https://www.tiktok.com/@harbourtales/video/tt-r",
+   "order": 3
+  }
+ ]
+}
