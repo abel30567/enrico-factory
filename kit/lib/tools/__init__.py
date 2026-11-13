@@ -11,12 +11,12 @@ platform's API, setting ``<PLATFORM>_API_URL`` replacing it), ``BUDGET`` (``(<se
 of the searches allowed a day and its highest value) and ``read(call) -> {"videos": [...]}``, the videos of a
 stored read (`kit/lib/trends.py`). Its ``call`` has exactly ``api`` (the base URL), ``read_at`` (the read's time),
 ``secrets`` (as below) and ``topic`` (the platform's part of the topic file), and ``settings`` (as below) only when its
-resource has a ``setting`` check. It raises ``Failed(reason)`` or ``Down()`` as below; amounts are not read. One read is
-one search of ``BUDGET``, whatever number of requests ``read`` makes. It may also have ``WATCH``, ``{key: check}``: the
-keys of the platform's part of the topic file, each required and no other, a value valid when ``check(value)`` returns
-True (without it, ``{words, region, days}`` as `kit/lib/reads.py` states); and ``STORED``, a tuple of the other keys
-``read`` returns, each returned every time and stored beside ``videos``, each matching ``[a-z][a-z_]*`` and none of
-``platform``, ``read_at``, ``topic``, ``videos`` (without it, none).
+resource has a ``setting`` check. It raises ``Failed(reason)`` or ``Down()`` as below; amounts are not read.
+One read is one search of ``BUDGET``, whatever number of requests ``read`` makes. It may also have ``WATCH``,
+``{key: check}``: the keys of the platform's part of the topic file, each required and no other, a value valid when
+``check(value)`` returns True (without it, ``{words, region, days}`` as `kit/lib/reads.py` states); and ``STORED``, a
+tuple of the other keys ``read`` returns, each returned every time and stored beside ``videos``, each matching
+``[a-z][a-z_]*`` and none of ``platform``, ``read_at``, ``topic``, ``videos`` (without it, none).
 
 A tool module has:
 
