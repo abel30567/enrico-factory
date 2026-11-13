@@ -89,12 +89,26 @@ def merge(p, how):
     return True
 
 
+def _without_unstarted_jobs(run):
+    """A run's conclusion, not counting a job no runner ever picked up: GitHub cancels such a job with no step
+    run, and the run then reads 'failure' though nothing failed (macOS runner shortage, 2026-11-13)."""
+    if run["conclusion"] != "failure":
+        return run["conclusion"]
+    out, rc = gh("run", "view", str(run["databaseId"]), "-R", R, "--json", "jobs")
+    jobs = json.loads(out or "{}").get("jobs", []) if rc == 0 else []
+    ran = [j for j in jobs if j.get("steps") or j.get("conclusion") != "cancelled"]
+    if ran and len(ran) < len(jobs) and all(j.get("conclusion") == "success" for j in ran):
+        return "success"
+    return "failure"
+
+
 def base_ci():
     """Conclusion of the last finished CI run on BASE that was not cancelled ('' when there is none);
     'accepted' when it is not green and the orchestrator accepted that for this BASE commit."""
     runs = json.loads(gh("run", "list", "-R", R, "--branch", BASE, "--event", "push", "--status", "completed",
-                         "--limit", "20", "--json", "conclusion")[0] or "[]")
-    ci = next((r["conclusion"] for r in runs if r["conclusion"] in ("success", "failure", "timed_out")), "")
+                         "--limit", "20", "--json", "conclusion,databaseId")[0] or "[]")
+    run = next((r for r in runs if r["conclusion"] in ("success", "failure", "timed_out")), None)
+    ci = _without_unstarted_jobs(run) if run else ""
     ok = STATE / "state" / "train-accept-red"
     return "accepted" if ci != "success" and ok.exists() and ok.read_text().strip() == base_sha else ci
 
