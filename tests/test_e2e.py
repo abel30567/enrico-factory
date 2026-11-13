@@ -785,11 +785,13 @@ class Refusals(Case):
         for line in (f"Missing: {missing}", *extra):
             self.assertIn(line, body)
         self.assertEqual(sorted(p.name for p in (w.github / "pulls").glob("*.json")), ["2.json"])
+        self.assertEqual(self.ticked(w, apply=True), ["STEP #3 launch showrunner on #3"])
         for _ in range(2):
             self.assertEqual(self.ticked(w, apply=True), ["NEED #3 blocked the maker is BLOCKED on #3"])
         self.assertIn(LABEL, w.record("issues", 3)["labels"])
         self.assertEqual([first(c) for c in w.comments(3)].count("[SHOWRUNNER] LAUNCH story-writer 3-1"), 1)
-        self.assertEqual(len([c for c in w.comments(3) if " LAUNCH " in first(c)]), 1)
+        self.assertEqual([first(c) for c in w.comments(3) if " LAUNCH " in first(c)],
+                         ["[SHOWRUNNER] LAUNCH story-writer 3-1", "[SHOWRUNNER] LAUNCH showrunner 3-1"])
 
     def test_maker_returns_a_checkers_marker(self):
         w = self.world()
@@ -1181,6 +1183,116 @@ class OperatorJob(Case):
                          (1, "", f"launch: job {self.digest} has no counting GATE PASS\n"))
         self.assertEqual(len(w.log()), posts)
         self.assertEqual(sorted(p.name for p in (w.state / "runs").iterdir()), runs)
+
+
+class BlockedJudgments(Case):
+    """ISSUE-242 behaviours 8 and 9: tick runs the showrunner once for a BLOCKED maker, on the ticket and
+    on a pull, then the maker again with the ruling, and the ticket goes on to its lock; no comment is
+    posted by the test."""
+
+    REFUSED = "a valid result (result.marker: a maker posting as STORY-WRITER may not post 'APPROVED')"
+    BLOCKED = "NEED #3 blocked the maker is BLOCKED on #{}"
+
+    @staticmethod
+    def refused():
+        return step("You are the story writer", "APPROVED", {BEATS: fixture("beats-1.md")}, evidence=EVIDENCE)
+
+    @staticmethod
+    def writer_blocked():
+        return step("You are the story writer", "BLOCKED",
+                    blocked={"missing": "which beat the note means", "tried": "the beats and the note",
+                             "resume_from": "the find beat"})
+
+    @staticmethod
+    def ruling():
+        return step("You are the showrunner", "RULING",
+                    evidence=[{"criterion": "story-writer BLOCKED", "result": "ruled",
+                               "command": "episodes/ep01/beats.md B5"}])
+
+    def labels_added(self, w):
+        return [(e["number"], e["label"]) for e in w.log() if e["op"] == "add_label"]
+
+    @staticmethod
+    def firsts(w, *numbers):
+        return [(c["role"], first(c)) for n in numbers for c in w.comments(n)]
+
+    def prompt_of(self, w, record):
+        """The prompt of a LAUNCH record, read from its run directory."""
+        role, run_id = first(record).split(" ")[2:4]
+        return (w.state / "runs" / f"{role}-{run_id}" / "prompt.md").read_text()
+
+    # -- behaviour 8: a maker BLOCKED on the ticket
+
+    def test_blocked_on_the_ticket_to_lock(self):
+        w = self.world()
+        w.script(self.refused(), self.ruling(), writer_ready(fixture("beats-1.md")), editor_approved())
+        ticks = to_lock(self, w)
+        self.assertEqual(ticks, [[line] for line in [
+            "STEP #3 launch story-writer on #3", "STEP #3 launch showrunner on #3", "STEP #3 launch story-writer on #3",
+            "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4", "STEP #3 gate PR #4", "STEP #3 sync PR #4",
+            "STEP #3 lock PR #4"]])
+        [blocked] = [c for c in w.comments(3) if first(c) == "[STORY-WRITER] BLOCKED"]
+        self.assertIn(f"Missing: {self.REFUSED}", blocked["body"].splitlines())
+        found = self.firsts(w, 3)
+        self.assertEqual(found.count(("showrunner", "[SHOWRUNNER] LAUNCH showrunner 3-1")), 1)
+        self.assertEqual(found.count(("showrunner", "[SHOWRUNNER] RULING")), 1)
+        self.assertEqual([b for _, b in found if " LAUNCH showrunner " in b], ["[SHOWRUNNER] LAUNCH showrunner 3-1"])
+        [ruling] = [c for c in w.comments(3) if first(c) == "[SHOWRUNNER] RULING"]
+        self.assertIn(ruling["body"].rstrip("\n"), (w.state / "runs" / "story-writer-3-2" / "prompt.md").read_text())
+        self.assertEqual(w.record("pulls", 4)["state"], "merged")
+        self.assertEqual(w.record("issues", 3)["state"], "closed")
+        self.assertEqual(self.labels_added(w), [])
+
+    def test_blocked_twice_on_the_ticket(self):
+        w = self.world()
+        w.script(self.refused(), self.ruling(), self.refused())
+        ticks = [self.ticked(w, apply=True) for _ in range(5)]
+        self.assertEqual(ticks, [["STEP #3 launch story-writer on #3"], ["STEP #3 launch showrunner on #3"],
+                                 ["STEP #3 launch story-writer on #3"], [self.BLOCKED.format(3)],
+                                 [self.BLOCKED.format(3)]])
+        self.assertIn(LABEL, w.record("issues", 3)["labels"])
+        self.assertEqual(self.labels_added(w), [(3, LABEL)])
+        self.assertEqual([b for _, b in self.firsts(w, 3) if " LAUNCH showrunner " in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 3-1"])
+        self.assertEqual(sorted(p.name for p in (w.github / "pulls").glob("*.json")), ["2.json"])
+
+    # -- behaviour 9: a maker BLOCKED on a pull
+
+    PULL_TICKS = ["STEP #3 launch story-writer on #3", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+                  "STEP #3 launch story-writer on PR #4", "STEP #3 launch showrunner on PR #4",
+                  "STEP #3 launch story-writer on PR #4"]
+
+    def test_blocked_on_a_pull_to_lock(self):
+        w = self.world()
+        w.script(writer_ready(fixture("beats-1.md")), editor_notes(), self.writer_blocked(), self.ruling(),
+                 writer_addressed(fixture("beats-2.md")), editor_approved())
+        ticks = to_lock(self, w, ticks=20)
+        self.assertEqual(ticks, [[line] for line in self.PULL_TICKS + [
+            "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4", "STEP #3 gate PR #4", "STEP #3 sync PR #4",
+            "STEP #3 lock PR #4"]])
+        found = self.firsts(w, 3, 4)
+        self.assertEqual([b for _, b in found if " LAUNCH showrunner " in b or " RULING" in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 4-1", "[SHOWRUNNER] RULING"])
+        comments = sorted(w.comments(4), key=lambda c: (c["created_at"], c["id"]))
+        i = next(i for i, c in enumerate(comments) if first(c) == "[SHOWRUNNER] RULING")
+        self.assertEqual(comments[i]["role"], "showrunner")
+        record = next(c for c in comments[i + 1:] if first(c).startswith("[SHOWRUNNER] LAUNCH story-writer "))
+        self.assertIn(comments[i]["body"].rstrip("\n"), self.prompt_of(w, record))
+        self.assertEqual(w.record("pulls", 4)["state"], "merged")
+        self.assertEqual(w.record("issues", 3)["state"], "closed")
+        self.assertEqual(self.labels_added(w), [])
+
+    def test_blocked_twice_on_a_pull(self):
+        w = self.world()
+        w.script(writer_ready(fixture("beats-1.md")), editor_notes(), self.writer_blocked(), self.ruling(),
+                 self.writer_blocked())
+        ticks = [self.ticked(w, apply=True) for _ in range(len(self.PULL_TICKS) + 2)]
+        self.assertEqual(ticks, [[line] for line in self.PULL_TICKS + [self.BLOCKED.format(4)] * 2])
+        self.assertIn(LABEL, w.record("issues", 3)["labels"])
+        self.assertEqual(self.labels_added(w), [(3, LABEL)])
+        self.assertEqual([b for _, b in self.firsts(w, 3, 4) if " LAUNCH showrunner " in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 4-1"])
+        self.assertEqual(w.record("pulls", 4)["state"], "open")
 
 
 if __name__ == "__main__":

@@ -132,6 +132,13 @@ def _ruled_after(comments, comment):
     return any(m.verb == "RULING" and _order(c) > _order(comment) for c, m in _marked(comments))
 
 
+def _ruling_after(p, ticket, comments, comment):
+    """Whether a ``RULING`` of the room's orchestrator in ``comments`` is newer than ``comment``."""
+    actor = _actor(p, production.orchestrator(p, ticket["room"]))
+    return any(m.verb == "RULING" and m.actor == actor and _order(c) > _order(comment)
+               for c, m in _marked(comments))
+
+
 def _maker_of(p, entry, pull):
     """The maker, not an operator, whose marker is the pull's latest, else the stage's first such maker."""
     names = production.stage_roles(entry, "maker")
@@ -200,7 +207,15 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     if launch:
         return _running(p, launch[0], launch[1], n, now)
     if summary["maker"] and summary["maker"]["verb"] == "BLOCKED":
-        return _wake(p, ticket, "blocked", n, f"the maker is BLOCKED on #{n}")
+        blocked = next(c for c in pull["comments"] if c["id"] == summary["maker"]["id"])
+        comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
+        if _ruling_after(p, ticket, comments, blocked):
+            return _entry("blocked", "launch", _maker_of(p, entry, pull), n,
+                          f"the maker is BLOCKED on #{n} and has a ruling")
+        role = production.orchestrator(p, ticket["room"])
+        if _launched(pull["comments"], role):
+            return _wake(p, ticket, "blocked", n, f"the maker is BLOCKED on #{n}")
+        return _entry("blocked", "launch", role, n, f"the maker is BLOCKED on #{n}")
     if summary["needs_ruling"]:
         comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
         if not _ruled_after(comments, _latest_round(pull, entry, p)):
@@ -240,21 +255,64 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     return _entry("lockable", "lock", None, n, f"#{n} has every counting verdict")
 
 
+def _maker_launches(p, ticket, marked, makers):
+    """The maker ``LAUNCH`` comments on the ticket, oldest first, less those set aside: a launch whose
+    first answer is ``BLOCKED`` with a ``RULING`` of the room's orchestrator newer than that answer."""
+    comments = [c for c, _ in marked]
+    found = []
+    for comment, m in marked:
+        if m.verb != "LAUNCH" or m.args[0] not in makers:
+            continue
+        answer = next(((c, x) for c, x in marked if _order(c) > _order(comment) and _answers(p, m.args[0], x)),
+                      None)
+        if answer and answer[1].verb == "BLOCKED" and _ruling_after(p, ticket, comments, answer[0]):
+            continue
+        found.append((comment, m))
+    return found
+
+
+def _blocked_answer(p, marked, comment, role):
+    """The newest marker of ``role``'s actor after ``comment`` when it is ``BLOCKED``, else None."""
+    later = [(c, x) for c, x in marked if _order(c) > _order(comment) and x.actor == _actor(p, role)]
+    if later and later[-1][1].verb == "BLOCKED":
+        return later[-1][0]
+    return None
+
+
 def _pending(p, state, ticket, entry, now):
     """Row 6 for maker launches on the ticket that have no pull yet, or None when there are none."""
     number = ticket["number"]
     makers = production.stage_roles(entry, "maker")
-    marked = _marked(state.ticket_comments.get(number, []))
-    launched = [(c, m) for c, m in marked if m.verb == "LAUNCH" and m.args[0] in makers]
+    comments = state.ticket_comments.get(number, [])
+    marked = _marked(comments)
+    launched = _maker_launches(p, ticket, marked, makers)
     pending = max(0, len(launched) - len(tickets.pulls_of(state, number)))
     if not pending:
         return 0, None
     comment, m = launched[-1]
     role = m.args[0]
-    later = [x for c, x in marked if _order(c) > _order(comment) and x.actor == _actor(p, role)]
-    if later and later[-1].verb == "BLOCKED":
-        return pending, _wake(p, ticket, "blocked", None, f"the maker is BLOCKED on #{number}")
+    if _blocked_answer(p, marked, comment, role) is not None:
+        why = f"the maker is BLOCKED on #{number}"
+        orchestrator = production.orchestrator(p, ticket["room"])
+        running = _unanswered(p, comments, orchestrator)
+        if running is not None:
+            return pending, _running(p, running, orchestrator, None, now)
+        if _launched(comments, orchestrator):
+            return pending, _wake(p, ticket, "blocked", None, why)
+        return pending, _entry("blocked", "launch", orchestrator, None, why)
     return pending, _running(p, comment, role, None, now)
+
+
+def blocked_on_ticket(p, state, ticket):
+    """The ``BLOCKED`` comment that answers the newest maker launch on the ticket ``_pending`` reads, or
+    None."""
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    marked = _marked(state.ticket_comments.get(ticket["number"], []))
+    launched = _maker_launches(p, ticket, marked, production.stage_roles(entry, "maker"))
+    if len(launched) <= len(tickets.pulls_of(state, ticket["number"])):
+        return None
+    comment, m = launched[-1]
+    return _blocked_answer(p, marked, comment, m.args[0])
 
 
 def _ticket_step(p, state, ticket, entry, root):
@@ -298,15 +356,18 @@ def _always(pull):
     return True
 
 
-def _selection(p, state, ticket, now):
-    """Row 14 when no pitch is selected: the orchestrator's run on the ticket, its launch, or a wake."""
+def _selection(p, state, ticket, entry, now):
+    """Row 14 when no pitch is selected: the orchestrator's run on the ticket, its launch, or a wake. Only a
+    launch of the orchestrator newer than the ticket's newest maker launch counts."""
     role = production.orchestrator(p, ticket["room"])
     comments = state.ticket_comments.get(ticket["number"], [])
     why = f"every pitch of #{ticket['number']} is lockable and none is selected"
     running = _unanswered(p, comments, role)
     if running is not None:
         return _running(p, running, role, None, now)
-    if not _launched(comments, role):
+    makers = production.stage_roles(entry, "maker")
+    made = [c for c, m in _marked(comments) if m.verb == "LAUNCH" and m.args[0] in makers]
+    if not [c for c in _launched(comments, role) if not made or _order(c) > _order(made[-1])]:
         return _entry("selection", "launch", role, None, why)
     return _wake(p, ticket, "selection", None, why)
 
@@ -334,7 +395,7 @@ def next_step(p, state, ticket, root, now, has_key=_always) -> dict:
         chosen = tickets.selected(state, ticket["number"])
         found = next((e for e in per_pull if e["pull"] == chosen), None)
         if found is None:
-            return _selection(p, state, ticket, now)
+            return _selection(p, state, ticket, entry, now)
         return found
     return per_pull[0]
 
@@ -350,17 +411,16 @@ def _running_unanswered(p, comments, skip=()):
 
 
 def _running_makers(p, state, ticket, makers):
-    """The maker launches on the ticket that have no pull yet, less one when the newest is ``BLOCKED``."""
+    """The maker launches on the ticket that have no pull yet and are not set aside, less one when the
+    newest is ``BLOCKED``."""
     number = ticket["number"]
     marked = _marked(state.ticket_comments.get(number, []))
-    launched = [(c, m) for c, m in marked if m.verb == "LAUNCH" and m.args[0] in makers]
+    launched = _maker_launches(p, ticket, marked, makers)
     pending = max(0, len(launched) - len(tickets.pulls_of(state, number)))
     if not pending:
         return 0
     comment, m = launched[-1]
-    role = m.args[0]
-    later = [x for c, x in marked if _order(c) > _order(comment) and x.actor == _actor(p, role)]
-    if later and later[-1].verb == "BLOCKED":
+    if _blocked_answer(p, marked, comment, m.args[0]) is not None:
         return pending - 1
     return pending
 

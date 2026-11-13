@@ -460,7 +460,7 @@ class Timeout(Case):
         [blocked] = [c for c in w.comments(6) if c["created_at"] == later(251)]
         self.assertEqual((blocked["role"], blocked["body"].split("\n")[0]), ("writer", "[WRITER] BLOCKED"))
         self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
 
         # Criterion 10: the markers lint accepts it, and refuses it under a program's role.
         comments = w.comments(6)
@@ -723,8 +723,8 @@ class DeadRun(Case):
         [blocked] = self.after_launch(w, 6, "writer")
         self.assertEqual(blocked["body"].split("\n")[0], "[WRITER] BLOCKED")
         self.assertIn("Missing: a valid result (timed out)", blocked["body"].splitlines())
-        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
-        self.assertEqual(len(w.ops("post")), 2)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(len(w.ops("post")), 4)
         # Criterion 6: a maker's worktree is kept.
         self.assertEqual(run.worktree, w.state / "worktrees" / "writer-6-1")
         self.assertTrue(run.worktree.is_dir())
@@ -990,6 +990,47 @@ class Judgment(Case):
         self.assertEqual(w.snapshot(), before)
         self.assertEqual(len(w.ops("post")), 1)
 
+
+
+class BlockedMaker(Case):
+    """ISSUE-242 behaviour 7: tick starts the room's orchestrator once for a BLOCKED maker on a pull, and
+    the maker again after its RULING."""
+
+    KEEPER_RULING = step("You are the keeper", {
+        "marker": "RULING", "summary": "The draft keeps its length; write the second scene.",
+        "evidence": [{"criterion": "writer BLOCKED", "result": "ruled", "command": "story/ep02/draft.md"}]})
+
+    def blocked(self, *fake):
+        w = self.world((5, 6))
+        w.steps(*fake)
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "writer", 6)
+        os.environ["FACTORY_NOW"] = later(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 timeout writer 6-1"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("writer", "[WRITER] BLOCKED"))
+        return w
+
+    def keeper_launches(self, w):
+        return [b for _, b in firsts(w.comments(6)) if " LAUNCH keeper " in b]
+
+    def test_a_ruling_launches_the_maker(self):
+        w = self.blocked(self.KEEPER_RULING)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-2:], [("keeper", "[KEEPER] LAUNCH keeper 6-1"),
+                                                      ("keeper", "[KEEPER] RULING")])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch writer on PR #6"])
+        self.assertEqual(w.ops("add_label"), [])
+        self.assertEqual(self.keeper_launches(w), ["[KEEPER] LAUNCH keeper 6-1"])
+
+    def test_no_answer_wakes_once(self):
+        w = self.blocked()
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-2:], [("keeper", "[KEEPER] LAUNCH keeper 6-1"),
+                                                      ("keeper", "[KEEPER] BLOCKED")])
+        for _ in range(2):
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #5 blocked the maker is BLOCKED on #6"])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(5, LABEL)])
+        self.assertEqual(self.keeper_launches(w), ["[KEEPER] LAUNCH keeper 6-1"])
 
 
 class ResourceDown(Case):
@@ -1345,12 +1386,12 @@ class Workers(Case):
         w = self.capped()
         w.add(18, "2026-11-11T12:05:00Z", "painter", "[PAINTER] BLOCKED\n")
         out = self.ticked(w, "--apply")
-        self.assertEqual(lines(out), ["NEED #18 blocked the maker is BLOCKED on #18",
+        self.assertEqual(lines(out), ["STEP #18 launch foreman on #18",
                                       "WAIT #19 running painter launched at 2026-11-11T12:00:00Z",
-                                      "STEP #20 launch painter on #20",
+                                      "WAIT #20 ready 2 running, MAX_WORKERS is 2",
                                       "WAIT #21 ready 2 running, MAX_WORKERS is 2"])
-        self.assertTrue(out.endswith("tick: 1 steps, 1 need, 2 wait, 0 failed\n"), out)
-        self.assertEqual(self.launches(w, 20), ["[FOREMAN] LAUNCH painter 20-1"])
+        self.assertTrue(out.endswith("tick: 1 steps, 0 need, 3 wait, 0 failed\n"), out)
+        self.assertEqual(self.launches(w, 20), [])
 
     def test_no_cap(self):
         """Behaviour 4, the clean twin: no line, and an empty value."""
@@ -1404,3 +1445,15 @@ class Workers(Case):
         self.assertEqual(self.running(w, 19)[0], 1)
         w.add(20, later(5), "inspector", "[INSPECTOR] APPROVED\n")
         self.assertEqual(self.running(w, 19)[0], 0)
+
+    def test_a_launch_set_aside_by_a_ruling(self):
+        """ISSUE-242 behaviour 10: the maker launch a RULING set aside is not running."""
+        w = World(self.addCleanup, (18,))
+        for minutes, role, body in [(0, "foreman", "[FOREMAN] LAUNCH painter 18-1\n"),
+                                    (5, "painter", "[PAINTER] BLOCKED\nMissing: the palette\n"),
+                                    (6, "foreman", "[FOREMAN] LAUNCH foreman 18-1\n")]:
+            w.add(18, later(minutes), role, body)
+        self.assertEqual(self.running(w, 18)[0], 1)
+        w.add(18, later(7), "foreman", "[FOREMAN] RULING\n\nUse the night palette.\n")
+        w.add(18, later(8), "foreman", "[FOREMAN] LAUNCH painter 18-2\n")
+        self.assertEqual(self.running(w, 18)[0], 1)
