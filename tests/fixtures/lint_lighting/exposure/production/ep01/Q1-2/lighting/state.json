@@ -1,0 +1,177 @@
+{
+  "shot": "Q1-2",
+  "stage": "lighting",
+  "fps": 24,
+  "frames": {
+    "first": 96,
+    "last": 167
+  },
+  "actors": [
+    {
+      "id": "ama",
+      "kind": "character",
+      "asset": "asset:ama",
+      "sha256": "02a6efa44deef545bc56c1aae1e1d9feb53d505bb269a2abd6efe8d8f4e237f2",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "height_m": 1.7,
+      "start": {
+        "location": [
+          1.2,
+          0.5,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          90
+        ]
+      },
+      "end": {
+        "location": [
+          2.0,
+          1.5,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          45
+        ]
+      }
+    },
+    {
+      "id": "tobi",
+      "kind": "character",
+      "asset": "asset:tobi",
+      "sha256": "cd6f33ab869d39460147064d5c5a72f182f7bb9502ed73f8e239a5a62ff69d42",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "height_m": 1.7,
+      "start": {
+        "location": [
+          3,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          180
+        ]
+      },
+      "end": {
+        "location": [
+          3,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          180
+        ]
+      }
+    },
+    {
+      "id": "harbour",
+      "kind": "set",
+      "asset": "asset:harbour",
+      "sha256": "aa74f6fd03bf68be7e0f4bd06cae61a72ab8025b50d00888f3e1068f22067463",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "height_m": 10,
+      "start": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "end": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "camera": {
+    "focal_mm": {
+      "min": 35,
+      "max": 35
+    },
+    "sensor_mm": [
+      36,
+      24
+    ],
+    "start": {
+      "location": [
+        0,
+        -6,
+        1.6
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ]
+    },
+    "end": {
+      "location": [
+        0,
+        -6,
+        1.6
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ]
+    }
+  },
+  "framing": [],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [
+    {
+      "id": "lamp",
+      "kind": "point",
+      "intensity": 40,
+      "unit": "cd",
+      "color": [
+        1,
+        0.85,
+        0.7
+      ],
+      "temperature_k": 3200
+    }
+  ],
+  "sun": {
+    "elevation_deg": 5.5,
+    "azimuth_deg": 262
+  },
+  "render": null
+}

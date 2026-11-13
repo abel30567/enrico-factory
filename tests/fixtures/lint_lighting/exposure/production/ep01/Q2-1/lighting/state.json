@@ -1,0 +1,102 @@
+{
+  "shot": "Q2-1",
+  "stage": "lighting",
+  "fps": 24,
+  "frames": {
+    "first": 168,
+    "last": 239
+  },
+  "actors": [
+    {
+      "id": "ama",
+      "kind": "character",
+      "asset": "asset:ama",
+      "sha256": "02a6efa44deef545bc56c1aae1e1d9feb53d505bb269a2abd6efe8d8f4e237f2",
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "height_m": 1.7,
+      "start": {
+        "location": [
+          9,
+          9,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "end": {
+        "location": [
+          9,
+          9,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "camera": {
+    "focal_mm": {
+      "min": 35,
+      "max": 35
+    },
+    "sensor_mm": [
+      36,
+      24
+    ],
+    "start": {
+      "location": [
+        0,
+        -6,
+        1.6
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ]
+    },
+    "end": {
+      "location": [
+        0,
+        -6,
+        1.6
+      ],
+      "rotation": [
+        0,
+        0,
+        90
+      ]
+    }
+  },
+  "framing": [],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [
+    {
+      "id": "lamp",
+      "kind": "point",
+      "intensity": 40,
+      "unit": "cd",
+      "color": [
+        1,
+        0.85,
+        0.7
+      ],
+      "temperature_k": 3200
+    }
+  ],
+  "sun": null,
+  "render": null
+}
