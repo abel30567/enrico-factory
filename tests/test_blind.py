@@ -39,6 +39,16 @@ NEW_SHOT1 = '{\n "id": "Q1-1",\n "duration": 2.5,\n "action": "The lantern dips 
 NEW_SHOT2 = '{\n "id": "Q1-2",\n "duration": 1.5,\n "action": "A heron looks up."\n}\n'
 SHOT3 = "episodes/ep01/sequences/Q1/shots/Q1-3.json"
 ORIGIN_SHOT3 = '{\n "id": "Q1-3",\n "duration": 2,\n "action": "The reeds part."\n}\n'
+CONTEXT = {
+    "bible/charter.md": "# Charter\n\nA quiet pond at dusk.\n",
+    "bible/canon/ledger.tsv": "fact\tsince\nthe heron is grey\tep01\n",
+    "bible/canon/characters/heron.md": "# Heron\n\nGrey, patient.\n",
+    "bible/canon/places/pond.md": "# Pond\n\nReeds on the east bank.\n",
+    "bible/style/characters/heron.md": "# Heron, drawn\n\nLong neck, two lines.\n",
+    "episodes/ep01/beats.md": "# Beats\n\n1. The lantern dips.\n",
+    "episodes/ep01/ledger.json": '{\n "facts": []\n}\n',
+    "notes/plan.md": "# Plan\n\nNothing a judge reads.\n",
+}
 
 
 def blinding(salt, pull, head):
@@ -55,7 +65,7 @@ def files(tree):
 class World:
     """The production repository on branch `trunk`, its state directory and a recorded GitHub, all temporary."""
 
-    def __init__(self, test, base_shots=True):
+    def __init__(self, test, base_shots=True, pitch_judge=False):
         tmp = Path(tempfile.mkdtemp())
         test.addCleanup(shutil.rmtree, tmp)
         self.root = tmp / "show"
@@ -70,6 +80,14 @@ class World:
         (self.root / "production.local.env").write_text(f"STATE_DIR={self.state_dir}\n")
         if not base_shots:
             shutil.rmtree(self.root / "episodes/ep01/sequences")
+        if pitch_judge:
+            shutil.copy(ROOT / "kit" / "roles" / "pitch-judge.md", self.root / ".factory" / "roles" / "pitch-judge.md")
+            pipeline = self.root / ".factory" / "pipeline.json"
+            entries = json.loads(pipeline.read_text())
+            next(e for e in entries if e["stage"] == "board")["judge"] = ["critic", "pitch-judge"]
+            pipeline.write_text(json.dumps(entries))
+            for rel, text in CONTEXT.items():
+                self.write(rel, text)
         self.git("init", "-q", "-b", "trunk")
         self.commit("the production")
         self.git("checkout", "-q", "-b", BRANCH)
@@ -169,7 +187,9 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in pair.iterdir()), ["A", "B"])
         self.assertEqual(sorted(p.name for p in home.iterdir()), ["key.json", "pair"])
         base_shot = (FIX / "production" / SHOT1).read_bytes()
-        expected = {"old": {SHOT1: base_shot}, "new": {SHOT1: NEW_SHOT1.encode(), SHOT2: NEW_SHOT2.encode()}}
+        base_script = (FIX / "production" / SCRIPT).read_bytes()
+        expected = {"old": {SHOT1: base_shot, SCRIPT: base_script},
+                    "new": {SHOT1: NEW_SHOT1.encode(), SHOT2: NEW_SHOT2.encode(), SCRIPT: base_script}}
         self.assertEqual(files(pair / "A"), expected[key["A"]])
         self.assertEqual(files(pair / "B"), expected[key["B"]])
         self.assertEqual({key["A"], key["B"]}, {"old", "new"})
@@ -177,11 +197,12 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual(blind.key_path(w.p, 4, w.head()), home / "key.json")
         on_disk = json.loads((home / "key.json").read_text())
         self.assertEqual(on_disk, key)
-        self.assertEqual(sorted(key), ["A", "B", "base", "created_at", "head", "id", "paths", "pull"])
+        self.assertEqual(sorted(key), ["A", "B", "base", "created_at", "head", "id", "paths", "pull", "reads"])
         self.assertEqual(key["pull"], 4)
         self.assertEqual(key["head"], w.head())
         self.assertEqual(key["base"], w.head("trunk"))
         self.assertEqual(key["paths"], ["episodes/*/sequences/**"])
+        self.assertEqual(key["reads"], ["episodes/**"])
         self.assertEqual(key["created_at"], NOW)
         self.assertEqual(stat.S_IMODE((home / "key.json").stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(w.blind_dir().stat().st_mode), 0o700)
@@ -241,13 +262,15 @@ class LeakTest(unittest.TestCase):
     def test_manifest_git_and_other_stage_files_are_absent(self):
         self.assertNotEqual(gitstate.show(self.w.root, BRANCH, MANIFEST), gitstate.show(self.w.root, "trunk", MANIFEST))
         self.assertNotEqual(gitstate.show(self.w.root, BRANCH, SCRIPT), gitstate.show(self.w.root, "trunk", SCRIPT))
+        base_script = gitstate.show(self.w.root, "trunk", SCRIPT).encode()
         for letter in ("A", "B"):
             side = files(self.pair / letter)
             self.assertNotIn(MANIFEST, side)
-            self.assertNotIn(SCRIPT, side)
+            self.assertEqual(side[SCRIPT], base_script)
             self.assertFalse((self.pair / letter / "media").exists())
             self.assertFalse(any(part == ".git" for p in side for part in p.split("/")))
-            self.assertTrue(all(production.matches(p, self.key["paths"]) for p in side))
+            self.assertTrue(all(production.matches(p, self.key["paths"]) or production.matches(p, self.key["reads"])
+                                for p in side))
 
     def test_manifest_is_left_out_even_when_the_paths_match_it(self):
         w = World(self)
@@ -302,6 +325,12 @@ class RefusalTest(unittest.TestCase):
         self.assert_refused(w, 4, "no locked version to compare")
         self.assertEqual(sorted(p.name for p in w.blind_dir().iterdir()), ["salt"])
 
+    def test_old_side_without_stage_files_but_context(self):
+        w = World(self, base_shots=False, pitch_judge=True)
+        self.assertTrue(blind.old_exists(w.p, w.state, w.state.pulls[4]))
+        self.assert_refused(w, 4, "no locked version to compare")
+        self.assertEqual(sorted(p.name for p in w.blind_dir().iterdir()), ["salt"])
+
     def test_frozen(self):
         w = World(self)
         (w.dir / "issues" / "9.json").write_text(json.dumps(
@@ -310,6 +339,95 @@ class RefusalTest(unittest.TestCase):
         code, out, err = w.run("4")
         self.assertEqual((code, out, err), (2, "", "blind: frozen\n"))
         self.assertFalse(w.state_dir.exists())
+
+
+def outside(tree, paths):
+    """{tree-relative posix path: (bytes or link target, mode bits)} of every path under `tree` not matching `paths`."""
+    found = {}
+    for path in sorted(Path(tree).rglob("*")):
+        rel = path.relative_to(tree).as_posix()
+        if production.matches(rel, paths):
+            continue
+        content = os.readlink(path) if path.is_symlink() else None if path.is_dir() else path.read_bytes()
+        found[rel] = (content, stat.S_IMODE(path.lstat().st_mode))
+    return found
+
+
+class ContextTest(unittest.TestCase):
+    """ISSUE-256: the files the stage's judges read outside its ``paths`` are in the pair, from the old side."""
+
+    def pair(self, w):
+        key = w.prepare()
+        return key, blind.pair_dir(w.p, 4, w.head())
+
+    def test_read_first_of_the_pitch_judge_is_on_both_sides(self):
+        text = (ROOT / "kit" / "roles" / "pitch-judge.md").read_text()
+        read_first = text.split("## Read first", 1)[1].split("\n## ", 1)[0]
+        for name in ("episodes/<ep>/script.md", "beats.md", "ledger.json", "bible/canon/characters/*.md",
+                     "bible/canon/places/*.md", "bible/style/**", "bible/charter.md", "bible/canon/ledger.tsv"):
+            self.assertIn(f"`{name}`", read_first)
+        w = World(self, pitch_judge=True)
+        key, pair = self.pair(w)
+        self.assertEqual(key["reads"], ["bible/**", "episodes/**"])
+        a, b = files(pair / "A"), files(pair / "B")
+        for rel in [SCRIPT, *(rel for rel in CONTEXT if rel != "notes/plan.md")]:
+            base = gitstate.show(w.root, "trunk", rel).encode()
+            self.assertEqual(a.get(rel), base, rel)
+            self.assertEqual(b.get(rel), base, rel)
+
+    def test_only_stage_files_differ(self):
+        w = World(self, pitch_judge=True)
+        key, pair = self.pair(w)
+        self.assertEqual(outside(pair / "A", key["paths"]), outside(pair / "B", key["paths"]))
+        self.assertTrue(outside(pair / "A", key["paths"]))
+        self.assertNotEqual(files(pair / "A"), files(pair / "B"))
+
+    def test_a_file_the_head_changed_outside_the_paths_comes_from_the_old_side(self):
+        w = World(self)
+        base, changed = gitstate.show(w.root, "trunk", SCRIPT), gitstate.show(w.root, BRANCH, SCRIPT)
+        self.assertNotEqual(base, changed)
+        key, pair = self.pair(w)
+        for letter in ("A", "B"):
+            self.assertEqual(files(pair / letter)[SCRIPT], base.encode(), letter)
+
+    def test_a_file_no_judge_reads_is_absent(self):
+        w = World(self, pitch_judge=True)
+        self.assertIsNotNone(gitstate.show(w.root, "trunk", "notes/plan.md"))
+        self.assertIsNotNone(gitstate.show(w.root, BRANCH, "notes/plan.md"))
+        key, pair = self.pair(w)
+        for letter in ("A", "B"):
+            side = files(pair / letter)
+            self.assertNotIn("notes/plan.md", side)
+            self.assertNotIn(".factory/pipeline.json", side)
+            self.assertFalse((pair / letter / "notes").exists())
+            self.assertFalse((pair / letter / ".factory").exists())
+
+    def test_manifest_is_left_out_even_when_a_judge_reads_it(self):
+        w = World(self)
+        critic = w.root / ".factory" / "roles" / "critic.md"
+        critic.write_text(critic.read_text().replace("reads: episodes/**\n", "reads: episodes/**, media/**\n"))
+        w.load()
+        key, pair = self.pair(w)
+        self.assertEqual(key["reads"], ["episodes/**", "media/**"])
+        for letter in ("A", "B"):
+            self.assertNotIn(MANIFEST, files(pair / letter))
+            self.assertFalse((pair / letter / "media").exists())
+
+    def test_context_pair_leaks_nothing(self):
+        w = World(self, pitch_judge=True)
+        key, pair = self.pair(w)
+        head, base = w.head(), w.head("trunk")
+        secrets = [head, base, head[:7], base[:7], BRANCH, BRANCH.rsplit("/", 1)[1]]
+        for path in [pair, *sorted(pair.rglob("*"))]:
+            self.assertEqual(path.lstat().st_mtime, 0, path)
+            for secret in secrets:
+                for part in path.parts:
+                    self.assertNotIn(secret, part, path)
+                if path.is_file():
+                    self.assertNotIn(secret.encode(), path.read_bytes(), path)
+            if path != pair:
+                for part in path.relative_to(pair).parts:
+                    self.assertNotIn(part, ("old", "new"), path)
 
 
 class IdempotenceTest(unittest.TestCase):
