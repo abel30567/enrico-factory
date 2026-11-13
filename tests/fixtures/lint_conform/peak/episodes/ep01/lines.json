@@ -1,0 +1,20 @@
+[
+  {
+    "id": "L1",
+    "scene": "S1",
+    "speaker": "AMA",
+    "text": "The lamp is out."
+  },
+  {
+    "id": "L2",
+    "scene": "S1",
+    "speaker": "TOBI",
+    "text": "Then we row."
+  },
+  {
+    "id": "L3",
+    "scene": "S2",
+    "speaker": "AMA",
+    "text": "Hold the lantern high."
+  }
+]

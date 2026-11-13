@@ -1,0 +1,20 @@
+[
+  {
+    "line": "L1",
+    "text": "The lamp is out.",
+    "start": 12,
+    "end": 60
+  },
+  {
+    "line": "L2",
+    "text": "Then we row.",
+    "start": 75,
+    "end": 110
+  },
+  {
+    "line": "L3",
+    "text": "Hold the lantern high.",
+    "start": 150,
+    "end": 210
+  }
+]
