@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Frame 18 has a mean luma of 0.12 against 0.42 in the locked lighting preview: the final render goes dark mid-shot.",
+      "evidence": "production/ep01/Q1-2/render/render.json"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "L3 belongs to scene S2; this shot is in S1 and must not lip-sync it.",
+      "evidence": "production/ep01/Q1-2/animation/state.json"
+    }
+  ]
+}

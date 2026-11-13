@@ -1,0 +1,8 @@
+{
+  "job": "767c668636aed3cd5499e6ad8e237d5a5e1a9b3c0490f35f871ca44dad59d00e",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "cal_rig.uasset", "sha256": "3673a3cb05322b758b25de769869ff9d06515b83979acb141c7b315a8fe91928", "bytes": 2097152}]
+}

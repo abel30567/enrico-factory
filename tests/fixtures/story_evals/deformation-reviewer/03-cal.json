@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "calf_l bends only to 40 degrees on y: Cal cannot kneel on his left knee.",
+      "evidence": "production/assets/cal/rigging/state.json"
+    }
+  ]
+}

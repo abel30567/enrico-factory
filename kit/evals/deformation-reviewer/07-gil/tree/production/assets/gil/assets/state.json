@@ -1,0 +1,10 @@
+{
+  "asset": "gil",
+  "kind": "character",
+  "sha256": "4c75ea444d4c645ae142ec0fc4159b01d5973c9d7d6c4e97602137a3791f6873",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "gil_body", "width": 2048, "height": 2048}],
+  "height_m": 1.7,
+  "skeleton": {"bones": [{"name": "pelvis", "parent": null}, {"name": "spine_01", "parent": "pelvis"}, {"name": "neck", "parent": "spine_01"}, {"name": "head", "parent": "neck"}, {"name": "upperarm_l", "parent": "spine_01"}, {"name": "upperarm_r", "parent": "spine_01"}, {"name": "lowerarm_l", "parent": "upperarm_l"}, {"name": "lowerarm_r", "parent": "upperarm_r"}, {"name": "thigh_l", "parent": "pelvis"}, {"name": "thigh_r", "parent": "pelvis"}, {"name": "calf_l", "parent": "thigh_l"}, {"name": "calf_r", "parent": "thigh_r"}], "weights_normalised": true}
+}

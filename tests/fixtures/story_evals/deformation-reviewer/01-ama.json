@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "upperarm_r raises only to 60 degrees on x: Ama cannot reach overhead to climb the mast hand over hand.",
+      "evidence": "production/assets/ama/rigging/state.json"
+    }
+  ]
+}

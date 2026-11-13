@@ -1,0 +1,10 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": ["wen", "dax"],
+  "set": "gull-rock",
+  "camera": "medium two-shot, eye level, static",
+  "action": "Wen steps to Dax and hands him the lantern."
+}

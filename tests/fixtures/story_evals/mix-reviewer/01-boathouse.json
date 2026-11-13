@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The caption of L3 reads 'I will stay.'; the line is 'I will not stay.', the opposite meaning.",
+      "evidence": "production/ep01/conform/captions.json"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "job": "44182d2fe652a38277a0519f26261936ae1cc4230f1db7a33fa5adbc83e244df",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "fen_rig.uasset", "sha256": "f86f08598fce37ace6d49b425bfc068b6f9edccfc1a335e783bfa9d80c141c18", "bytes": 2097152}]
+}

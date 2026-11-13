@@ -1,0 +1,10 @@
+{
+  "id": "Q2-1",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 1.0,
+  "characters": ["wen"],
+  "set": "salt-store",
+  "camera": "medium shot, eye level, static",
+  "action": "Wen turns from the water."
+}

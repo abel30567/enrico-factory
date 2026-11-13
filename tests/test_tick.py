@@ -1074,6 +1074,50 @@ class ResourceDown(Case):
 
 
 
+INSPECTOR_BLOCKED = step("You are the inspector", {
+    "marker": "BLOCKED", "summary": "Cannot review.",
+    "blocked": {"missing": "the style sheet", "tried": "read the pull", "resume_from": "the pull"}})
+
+
+class BlockedReviewer(Case):
+    """ISSUE-327 behaviours 8 to 10: a BLOCKED checker is a NEED line once, and is launched again after the
+    room's RULING."""
+
+    def inspector_launches(self, w):
+        return [b for _, b in firsts(w.comments(20)) if " LAUNCH inspector " in b]
+
+    def blocked(self):
+        w = self.world((19, 20))
+        w.steps(INSPECTOR_BLOCKED, INSPECTOR_APPROVED)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 launch inspector on PR #20"])
+        self.assertEqual(firsts(w.comments(20))[-1], ("inspector", "[INSPECTOR] BLOCKED"))
+        for _ in range(2):
+            self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #19 review inspector is BLOCKED on #20"])
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(19, LABEL)])
+        self.assertEqual(len(self.inspector_launches(w)), 1)
+        return w
+
+    def test_a_blocked_checker_wakes_once(self):
+        self.blocked()
+
+    def test_a_ruling_launches_the_checker_once(self):
+        w = self.blocked()
+        w.add(20, "2026-11-11T12:30:00Z", "foreman", "[FOREMAN] RULING\n\nUse the shipped style sheet.\n")
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 launch inspector on PR #20"])
+        prompt = (w.state / "runs" / "inspector-20-2" / "prompt.md").read_text()
+        self.assertIn("## Ruling\n\n[FOREMAN] RULING\n\nUse the shipped style sheet.\n", prompt)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 lock PR #20"])
+        self.assertEqual([e["number"] for e in w.ops("remove_label")], [19])
+
+    def test_a_timed_out_checker_wakes(self):
+        w = self.world((19, 20))
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "inspector", 20)
+        os.environ["FACTORY_NOW"] = later(251)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #19 timeout inspector 20-1"])
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED #19 review inspector is BLOCKED on #20"])
+
+
 class OutOfUsage(Case):
     """ISSUE-249: a launch step whose slot has no account with usage left is a WAIT line until the time
     written, and no launch is started."""
@@ -1309,6 +1353,24 @@ class Jobs(Case):
         for _ in range(2):
             self.tick(w, ["NEED #5 jobs fetcher left 1 request(s) without a job on #6"])
         self.assertEqual(len(self.launches(w, "fetcher")), 1)
+
+    def test_a_ruling_launches_the_blocked_operator(self):
+        """ISSUE-327 behaviour 11: after the keeper's RULING on its BLOCKED, the fetcher, not the writer."""
+        w = self.world()
+        fetcher_blocked = step("You are the fetcher", {
+            "marker": "BLOCKED", "summary": "Cannot write the jobs.",
+            "blocked": {"missing": "the fake tool's account", "tried": "read the request", "resume_from": "the pull"}})
+        keeper_ruling = step("You are the keeper", {
+            "marker": "RULING", "summary": "Use the spare account.",
+            "evidence": [{"criterion": "fetcher BLOCKED", "result": "ruled", "command": self.REQUEST}]})
+        w.steps(fetcher_blocked, keeper_ruling, self.fetcher())
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("fetcher", "[FETCHER] BLOCKED"))
+        self.tick(w, ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("keeper", "[KEEPER] RULING"))
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        self.tick(w, ["STEP #5 lint PR #6"])
+        self.assertEqual(self.launches(w, "fetcher"), ["[KEEPER] LAUNCH fetcher 6-1", "[KEEPER] LAUNCH fetcher 6-2"])
 
     def test_a_stop_wakes_and_does_not_loop(self):
         w = self.world(cap_usd=0)

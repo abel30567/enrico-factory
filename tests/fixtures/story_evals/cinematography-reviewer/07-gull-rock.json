@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Q1-2 uses an 18 mm lens; the style lock allows lenses from 24 to 85 mm.",
+      "evidence": "production/ep01/Q1-2/layout/state.json"
+    }
+  ]
+}

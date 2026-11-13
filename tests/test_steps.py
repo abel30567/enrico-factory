@@ -421,6 +421,16 @@ class OperatorRowsTest(ChainCase):
         self.ledger(digest, "run", "FAILED")
         self.check(("job-failed", "wake", "chief", 5), f"job {self.JOB} failed on #5")
 
+    def test_a_ruling_launches_the_blocked_operator(self):
+        # ISSUE-327 behaviour 7: the operator, not the maker, after the ruling on its BLOCKED.
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.post("fetcher", "[FETCHER] BLOCKED\nMissing: renderbox login\n")
+        self.check(("blocked", "launch", "chief", 5))
+        self.post("chief", "[CHIEF] LAUNCH chief 5-1\n")
+        self.post("chief", "[CHIEF] RULING\nUse the spare account.\n")
+        self.check(("blocked", "launch", "fetcher", 5), "the maker is BLOCKED on #5 and has a ruling")
+
 
 class PitchesChainTest(ChainCase):
     FIXTURE, TICKET = "pitches", 1
@@ -660,6 +670,98 @@ class BlockedMakerTest(ChainCase):
         self.post(904, 9, "writer", "[WRITER] BLOCKED\nMissing: the format, still\n", number=3)
         self.assertEqual(short(self.next()), ("blocked", "wake", "chief", None))
         self.assertEqual(self.next()["reason"], "the maker is BLOCKED on #3")
+
+
+class BlockedReviewerTest(ChainCase):
+    """ISSUE-327 behaviours 1 to 6: a BLOCKED checker or judge wakes the orchestrator, and is launched again
+    after its RULING, a new head, or a BLOCKED for an outage."""
+    FIXTURE, TICKET = "steps", 3
+
+    def post(self, cid, minute, role, body, number=5):
+        self.w.apply(comment(number, cid, minute, role, body))
+
+    def check(self, expected, reason=None):
+        entry = self.next()
+        self.assertEqual(short(entry), expected)
+        if reason is not None:
+            self.assertEqual(entry["reason"], reason)
+
+    def blocked(self):
+        self.until("launch-checker")
+        self.post(900, 12, "editor", "[EDITOR] BLOCKED\nMissing: the charter\n")
+
+    def test_a_blocked_checker_wakes(self):
+        self.blocked()
+        self.check(("review", "wake", "chief", 5), "editor is BLOCKED on #5")
+        self.assertEqual([short(e) for e in self.all()], [("review", "wake", "chief", 5)])
+        # Twin: no BLOCKED, the checker is launched.
+        self.setUp()
+        self.until("lint-pass")
+        self.check(("review", "launch", "editor", 5))
+
+    def test_a_ruling_launches_the_checker_again(self):
+        for number in (5, 3):
+            with self.subTest(number=number):
+                self.setUp()
+                self.blocked()
+                self.post(901, 13, "chief", "[CHIEF] RULING\nRead the charter in the bible.\n", number=number)
+                self.check(("review", "launch", "editor", 5), "editor has no counting verdict on #5")
+                self.post(902, 14, "chief", "[CHIEF] LAUNCH editor BT-1-x\n")
+                self.post(903, 15, "editor", "[EDITOR] BLOCKED\nMissing: the charter, still\n")
+                self.check(("review", "wake", "chief", 5), "editor is BLOCKED on #5")
+
+    def test_a_ruling_older_than_the_blocked(self):
+        # Seeded defect: the ruling answers an earlier question, not this BLOCKED.
+        self.until("launch-checker")
+        self.post(899, 11, "chief", "[CHIEF] RULING\nToo early.\n", number=3)
+        self.post(900, 12, "editor", "[EDITOR] BLOCKED\nMissing: the charter\n")
+        self.check(("review", "wake", "chief", 5))
+
+    def test_a_ruling_of_another_actor(self):
+        # Seeded defect: only the room's orchestrator rules; the checker's own RULING neither blocks nor frees it.
+        self.blocked()
+        self.post(901, 13, "editor", "[EDITOR] RULING\nNot mine to give.\n")
+        self.check(("review", "wake", "chief", 5))
+
+    def test_a_new_head_launches_the_checker_again(self):
+        self.blocked()
+        self.post(901, 13, "writer", "[WRITER] ADDRESSED\nhead {head:5}\n")
+        self.check(("lint", "lint", None, 5))
+
+    def with_judges(self, judges):
+        pipeline = [{**e, "judge": judges} if e["stage"] == "beats" else e for e in self.w.p.pipeline]
+        self.w.p = dataclasses.replace(self.w.p, pipeline=pipeline, kinds={**self.w.p.kinds, "rival": "judge"},
+                                       actors={**self.w.p.actors, "rival": "RIVAL"})
+
+    def test_a_blocked_judge_waits_for_the_others(self):
+        self.until("launch-judge")
+        self.with_judges(["critic", "rival"])
+        self.post(900, 19, "critic", "[CRITIC] BLOCKED\nMissing: the panel\n")
+        self.check(("judging", "launch", "rival", 5), "rival has no counting verdict on #5")
+        self.post(901, 20, "rival", "[RIVAL] PREFERS A\npanel 1\nreviewed head {head:5} manifest none\n")
+        self.check(("judging", "wake", "chief", 5), "critic is BLOCKED on #5")
+        # Seeded defect: with one judge only, nothing is left to launch.
+        self.setUp()
+        self.until("launch-judge")
+        self.post(900, 19, "critic", "[CRITIC] BLOCKED\nMissing: the panel\n")
+        self.check(("judging", "wake", "chief", 5), "critic is BLOCKED on #5")
+
+    def outage(self, reason):
+        self.setUp()
+        self.until("launch-checker")
+        self.post(900, 12, "editor", f"[EDITOR] BLOCKED\nMissing: a valid result ({reason})\n")
+
+    def test_an_outage_launches_again(self):
+        reasons = [o + " (exit 1)" for o in steps.OUTAGES[:3]] + list(steps.OUTAGES[3:])
+        for reason in reasons:
+            with self.subTest(reason=reason):
+                self.outage(reason)
+                self.check(("review", "launch", "editor", 5))
+        # Seeded defects: a run that ended without a result is a judgment.
+        for reason in ("timed out", "run failed (exit 1)", "no result object (exit 0)"):
+            with self.subTest(reason=reason):
+                self.outage(reason)
+                self.check(("review", "wake", "chief", 5))
 
 
 class SelectionAfterABlockTest(ChainCase):

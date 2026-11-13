@@ -1,0 +1,10 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": ["wen", "dax"],
+  "set": "net-loft",
+  "camera": "wide establishing shot",
+  "action": "Wen and Dax wait on the quay."
+}

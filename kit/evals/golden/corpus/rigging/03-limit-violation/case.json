@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/assets/ama/rigging/state\\.json:1 limits "
+  ]
+}

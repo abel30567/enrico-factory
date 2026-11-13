@@ -1,0 +1,27 @@
+{
+  "shot": "Q1-1",
+  "stage": "layout",
+  "fps": 24,
+  "frames": {"first": 0, "last": 119},
+  "actors": [
+    {"id": "ama", "kind": "character", "asset": "asset:ama", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "scale": [1, 1, 1], "height_m": 1.62, "start": {"location": [0, 0, 0], "rotation": [0, 0, 0]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 0]}},
+    {"id": "tobi", "kind": "character", "asset": "asset:tobi", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "scale": [1, 1, 1], "height_m": 1.1, "start": {"location": [0, 0, 0], "rotation": [0, 0, 0]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 0]}},
+    {"id": "lighthouse", "kind": "set", "asset": "asset:lighthouse", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "scale": [1, 1, 1], "height_m": 30, "start": {"location": [0, 0, 0], "rotation": [0, 0, 0]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 0]}}
+  ],
+  "camera": {"focal_mm": {"min": 35, "max": 50}, "sensor_mm": [36, 24], "start": {"location": [0, -8, 1.5], "rotation": [0, 0, 90]}, "end": {"location": [0, -6, 1.5], "rotation": [0, 0, 90]}},
+  "framing": [
+    {"frame": 0, "actor": "ama", "box": [0.36, 0.2, 0.48, 0.9]},
+    {"frame": 0, "actor": "tobi", "box": [0.52, 0.4, 0.64, 0.9]},
+    {"frame": 0, "actor": "lighthouse", "box": [0, 0, 1, 1]},
+    {"frame": 119, "actor": "ama", "box": [0.38, 0.2, 0.5, 0.9]},
+    {"frame": 119, "actor": "tobi", "box": [0.52, 0.4, 0.64, 0.9]},
+    {"frame": 119, "actor": "lighthouse", "box": [0, 0, 1, 1]}
+  ],
+  "line_flips": [60],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": {"lumen": true, "tsr": true, "spatial_samples": 1, "temporal_samples": 8, "warmup_frames": 32, "width": 1920, "height": 1080}
+}

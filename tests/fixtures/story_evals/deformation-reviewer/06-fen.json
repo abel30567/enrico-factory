@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "thigh_r lifts only to 20 degrees on x: Fen cannot kick high with her right foot.",
+      "evidence": "production/assets/fen/rigging/state.json"
+    }
+  ]
+}

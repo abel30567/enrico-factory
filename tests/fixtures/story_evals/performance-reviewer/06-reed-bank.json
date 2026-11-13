@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The shot has no lantern actor, so Wen hands Dax nothing.",
+      "evidence": "production/ep01/Q1-2/animation/state.json"
+    }
+  ]
+}

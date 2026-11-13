@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "spine_01 bends forward only 5 degrees on x: Dov cannot bow deeply.",
+      "evidence": "production/assets/dov/rigging/state.json"
+    }
+  ]
+}

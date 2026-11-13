@@ -1,0 +1,13 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 5,
+  "characters": [
+    "ama",
+    "tobi"
+  ],
+  "set": "lighthouse",
+  "camera": "wide, low",
+  "action": "The lamp dies."
+}
