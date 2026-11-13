@@ -59,8 +59,8 @@ wave that first needs the resource (`docs/system-brief.md`, section 17).
 
 Added 2026-11-12 (owner request: trend research and external video ingestion). The evidence is in
 `docs/research/07-external-trends-and-ingestion.md`. The orchestrator adds each row to
-`kit/resources.json` on `main` before the item that builds its tool is launched: `external.youtube` is in (2026-11-13),
-the other three are not yet.
+`kit/resources.json` on `main` before the item that builds its tool is launched: `external.youtube`, `external.instagram`
+and `external.tiktok` are in (2026-11-13); `external.provider` is not yet.
 
 | Id | What | Kind | State | Wave | Note |
 |---|---|---|---|---|---|

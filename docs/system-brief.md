@@ -325,7 +325,7 @@ Only the first line of a comment counts. `<ROLE>` is the role id in upper case.
 | `[<ORCHESTRATOR>] RULING` | orchestrator | what was decided, the charter or rule cited, how to overrule |
 | `[<ORCHESTRATOR>] SELECTED #<pr>` | orchestrator | on a pitched ticket: the chosen pitch and the reason |
 | `[<ORCHESTRATOR>] LOCK` | `factory lock` | the head and manifest hash locked, and the verdicts it relied on |
-| `[<ROLE>] READY` / `ADDRESSED` / `BLOCKED` | maker, operator | head SHA, lint table, one evidence line per criterion; per note the change or a rebuttal; Missing / What was tried / Resume from |
+| `[<ROLE>] READY` / `ADDRESSED` / `BLOCKED` | maker, operator; `BLOCKED` also checker, judge | head SHA, lint table, one evidence line per criterion; per note the change or a rebuttal; Missing / What was tried / Resume from |
 | `[LINT] PASS` / `FAIL` / `ERROR` | `factory lint` | per check: result and reason; blockers `B1..Bn` |
 | `[<ROLE>] APPROVED` / `NOTES` | checker | evidence per criterion; notes `B1..` (Blocker) and `I1..` (Issue) |
 | `[<ROLE>] PREFERS A` / `PREFERS B` / `NO PREFERENCE` | judge | cited panels or frames; the blinding id |
@@ -495,7 +495,8 @@ for a pitch selection it launches the room's orchestrator role itself, once per 
 per ticket; from the third round on, every round of notes needs its own ruling. It wakes an
 orchestrator (a `NEED` line and the label `needs:orchestrator`) only when that one run did not settle
 the judgment, and for a pivot triage, a BLOCKED worker, a job that failed or that the gate stopped, or
-a request its operator left without a job.
+a request its operator left without a job. A BLOCKED checker or judge is such a `NEED` at once and is
+not launched again; a BLOCKED operator is launched again after its ruling.
 
 On a pull request that holds a request, at a stage whose `maker` place names an operator, the tick
 carries the jobs (section 11) in this order, one step per pull request per tick. What is next is read
@@ -688,7 +689,8 @@ a time, because a trend on one platform is not a trend on another.
   is removed.
 - **Reads.** A program makes them, never a role: `factory tick` asks `factory run` for the reads of
   the locked topics, inside a daily budget set in `production.env` (YouTube allows 100 searches a
-  day). A read costs no money and changes nothing, so it is not a gated job. No role holds a key.
+  day); a read of a watch list of several accounts or hashtags is one search. A read costs no money and
+  changes nothing, so it is not a gated job. No role holds a key.
 - **Expiry.** Counts, titles and comment text go to the state directory with a read time, and are
   refreshed or deleted within 30 days. They never enter git.
 - **What git keeps.** The trend card: the link and id of each video, its rank at read time, the read

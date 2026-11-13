@@ -352,6 +352,33 @@
       "checks": [{"kind": "secret", "name": "external.youtube"}]
     },
     {
+      "id": "external.instagram",
+      "title": "Instagram: the Reels of a watch list of professional accounts, by Business Discovery",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["story"],
+      "wave": 6,
+      "setup": "owner",
+      "renew": "a program refreshes the 60-day token on a schedule; the Meta app is on Facebook Login with a linked Page (R10)",
+      "checks": [{"kind": "secret", "name": "external.instagram"}, {"kind": "setting", "name": "INSTAGRAM_USER_ID"}]
+    },
+    {
+      "id": "external.tiktok",
+      "title": "TikTok Discovery: rising hashtags and the ordered top 20 videos per hashtag, no counts",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["story"],
+      "wave": 6,
+      "setup": "owner",
+      "checks": [
+        {"kind": "secret", "name": "external.tiktok"},
+        {"kind": "setting", "name": "TIKTOK_ADVERTISER_ID"},
+        {"kind": "setting", "name": "TIKTOK_COUNTRY"}
+      ]
+    },
+    {
       "id": "local.ocr",
       "title": "OCR, for caption and safe-area checks",
       "class": "local",
