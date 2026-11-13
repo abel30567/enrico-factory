@@ -1,0 +1,16 @@
+{
+ "answer": {
+  "error": {
+   "code": 110,
+   "error_subcode": 2207013,
+   "error_user_title": "Cannot find User",
+   "fbtrace_id": "AbCdEf0123",
+   "message": "Invalid user id",
+   "type": "OAuthException"
+  },
+  "unverified": "code 110 and subcode 2207013 for a personal account are from Meta's developer forum, not from a reference page"
+ },
+ "read_on": "2026-11-13",
+ "reference": "https://developers.facebook.com/docs/graph-api/guides/error-handling",
+ "status": 400
+}
