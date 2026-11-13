@@ -709,5 +709,41 @@ class EntryPointTest(unittest.TestCase):
         self.assertEqual(w.log(), [])
 
 
+class RightsRefusalTest(unittest.TestCase):
+    """ISSUE-274: a job whose input names an entry of research/not-ours.tsv on the base is refused."""
+
+    LIST = "name\tholder\tlink\nWickabel\tthe makers of Skarrowfen\thttps://example.invalid/1\n"
+    TEXT = "Draw Wickabel on the pier.\n"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def job_naming(self, rel, name):
+        """``rel`` holding TEXT and the not-ours list, committed on `trunk`; a job whose input is ``rel``."""
+        self.w.write(rel, self.TEXT)
+        self.w.write("research/not-ours.tsv", self.LIST)
+        self.w.commit("the list and " + rel)
+        return self.w.job(name, inputs=[{"path": rel, "sha256": hashlib.sha256(self.TEXT.encode()).hexdigest()}])
+
+    def test_an_input_names_a_listed_name(self):
+        path = self.job_naming("bible/style/requests/pier.json", "pier.json")
+        code, out, err = self.w.gate(path)
+        self.assertEqual((code, out, err), (2, "", "gate: input bible/style/requests/pier.json names 'Wickabel' "
+                                                   "(research/not-ours.tsv:2)\n"))
+        self.assertEqual(self.w.ledger_rows(), [])
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+        self.assertEqual(self.w.log(), [])
+
+    def test_clean_twin_an_input_under_research(self):
+        path = self.job_naming("research/requests/pier.json", "research.json")
+        code, out, err = self.w.gate(path)
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+        code, out, err = self.w.gate(str(self.w.root / CLEAN_JOB))
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+        self.assertEqual(len(self.w.ledger_rows()), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
