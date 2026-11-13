@@ -1,0 +1,26 @@
+{
+ "answer": {
+  "business_discovery": {
+   "followers_count": 800,
+   "id": "17841400000000003",
+   "media": {
+    "data": [
+     {
+      "comments_count": 20,
+      "id": "18000000000000011",
+      "like_count": 100,
+      "media_product_type": "REELS",
+      "permalink": "https://www.instagram.com/reel/18000000000000011/",
+      "timestamp": "2026-11-12T06:30:00+0000",
+      "view_count": 2000
+     }
+    ]
+   },
+   "username": "wickabel"
+  },
+  "id": "17841400000000001"
+ },
+ "read_on": "2026-11-13",
+ "reference": "https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/business_discovery",
+ "status": 200
+}

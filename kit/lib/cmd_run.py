@@ -6,7 +6,8 @@ runs once: when the ledger on the base already holds its `run` row, that row is 
 installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open pull (with
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
-manifest row per output on the pull's branch, and appends the `run` row with the real cost to the ledger
+manifest row per output on the pull's branch (for a tool with ``STAGE_FILES``: puts every other output in the
+asset store and commits those in the ticket's production directory instead), and appends the `run` row with the real cost to the ledger
 on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down.
 Without `--apply` it makes every check, calls no tool and writes nothing.
 
@@ -33,13 +34,15 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import cmd_gate, down, gitstate, github, ledger, production, resources, tickets  # noqa: E402
+from kit.lib import assets, cmd_gate, down, gitstate, github, ledger, media, production, resources, tickets  # noqa: E402
 from kit.lib.tools import Down, Failed  # noqa: E402
 from kit.lib import release  # noqa: E402
 
 TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 TOOL_NAME = re.compile(r"[a-z][a-z0-9-]*")
 OUTPUT_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*")
+UNIT_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+STORE = "store.assets"
 RESULT = "result.json"
 DONE, FAILED = "DONE", "FAILED"
 CRASHED, BROKE, NO_RESULT, TOOL_FAILED = "tool crashed", "tool broke the interface", "no result", "tool failed"
@@ -99,26 +102,68 @@ def _load_tool(name):
         module = None
     resource = getattr(module, "RESOURCE", None)
     reasons = getattr(module, "REASONS", None)
+    stage_files = getattr(module, "STAGE_FILES", ())
     if (not isinstance(resource, str) or not resource
             or not isinstance(reasons, tuple) or not all(isinstance(r, str) for r in reasons)
+            or not isinstance(stage_files, tuple) or not all(isinstance(f, str) for f in stage_files)
             or not callable(getattr(module, "run", None))):
         raise Refused(f"tool {name} does not follow the tool interface")
     return module
 
 
-def _resource(name, tool, root):
-    """``(resource, settings, register)`` for the tool's resource; ``Refused`` when it is unknown or unusable."""
+def _register(root):
+    """``(register, settings)``; ``Refused`` when the register has problems."""
     register, problems = resources.load(resources.REGISTER)
     if problems:
         raise Refused("; ".join(problems))
-    resource = next((r for r in register["resources"] if r["id"] == tool.RESOURCE), None)
-    if resource is None:
-        raise Refused(f"tool {name} names the unknown resource {tool.RESOURCE}")
-    values = resources.settings(root, register)
+    return register, resources.settings(root, register)
+
+
+def _usable(resource, values, register, root):
     ok, reasons = resources.check(resource, values, register, root)
     if not ok:
         raise Refused(f"resource {resource['id']} is not usable: {'; '.join(reasons)}")
+
+
+def _resource(name, tool, root):
+    """``(resource, settings, register)`` for the tool's resource; ``Refused`` when it is unknown or unusable.
+
+    For a tool with ``STAGE_FILES``, ``store.assets`` must be usable too.
+    """
+    register, values = _register(root)
+    found = {r["id"]: r for r in register["resources"]}
+    resource = found.get(tool.RESOURCE)
+    if resource is None:
+        raise Refused(f"tool {name} names the unknown resource {tool.RESOURCE}")
+    _usable(resource, values, register, root)
+    if getattr(tool, "STAGE_FILES", None):
+        if STORE not in found:
+            raise Refused(f"tool {name} names the unknown resource {STORE}")
+        _usable(found[STORE], values, register, root)
     return resource, values, register
+
+
+def _unit_dir(p, room, stage, unit):
+    """The ticket's production directory relative to the root, from its stage's unit kind; None when refused."""
+    entry = production.stage(p, room, stage)
+    parts = unit.split("/") if isinstance(unit, str) else []
+    if entry is None or not parts or not all(UNIT_PART.fullmatch(part) for part in parts):
+        return None
+    kind = entry.get("unit")
+    if kind == "shot" and len(parts) == 2:
+        return f"production/{parts[0]}/{parts[1]}/{stage}"
+    if kind == "episode" and len(parts) == 1:
+        return f"production/{parts[0]}/{stage}"
+    if kind == "asset" and len(parts) == 1:
+        return f"production/assets/{parts[0]}/{stage}"
+    return None
+
+
+def _ticket_dir(p, ticket):
+    found = _unit_dir(p, ticket["room"], ticket["stage"], ticket["unit"])
+    if found is None:
+        raise Refused(f"unit {ticket['unit']} of stage {ticket['room']}/{ticket['stage']} has no production directory")
+    return found
 
 
 def _counting_pass(request, rows):
@@ -211,22 +256,50 @@ def _add_rows(tree, digest, outputs):
     return True
 
 
-def _manifest(p, gh, branch, digest, outputs):
-    """Commit the manifest rows on ``branch`` from a detached worktree, move the branch, push it."""
+def _on_branch(p, gh, branch, change, message):
+    """Commit the paths ``change(tree)`` writes and returns on ``branch`` from a detached worktree, move the
+    branch when they changed, push it."""
     tmp = Path(tempfile.mkdtemp(prefix="factory-run-"))
     tree = tmp / "tree"
     try:
         gitstate.add_worktree(p.root, tree, "refs/heads/" + branch)
         try:
             old = gitstate.head(tree)
-            if _add_rows(tree, digest, outputs):
-                new = gitstate.commit(tree, [gitstate.MANIFEST], f"manifest: job {digest[:12]}", "factory")
+            new = gitstate.commit(tree, change(tree), message, "factory")
+            if new is not None:
                 gitstate.git(p.root, "update-ref", "refs/heads/" + branch, new, old)
         finally:
             gitstate.remove_worktree(p.root, tree)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     gh.push(p.root, branch)
+
+
+def _manifest(p, gh, branch, digest, outputs):
+    """Commit the manifest rows on ``branch``."""
+    _on_branch(p, gh, branch, lambda tree: [gitstate.MANIFEST] if _add_rows(tree, digest, outputs) else [],
+               f"manifest: job {digest[:12]}")
+
+
+def _stage_files(p, gh, branch, digest, out, directory, names):
+    """Write the outputs ``names`` of ``out`` in ``directory`` on ``branch``, in one commit."""
+    def change(tree):
+        paths = [f"{directory}/{name}" for name in names]
+        for name, rel in zip(names, paths):
+            (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out / name, tree / rel)
+        return paths
+    _on_branch(p, gh, branch, change, f"stage files: job {digest[:12]}")
+
+
+def _store(values, register, out, names):
+    """Put the outputs ``names`` of ``out`` in the asset store, in name order."""
+    key_file = os.path.join(resources.expand(values[register["secrets_dir_setting"]]), STORE)
+    for name in sorted(names):
+        try:
+            assets.put(values, key_file, str(out / name))
+        except (media.Refused, media.Failed) as error:
+            raise Refused(f"the asset store did not take {name}: {error}") from None
 
 
 def _run(p, gh, state, rows, target, apply, number=None):
@@ -240,7 +313,11 @@ def _run(p, gh, state, rows, target, apply, number=None):
         return 0 if row["verdict"] == DONE else 1
     job_dir = production.state_dir(p) / "jobs" / digest
     earlier = os.path.lexists(job_dir)
-    if not earlier:
+    if earlier:
+        tool = _load_tool(name)
+        if getattr(tool, "STAGE_FILES", ()):
+            register, values = _register(p.root)
+    else:
         if not _counting_pass(request, rows):
             raise Refused(f"job {digest} has no counting GATE PASS")
         tool = _load_tool(name)
@@ -248,6 +325,8 @@ def _run(p, gh, state, rows, target, apply, number=None):
         found = down._matching(gh.issues("open"), resource["id"])
         if found:
             raise Refused(f"resource {resource['id']} is down (#{found[0]})")
+    stage_files = getattr(tool, "STAGE_FILES", ())
+    directory = _ticket_dir(p, request["ticket"]) if stage_files else None
     pull = request["on"] or _open_pull(state, request["ticket"]["number"])
     if not apply:
         print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
@@ -278,7 +357,12 @@ def _run(p, gh, state, rows, target, apply, number=None):
                                 f"run job {digest[:12]} on #{request['ticket']['number']}")
             raise Refused(f"resource {resource['id']} is down (#{issue})") from None
         _write_result(job_dir, verdict, usd, compute_min, reason, outputs)
-    if verdict == DONE and outputs:
+    if verdict == DONE and outputs and stage_files:
+        names = [o["name"] for o in outputs]
+        _store(values, register, job_dir / "out", [n for n in names if n not in stage_files])
+        _stage_files(p, gh, pull["head_ref"], digest, job_dir / "out", directory,
+                     [n for n in names if n in stage_files])
+    elif verdict == DONE and outputs:
         _manifest(p, gh, pull["head_ref"], digest, outputs)
     if verdict == DONE:
         release.write(p, gh, request, job_dir, outputs)

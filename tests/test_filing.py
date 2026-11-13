@@ -4,6 +4,9 @@ Each test builds a ``tickets.State`` by hand and a temporary git repository on b
 The pipeline and formats are those of the shipped kit unless a test says otherwise.
 """
 
+import contextlib
+import io
+import json
 import os
 import shutil
 import sys
@@ -16,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from kit.lib import filing, github, gitstate, production, roles, tickets  # noqa: E402
+from kit.lib import cmd_tick  # noqa: E402
 
 KIT = ROOT / "kit"
 SEQUENCE = '{"id": "Q"}\n'
@@ -346,6 +350,252 @@ class Unreadable(Case):
 
     def test_without_it_one_filing(self):
         self.assertEqual(len(self.due(make_state(*BEATS_LOCKED))), 1)
+
+
+WINDOW = {"room": "distribution", "stage": "window", "unit": "post", "after": "", "maker": "telemetry-puller",
+          "lint": ["telemetry"], "checker": "", "judge": "", "blind": False, "pitches": 1,
+          "paths": ["distribution/*/*/requests/window.json", "distribution/*/*/snapshot.json"]}
+PACKET = '{"hook": "A hook.", "spoilers": ["A spoiler."], "cta": ["A prompt?"], "tone": "dry"}\n\n'
+PACKET_PATH = "episodes/ep01/intent-packet.json"
+REEL_LOCKED = ([ticket(11, "reel", "ep01")], [pull(12, 11)])
+WINDOW_LOCKED = ([ticket(21, "window", "ep01/alpha", room="distribution")], [pull(22, 21)])
+INTENT_TITLE = "[INTENT-EP01] story intent packet for ep01"
+NOTES_TITLE = "[NOTES-EP01-ALPHA] platform notes for ep01/alpha"
+INTENT_BODY = ("Story intent packet for episode ep01, locked by PR #12 (ticket #11).\n\n"
+               "```json\n"
+               '{"hook": "A hook.", "spoilers": ["A spoiler."], "cta": ["A prompt?"], "tone": "dry"}\n'
+               "```\n\n"
+               "The story room owns this packet; post and distribution read it and do not edit it.\n"
+               "Filed by factory tick.\n")
+NO_PACKET_BODY = ("Story intent packet for episode ep01, locked by PR #12 (ticket #11).\n\n"
+                  "episodes/ep01/intent-packet.json is not on the base.\n\n"
+                  "The story room owns this packet; post and distribution read it and do not edit it.\n"
+                  "Filed by factory tick.\n")
+NOTES_BODY = ("Platform notes for ep01/alpha, after the window locked by PR #22 (ticket #21).\n\n"
+              "Format limits:\n"
+              "CTA results:\n"
+              "Audience theories:\n\n"
+              "The distribution room writes these notes; the story room answers here and does not edit them.\n"
+              "Filed by factory tick.\n")
+PACKET_KINDS = ("intent-packet", "platform-notes")
+
+
+def story_pipeline():
+    return [entry for entry in roles.load_pipeline(KIT / "pipeline.json") if entry["room"] == "story"]
+
+
+def with_window():
+    """The shipped story entries and the ``window`` entry of ISSUE-169 ruling 2 (ISSUE-171 ruling 10)."""
+    return story_pipeline() + [WINDOW]
+
+
+def other(number, title, state="open"):
+    return {"number": number, "title": title, "body": "", "state": state, "labels": [],
+            "created_at": "2026-11-01T09:00:00Z"}
+
+
+def issue_record(number, stage, unit, room="story"):
+    return {"number": number, "title": f"[K-{number}] {stage} for {unit}", "body": "", "state": "closed",
+            "labels": sorted([tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]),
+            "created_at": "2026-11-01T09:00:00Z"}
+
+
+def pull_record(number, of):
+    return {"number": number, "title": f"Work for #{of}", "body": f"Ticket: #{of}\n", "state": "merged",
+            "labels": [], "head_ref": f"feat/K-{of}", "base_ref": "main", "ticket": of,
+            "created_at": "2026-11-02T09:00:00Z", "merged_at": "2026-11-03T09:00:00Z"}
+
+
+def record(gh, *items):
+    for item in items:
+        kind = "pulls" if "ticket" in item else "issues"
+        path = gh.dir / kind / f"{item['number']}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(item, indent=1, sort_keys=True) + "\n")
+
+
+class PacketCase(Case):
+    def packets(self, state, pipeline=None):
+        return [f for f in self.due(state, pipeline) if f["stage"] in PACKET_KINDS]
+
+    def kinds(self, state, pipeline=None):
+        return [(f["from"], f["pull"], f["room"], f["stage"], f["unit"]) for f in self.packets(state, pipeline)]
+
+
+class IntentPacket(PacketCase):
+    """ISSUE-171 behaviours 1, 2, 5 and 6: a locked story reel files the story intent packet."""
+
+    def test_a_locked_reel_files_the_packet(self):
+        self.commit({PACKET_PATH: PACKET})
+        found = self.due(make_state(*REEL_LOCKED))
+        self.assertEqual(found, [{"from": 11, "pull": 12, "room": "story", "stage": "intent-packet", "unit": "ep01",
+                                  "title": INTENT_TITLE, "body": INTENT_BODY,
+                                  "labels": ["room:post", "room:distribution"]}])
+        self.assertIn(PACKET.rstrip("\n"), found[0]["body"])
+
+    def test_a_reel_not_locked_files_no_packet(self):
+        self.commit({PACKET_PATH: PACKET})
+        cases = {"open with an open pull": make_state([ticket(11, "reel", "ep01", state="open")],
+                                                      [pull(12, 11, state="open")]),
+                 "closed with a closed pull": make_state([ticket(11, "reel", "ep01")], [pull(12, 11, state="closed")])}
+        for name, state in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.due(state), [])
+
+    def test_no_packet_on_the_base(self):
+        self.commit({PACKET_PATH: PACKET})
+        self.git("rm", "-q", PACKET_PATH)
+        self.git("commit", "-q", "-m", "remove")
+        [found] = self.due(make_state(*REEL_LOCKED))
+        self.assertEqual(found["body"], NO_PACKET_BODY)
+
+    def test_a_packet_only_in_the_working_tree_is_not_read(self):
+        self.write({PACKET_PATH: PACKET})
+        [found] = self.due(make_state(*REEL_LOCKED))
+        self.assertEqual(found["body"], NO_PACKET_BODY)
+
+    def test_a_locked_beats_gives_only_its_outline(self):
+        self.assertEqual(self.filed(make_state(*BEATS_LOCKED)), [(1, 2, "story", "outline", "ep01")])
+
+    def test_a_post_reel_files_no_packet(self):
+        pipeline = with_window() + [{**WINDOW, "room": "post", "stage": "reel"}]
+        self.assertEqual(self.due(make_state([ticket(11, "reel", "ep01", room="post")], [pull(12, 11)]), pipeline),
+                         [])
+        self.assertEqual(self.kinds(make_state(*REEL_LOCKED), pipeline), [(11, 12, "story", "intent-packet", "ep01")])
+
+    def test_an_unreadable_ticket_files_no_packet(self):
+        state = make_state(*REEL_LOCKED, errors=["ticket #9: title is not [KEY] summary"])
+        self.assertEqual(self.due(state), [])
+        self.assertEqual(len(self.due(make_state(*REEL_LOCKED))), 1)
+
+    def test_tickets_first_then_packets(self):
+        found, pulls = BEATS_LOCKED
+        state = make_state(REEL_LOCKED[0] + found, REEL_LOCKED[1] + pulls)
+        self.assertEqual(self.filed(state), [(1, 2, "story", "outline", "ep01"),
+                                             (11, 12, "story", "intent-packet", "ep01")])
+
+
+class PlatformNotes(PacketCase):
+    """ISSUE-171 behaviour 3: a locked distribution window files the platform notes."""
+
+    def test_a_locked_window_files_the_notes(self):
+        self.assertEqual(self.due(make_state(*WINDOW_LOCKED), with_window()),
+                         [{"from": 21, "pull": 22, "room": "distribution", "stage": "platform-notes",
+                           "unit": "ep01/alpha", "title": NOTES_TITLE, "body": NOTES_BODY, "labels": ["room:story"]}])
+
+    def test_a_window_not_locked_files_nothing(self):
+        found, _ = WINDOW_LOCKED
+        window = ticket(21, "window", "ep01/alpha", state="open", room="distribution")
+        cases = {"no pull": make_state(found), "a closed pull": make_state(found, [pull(22, 21, state="closed")]),
+                 "an open pull": make_state([window], [pull(22, 21, state="open")])}
+        for name, state in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.due(state, with_window()), [])
+
+    def recorded(self):
+        gh = github.Recorded(self.tmp / "github")
+        record(gh, issue_record(21, "window", "ep01/alpha", room="distribution"), pull_record(22, 21))
+        return gh
+
+    def test_without_the_window_entry_the_ticket_does_not_load(self):
+        p = self.p(story_pipeline())
+        state = tickets.load(p, self.recorded(), self.root)
+        self.assertEqual(state.errors, ["ticket #21: stage distribution/window is not in the pipeline"])
+        self.assertEqual(filing.due(p, state, self.root), [])
+
+    def test_with_the_window_entry_the_ticket_loads(self):
+        p = self.p(with_window())
+        state = tickets.load(p, self.recorded(), self.root)
+        self.assertEqual(state.errors, [])
+        self.assertEqual([f["title"] for f in filing.due(p, state, self.root)], [NOTES_TITLE])
+
+
+class PacketsOnce(PacketCase):
+    """ISSUE-171 behaviour 4: a packet issue whose title is in ``State.others`` is not filed again."""
+
+    def test_an_intent_packet_already_filed(self):
+        for state in ("open", "closed"):
+            with self.subTest(state=state):
+                found = make_state(*REEL_LOCKED)
+                found.others = [other(40, INTENT_TITLE, state)]
+                self.assertEqual(self.due(found), [])
+                found.others = [other(40, "[INTENT-EP02] story intent packet for ep02", state)]
+                self.assertEqual(self.kinds(found), [(11, 12, "story", "intent-packet", "ep01")])
+
+    def test_a_packet_already_filed_reads_no_file(self):
+        state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep02")], [pull(12, 11), pull(32, 31)])
+        state.others = [other(40, INTENT_TITLE, "closed"),
+                        other(41, "[INTENT-EP02] story intent packet for ep02", "open")]
+        with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
+            self.assertEqual(self.due(state), [])
+        show.assert_not_called()
+        state.others = state.others[:1]
+        with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
+            self.assertEqual(self.kinds(state), [(31, 32, "story", "intent-packet", "ep02")])
+        self.assertEqual(show.call_count, 1)
+
+    def test_two_locked_reels_of_one_episode_file_one_packet(self):
+        state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep01")], [pull(12, 11), pull(32, 31)])
+        self.assertEqual(self.kinds(state), [(11, 12, "story", "intent-packet", "ep01")])
+        state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep02")], [pull(12, 11), pull(32, 31)])
+        self.assertEqual(self.kinds(state), [(11, 12, "story", "intent-packet", "ep01"),
+                                             (31, 32, "story", "intent-packet", "ep02")])
+
+    def test_platform_notes_already_filed(self):
+        for state in ("open", "closed"):
+            with self.subTest(state=state):
+                found = make_state(*WINDOW_LOCKED)
+                found.others = [other(40, NOTES_TITLE, state)]
+                self.assertEqual(self.due(found, with_window()), [])
+                found.others = [other(40, "[NOTES-EP02-ALPHA] platform notes for ep02/alpha", state)]
+                self.assertEqual(self.kinds(found, with_window()),
+                                 [(21, 22, "distribution", "platform-notes", "ep01/alpha")])
+
+    def test_two_locked_windows_of_one_unit_file_one_notes(self):
+        windows = [ticket(21, "window", "ep01/alpha", room="distribution"),
+                   ticket(41, "window", "ep01/alpha", room="distribution")]
+        state = make_state(windows, [pull(22, 21), pull(42, 41)])
+        self.assertEqual(self.kinds(state, with_window()), [(21, 22, "distribution", "platform-notes", "ep01/alpha")])
+
+
+class PacketsThroughTheTick(PacketCase):
+    """ISSUE-171 behaviour 7: ``factory tick`` prints and files both packets, once."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit({PACKET_PATH: PACKET})
+        self.gh = github.Recorded(self.tmp / "github")
+        record(self.gh, issue_record(11, "reel", "ep01"), pull_record(12, 11),
+               issue_record(21, "window", "ep01/alpha", room="distribution"), pull_record(22, 21))
+
+    def tick(self, rooms, apply=True):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cmd_tick.Tick(self.p(with_window()), self.gh, apply, production.now()).file(rooms)
+        return out.getvalue()
+
+    def created(self):
+        return [i for i in self.gh.issues("all") if i["number"] not in (11, 21)]
+
+    def test_files_both_once(self):
+        self.assertEqual(self.tick(["story", "distribution"]),
+                         "STEP #11 file intent-packet ep01\nSTEP #21 file platform-notes ep01/alpha\n")
+        made = self.created()
+        self.assertEqual([(i["title"], i["labels"]) for i in made],
+                         [(INTENT_TITLE, ["room:distribution", "room:post"]), (NOTES_TITLE, ["room:story"])])
+        self.assertEqual([i["body"] for i in made], [INTENT_BODY, NOTES_BODY])
+        self.assertEqual([tickets.parse(i) for i in made], [None, None])
+        self.assertEqual(self.tick(["story", "distribution"]), "")
+        self.assertEqual(len(self.created()), 2)
+
+    def test_without_apply_prints_and_files_nothing(self):
+        self.assertEqual(self.tick(["story", "distribution"], apply=False),
+                         "STEP #11 file intent-packet ep01\nSTEP #21 file platform-notes ep01/alpha\n")
+        self.assertEqual(self.created(), [])
+
+    def test_another_room_files_neither(self):
+        self.assertEqual(self.tick(["post"]), "")
+        self.assertEqual(self.created(), [])
 
 
 if __name__ == "__main__":

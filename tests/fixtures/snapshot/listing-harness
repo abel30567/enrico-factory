@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""A worker that lists what it sees, for tests: it appends to `listing.jsonl` beside itself one line
+`{"files": [...], "sha256": {...}}`, the sorted file paths of its working directory (not `.git`) and
+the sha256 of each under `.snapshot/`, then runs the `fake-harness` beside it with the same arguments,
+standard streams and descriptors and exits with its status. `--version` is passed through and lists
+nothing.
+"""
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main():
+    here = Path(sys.argv[0]).resolve().parent
+    if "--version" not in sys.argv[1:]:
+        cwd = Path.cwd()
+        files = []
+        for top, dirs, names in os.walk(cwd):
+            dirs[:] = [d for d in dirs if not (Path(top) == cwd and d == ".git")]
+            files += [(Path(top) / name).relative_to(cwd).as_posix() for name in names
+                      if not (Path(top) == cwd and name == ".git")]
+        files.sort()
+        sums = {path: hashlib.sha256((cwd / path).read_bytes()).hexdigest()
+                for path in files if path.startswith(".snapshot/")}
+        with open(here / "listing.jsonl", "a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"files": files, "sha256": sums}, sort_keys=True) + "\n")
+    return subprocess.run([str(here / "fake-harness"), *sys.argv[1:]], close_fds=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
