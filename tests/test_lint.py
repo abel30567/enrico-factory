@@ -1,7 +1,6 @@
 """The lint framework: discovery, PASS/FAIL/ERROR, output, exit codes, the [LINT] marker."""
 
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -15,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import lint  # noqa: E402
+from kit.lib import lint, lints  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "lint"
 CMD = ROOT / "kit" / "lib" / "cmd_lint.py"
@@ -28,21 +27,34 @@ def cli(*args):
 
 
 class TempCheck:
-    """A check file dropped into kit/lib/lints/ for one test and removed afterwards."""
+    """A check file in a temporary directory, added to the package kit.lib.lints for one test.
+
+    The file is never under kit/, so other test files that run at the same time never see it.
+    """
 
     def __init__(self, body):
         self.id = f"zz_temp_check_{os.getpid()}"
-        self.path = lint.LINTS_DIR / f"{self.id}.py"
         self.body = body
 
     def __enter__(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.path = self.dir / f"{self.id}.py"
         self.path.write_text(self.body, encoding="utf-8")
+        lints.__path__.append(str(self.dir))
         return self
 
     def __exit__(self, *exc):
-        self.path.unlink(missing_ok=True)
-        Path(importlib.util.cache_from_source(str(self.path))).unlink(missing_ok=True)
+        lints.__path__.remove(str(self.dir))
         sys.modules.pop(f"kit.lib.lints.{self.id}", None)
+        shutil.rmtree(self.dir)
+
+    def cli(self, *args):
+        """cli() in a process whose package kit.lib.lints holds this directory too."""
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); from kit.lib import cmd_lint, lints; "
+                "lints.__path__.append(sys.argv[2]); sys.exit(cmd_lint.main(sys.argv[3:]))")
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+        return subprocess.run([sys.executable, "-c", code, str(ROOT), str(self.dir), *args],
+                              capture_output=True, env=env, cwd=ROOT)
 
 
 class LintCase(unittest.TestCase):
@@ -105,9 +117,17 @@ class CleanTree(unittest.TestCase):
         with TempCheck("def check(root):\n    return []\n") as tc:
             self.assertIn(tc.id, lint.discover())
             self.assertEqual(lint.run(FIX / "clean")[tc.id].status, lint.PASS)
-            self.assertIn(f"{tc.id} PASS\n", cli("--root", str(FIX / "clean")).stdout.decode())
+            self.assertIn(f"{tc.id} PASS\n", tc.cli("--root", str(FIX / "clean")).stdout.decode())
         self.assertNotIn(tc.id, lint.discover())
         self.assertNotIn(tc.id, lint.run(FIX / "clean"))
+
+    def test_new_check_file_stays_outside_kit(self):
+        with TempCheck("def check(root):\n    return []\n") as tc:
+            self.assertNotIn(lint.LINTS_DIR, tc.path.parents)
+            self.assertFalse((lint.LINTS_DIR / tc.path.name).exists())
+            self.assertIn(tc.id, lint.discover())
+        self.assertFalse(tc.dir.exists())
+        self.assertNotIn(tc.dir, [Path(d) for d in lints.__path__])
 
     def test_run_clean(self):
         results = lint.run(FIX / "clean", only=CHECKS)
@@ -122,18 +142,18 @@ class Error(unittest.TestCase):
             self.assertEqual(results[tc.id].reason, "RuntimeError: boom")
             self.assertEqual(lint.exit_code(results), 2)
             self.assertEqual(lint.marker(results).splitlines()[0], "[LINT] ERROR")
-            p = cli("--root", str(FIX / "clean"))
+            p = tc.cli("--root", str(FIX / "clean"))
             self.assertEqual(p.returncode, 2)
             self.assertIn(f"{tc.id} ERROR RuntimeError: boom", p.stdout.decode())
         self.assertFalse(tc.path.exists())
         self.assertNotIn(tc.id, lint.discover())
 
     def test_error_wins_over_fail(self):
-        with TempCheck(RAISES):
+        with TempCheck(RAISES) as tc:
             results = lint.run(FIX / "r1_tag_missing")
             self.assertEqual(results["provenance"].status, lint.FAIL)
             self.assertEqual(lint.marker(results).splitlines()[0], "[LINT] ERROR")
-            self.assertEqual(cli("--root", str(FIX / "r1_tag_missing")).returncode, 2)
+            self.assertEqual(tc.cli("--root", str(FIX / "r1_tag_missing")).returncode, 2)
 
     def test_check_without_check_function_is_error(self):
         with TempCheck("X = 1\n") as tc:

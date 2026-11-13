@@ -34,9 +34,13 @@ class LintError(Exception):
 
 
 def discover() -> dict[str, object]:
-    """Every check module in kit/lib/lints/, keyed by its file name."""
+    """Every check module in kit/lib/lints/, keyed by its file name.
+
+    The directories are those of the package's ``__path__``: kit/lib/lints/ unless a test adds one.
+    """
     importlib.invalidate_caches()
-    names = sorted(p.stem for p in LINTS_DIR.glob("*.py") if not p.stem.startswith("_"))
+    package = importlib.import_module(f"{__package__}.lints")
+    names = sorted({p.stem for d in package.__path__ for p in Path(d).glob("*.py") if not p.stem.startswith("_")})
     return {name: importlib.import_module(f"{__package__}.lints.{name}") for name in names}
 
 
