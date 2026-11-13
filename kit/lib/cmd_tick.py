@@ -10,17 +10,17 @@ one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked 
 a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
 step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
 
-Before the filings, the producer's monitors (``kit.lib.monitors``, system brief section 11) read every ticket
-whatever ``--room`` says: one ``NEED - monitor <name>: ...`` line per trip, and with ``--apply`` one issue per
-trip labelled ``needs:orchestrator`` unless an open issue has its title. Each step is the one
+Before the filings, the tick refreshes each grant that is due (``kit.lib.grants``): one line
+``STEP - refresh <id>``, and with ``--apply`` the refresh, which stores the rotated token in the key file. A
+refresh that fails is ``FAIL - refresh <id>: <reason>``.
+
+Then, still before the filings, the producer's monitors (``kit.lib.monitors``, system brief section 11)
+read every ticket whatever ``--room`` says: one ``NEED - monitor <name>: ...`` line per trip, and with
+``--apply`` one issue per trip labelled ``needs:orchestrator`` unless an open issue has its title. Each step is the one
 ``monitors.instead`` gives: a budget trip stops the run (``WAIT #<n> budget ...``), a canon contradiction and a
 re-break are ``NEED`` lines, and after twice ``monitors.NO_WIN_ROUNDS`` lost blind rounds the step is
 ``STEP #<n> close #<n>``, which with ``--apply`` closes the ticket. A monitor that cannot be read prints
 ``FAIL - monitor <name>: <message>`` and the tick goes on.
-
-Then, still before the filings, it refreshes each grant that is due (``kit.lib.grants``): one line
-``STEP - refresh <id>``, and with ``--apply`` the refresh, which stores the rotated token in the key file. A
-refresh that fails is ``FAIL - refresh <id>: <reason>``.
 
 With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
 while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls that no marker answers
@@ -433,8 +433,8 @@ def _tick(p, gh, rooms, apply) -> int:
     tick = Tick(p, gh, apply, now, cap)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
-    tick.monitor()
     tick.refresh()
+    tick.monitor()
     tick.file(rooms)
     try:
         for room in rooms:

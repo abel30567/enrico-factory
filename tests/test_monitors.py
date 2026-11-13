@@ -266,5 +266,15 @@ class DryRun(Monitors):
         self.check(self.blind_world(["PREFERS A"] * 6), [SHIP.format(k=6), "STEP #3 close #3"])
 
 
+class Order(Monitors):
+    def test_the_grant_refresh_comes_before_the_monitors(self):
+        w = self.budget_world(CAP_EPISODE_USD=20)
+        (w.tmp / "secrets" / "platform.tiktok").write_text("not a grant\n")
+        scope = "episode ep03"
+        self.assertEqual(lines(self.ticked(w)), ["STEP - refresh platform.tiktok",
+                                                 LINE.format(cap="CAP_EPISODE_USD", scope=scope),
+                                                 WAIT.format(cap="CAP_EPISODE_USD", scope=scope)])
+
+
 if __name__ == "__main__":
     unittest.main()
