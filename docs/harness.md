@@ -3,8 +3,10 @@
 Companion to `docs/system-brief.md` (section 14). Built: the launch of section 3, logins and the account
 pool of section 4, the result object of section 5 and the sandbox of section 7, in `kit/lib/harness.py`,
 `launch.py`, `finish.py` and `sandbox.py`, and `factory run` of section 8 with its tool interface, in
-`kit/lib/cmd_run.py` and `kit/lib/tools/`. Not built: the knowledge gateway of section 6, any tool for
-`factory run` to call (none is installed yet), and forks of section 9.
+`kit/lib/cmd_run.py` and `kit/lib/tools/`, and the knowledge gateway of section 6 for the capabilities
+`skills`, `memory-read` and `memory-write`, in `kit/lib/gateway.py`. Not built: the capabilities `search`
+and `skills-write` (#282), any tool for `factory run` to call (none is installed yet), and forks of
+section 9.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 
@@ -56,7 +58,8 @@ Any harness that provides these eight things can run a role. They are the adapte
    For a blind judge, `factory blind` has already replaced old and new with `A` and `B`.
 4. Render the prompt from the role body and write it, with its sha256, outside the worktree.
 5. Post `[<ORCHESTRATOR>] LAUNCH <role> <id>`: the prompt, its hash, model, harness version, base commit.
-6. Start the knowledge gateway for this run with the role's `knowledge` capabilities (section 6).
+6. Start the knowledge gateway for this run with the role's `knowledge` capabilities (section 6), when
+   `GATEWAY` is `on` and the capabilities give the role a tool. It stops when the run ends.
 7. Start the harness inside the sandbox (section 7), detached:
 
 ```
@@ -199,11 +202,26 @@ Rules:
 - **Enforcement.** A full Fermi login exposes every tool, so no worker holds one. The launcher starts
   a **knowledge gateway** for each run: a small local MCP server that holds the Fermi login outside
   the sandbox, exposes only the role's capabilities, adds the production tag to every write and
-  restricts every read to that production's tag plus the shared `studio` tag. It is built in wave 2.
+  restricts every read to that production's tag plus the shared `studio` tag. It is built
+  (`kit/lib/gateway.py`): a server on `127.0.0.1` in a thread of the launch supervisor, reached with a
+  token made for the run and named in the run's `mcp.json` as the one server `knowledge`. Its tools
+  are `skill_search` and `skill_load` (`skills`), `memory_recall` (`memory-read`) and `memory_write`
+  (`memory-write`). A role that names only `search` or `skills-write` gets no server yet (#282).
+- **Tags.** The production tag is the setting `REPO` in lower case; the shared tag is `studio`. A
+  memory carries its tag in a first line the gateway writes, `[factory:<tag>] <role> #<ticket>`. A
+  skill carries it as the keyword `factory:<tag>`. A result in another tag or in none is dropped and
+  not mentioned, so the owner's own memories and skills never reach a role. A caller cannot pass a tag.
+- **Settings.** `GATEWAY=on` (what `factory init` writes), `FERMI_URL` (the `https` address of Fermi's
+  MCP endpoint) and the key file `knowledge.fermi` in `SECRETS_DIR`, which holds the key sent to Fermi
+  as a bearer token. With `GATEWAY=on` and one of them missing, a launch of a role with a knowledge
+  tool is refused: `the knowledge gateway is not usable: <reasons>`. With `GATEWAY=off` no server
+  starts and `mcp.json` names none.
   The stronger form is a scoped token in Fermi itself with a data namespace per production. That
   changes the live Fermi server, so it is the owner's call (`docs/resources.md`, open decisions).
 - **Fermi down is not a blocker.** Role prompts say so: with the gateway unreachable, a role works
-  from the repository alone and says so in its result.
+  from the repository alone and says so in its result. Any failure of Fermi reaches the role as one
+  answer, `knowledge: the knowledge server is unreachable; work from the repository alone and say so
+  in your result`, and the run goes on.
 
 ## 7. Sandbox
 
