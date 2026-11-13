@@ -22,7 +22,7 @@ from kit.lib.lints import canon, provenance  # noqa: E402
 ROLE_ROOMS = {"chief": "story", "writer": "story", "editor": "story", "keeper": "studio",
               "uploader": "distribution", "watcher": "distribution"}
 LAYOUT = [".gitignore", "bible/amendments/.gitkeep", "bible/canon/.gitkeep", "bible/canon/ledger.tsv",
-          "bible/charter.md", "bible/style/.gitkeep", "calibration/.gitkeep", "episodes/.gitkeep",
+          "bible/charter.md", "bible/style/.gitkeep", "brand/.gitkeep", "calibration/.gitkeep", "episodes/.gitkeep",
           "lab/.gitkeep", "ledger/.gitkeep", "media/manifest.tsv", "playbook/.gitkeep", "production.env",
           "production.local.env.example", "registry/.gitkeep", "research/.gitkeep", "rulebook/.gitkeep",
           "rules/production-rules.md", "sources/.gitkeep"]
@@ -277,6 +277,15 @@ class RoomsTest(InitTest):
                 self.assertEqual(text, "[\n " + json.dumps(entries[0]) + "\n]\n")
                 self.assertIn(f"ROOMS={room}\n", (target / "production.env").read_text())
                 self.assertEqual((target / "distribution/.gitkeep").exists(), room == "distribution")
+
+    def test_every_production_gets_an_empty_brand_directory(self):
+        kit = self.source_kit()
+        for rooms in ("story", ",".join(cmd_init.ROOMS)):
+            with self.subTest(rooms=rooms):
+                target, result = self.production(kit, "--rooms", rooms)
+                self.assertIn("created brand/.gitkeep\n", result.stdout)
+                self.assertEqual((target / "brand/.gitkeep").read_bytes(), b"")
+                self.assertFalse((target / "brand/brand.json").exists())
 
     def test_default_room_is_story(self):
         target, _ = self.production(self.source_kit())

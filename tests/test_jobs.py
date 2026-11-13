@@ -303,6 +303,25 @@ class OfTest(unittest.TestCase):
         [found] = self.w.of()["jobs"]
         self.assertEqual((found["hash"], found["gate"]), (digest(changed), None))
 
+    def test_a_failed_job_rewritten_with_an_attempt(self):
+        job = job_for()
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job)})
+        self.w.verdicts()
+        self.assertEqual(self.w.gate()[0], 0)
+        self.w.ran(job, "FAILED")
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["gate"], found["run"]), ("PASS", "FAILED"))
+        retry = job_for(attempt=2)
+        self.w.on_branch({JOB: json.dumps(retry)})
+        found = self.w.of()
+        self.assertEqual(([(j["hash"], j["gate"], j["run"]) for j in found["jobs"]], found["uncovered"]),
+                         ([(digest(retry), None, None)], []))
+        self.assertEqual(self.w.gate(), (1, f"gate job {digest(retry)}: STOP cap - reason verdicts\n", ""))
+        self.w.verdicts()
+        self.assertEqual(self.w.gate()[0], 0)
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["hash"], found["gate"], found["run"]), (digest(retry), "PASS", None))
+
 
 if __name__ == "__main__":
     unittest.main()

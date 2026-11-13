@@ -149,6 +149,13 @@ class World:
         job.update(changes)
         return str(self.write("jobs/" + name, json.dumps(job, indent=1)))
 
+    def attempt(self, path, attempt):
+        """The job file at ``path`` rewritten with one more key, ``attempt``; its path."""
+        job = json.loads(Path(path).read_text())
+        job["attempt"] = attempt
+        Path(path).write_text(json.dumps(job, indent=1))
+        return path
+
     def script(self, name, **script):
         """A fake's script committed on `trunk` as ``scripts/<name>.json``, and a job file that names it."""
         text = json.dumps(script, indent=1) + "\n"
@@ -766,6 +773,92 @@ class RunOnPullTest(unittest.TestCase):
         self.assertEqual(self.command(cmd_run.main, self.JOB, "--pull", str(PULL)),
                          (2, "", f"run: input {self.SCRIPT} does not match its hash on pull #{PULL}\n"))
         self.assertEqual(self.w.fake_calls(), [])
+
+class AttemptShapeTest(unittest.TestCase):
+    def setUp(self):
+        self.w = World(self)
+
+    def assert_refused(self, job, message):
+        before = self.w.snapshot()
+        self.assertEqual(self.w.gate(job), (2, "", f"gate: {message}\n"))
+        self.assertEqual(self.w.run(job), (2, "", f"run: {message}\n"))
+        self.assertEqual(self.w.fake_calls(), [])
+        self.assertEqual(self.w.snapshot(), before)
+
+    def test_an_attempt_that_is_not_a_whole_number_of_at_least_2(self):
+        for value in (1, 0, -1, True, 2.0, "2", None):
+            with self.subTest(value=value):
+                path = self.w.job("bad-attempt.json", attempt=value)
+                self.assert_refused(path, f"job file {path} has an attempt that is not a whole number of at least 2")
+
+    def test_an_attempt_and_a_sixth_key(self):
+        path = self.w.job("extra-attempt.json", attempt=2, extra="x")
+        self.assert_refused(path, f"job file {path} is not {{ticket, tool, inputs, expected, caller}}")
+
+    def test_clean_twin_without_an_attempt_keeps_its_hash(self):
+        self.assertEqual(digest_of(self.w.root / CLEAN_JOB),
+                         "cf8408ba831dcee10426143e731b0733c0bd062d82cd7988f9b3ef92c9ab5f6c")
+
+    def test_clean_twin_with_attempt_2_passes(self):
+        path = self.w.job("two.json", attempt=2)
+        digest = digest_of(path)
+        self.assertNotEqual(digest, digest_of(self.w.root / CLEAN_JOB))
+        self.assertEqual(self.w.gate(path), (0, f"gate job {digest}: PASS cap - reason within caps\n", ""))
+
+
+class RetryTest(unittest.TestCase):
+    def setUp(self):
+        self.w = World(self)
+
+    def failed_once(self):
+        """The failing job passed by the real gate and run once; its path and hash."""
+        job = self.w.script("half", outputs={}, fail="rejected", usd=0.4, compute_min=5)
+        digest = self.w.passed(job)
+        self.assertEqual(self.w.run(job), (1, line(digest, "FAILED", "0.4", "5") + "\n",
+                                           "run: tool fake failed: rejected\n"))
+        return job, digest
+
+    def test_a_failed_job_asked_for_again(self):
+        w = self.w
+        job, h1 = self.failed_once()
+        first = Path(job).read_text()
+        w.attempt(job, 2)
+        self.assertEqual(json.loads(Path(job).read_text()), {**json.loads(first), "attempt": 2})
+        h2 = digest_of(job)
+        self.assertNotEqual(h2, h1)
+        # No run before the new hash has its own PASS.
+        self.assertEqual(w.run(job), (2, "", f"run: job {h2} has no counting GATE PASS\n"))
+        self.assertEqual(w.fake_calls(), [h1])
+        self.assertEqual(w.gate(job), (0, f"gate job {h2}: PASS cap - reason within caps\n", ""))
+        passes = [c for c in json.loads((w.dir / "comments" / f"{TICKET}.json").read_text())
+                  if c["role"] == "program:gate" and c["body"].startswith("[PRODUCER] GATE PASS\n")]
+        self.assertEqual([c["body"].splitlines()[1] for c in passes], [f"covers: job {h1}", f"covers: job {h2}"])
+        failed = line(h2, "FAILED", "0.4", "5")
+        self.assertEqual(w.run(job), (1, failed + "\n", "run: tool fake failed: rejected\n"))
+        self.assertEqual(w.fake_calls(), [h1, h2])
+        self.assertEqual([(r["kind"], r["hash"], r["verdict"]) for r in w.rows()],
+                         [("job", h1, "PASS"), ("run", h1, "FAILED"), ("job", h2, "PASS"), ("run", h2, "FAILED")])
+        self.assertEqual(ledger.spent(w.rows()), {"usd": Decimal("0.8"), "compute_min": Decimal("10")})
+        self.assertEqual(w.run(job), (1, failed + " (already recorded)\n", ""))
+        self.assertEqual(w.fake_calls(), [h1, h2])
+        Path(job).write_text(first)
+        self.assertEqual(w.run(job), (1, line(h1, "FAILED", "0.4", "5") + " (already recorded)\n", ""))
+        self.assertEqual(w.fake_calls(), [h1, h2])
+
+    def test_the_caps_count_the_failed_attempt(self):
+        self.w.set_env("CAP_EPISODE_USD", "2.6")
+        job, _ = self.failed_once()
+        h2 = digest_of(self.w.attempt(job, 2))
+        self.assertEqual(self.w.gate(job), (1, f"gate job {h2}: STOP cap CAP_EPISODE_USD reason over cap\n", ""))
+        self.assertEqual(self.w.run(job), (2, "", f"run: job {h2} has no counting GATE PASS\n"))
+        self.assertEqual(len(self.w.fake_calls()), 1)
+
+    def test_clean_twin_within_the_caps(self):
+        self.w.set_env("CAP_EPISODE_USD", "2.9")
+        job, _ = self.failed_once()
+        h2 = digest_of(self.w.attempt(job, 2))
+        self.assertEqual(self.w.gate(job), (0, f"gate job {h2}: PASS cap - reason within caps\n", ""))
+
 
 if __name__ == "__main__":
     unittest.main()

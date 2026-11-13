@@ -1,6 +1,9 @@
 # The gates on a neutral machine. The merge gate (`orch merge --apply`) requires every check on a pull
 # request to pass, so this run is the gate evidence that does not depend on the worker that wrote the code.
-# macOS, because the baseline and the sandbox tests are macOS; Python as on the orchestrator's machine.
+# `gates` runs on Linux for every pull request and every push to main: about 80 s there against about 13 min
+# on a macOS runner, and 20 runs side by side against 5. `gates-macos` runs on pushes to main only, because
+# the sandbox tests run only on macOS; before a merge those are covered by the merge train, which runs the
+# gates on the orchestrator's Mac. Python as on the orchestrator's machine.
 name: gates
 on:
   pull_request:
@@ -14,6 +17,20 @@ permissions:
   contents: read
 jobs:
   gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      # TMPDIR is set, as it is on macOS, because one test lists the environment a harness call may keep.
+      # Descriptor 3 is taken, because one test moves a token to descriptor 3 and fails where 3 is free.
+      - run: git --version && python3 --version && bash scripts/gates.sh 3</dev/null
+        env:
+          TMPDIR: ${{ runner.temp }}
+  gates-macos:
+    if: github.event_name != 'pull_request'
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
@@ -21,8 +38,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      # Apple's git, as on the orchestrator's machine: two tests compare the text of a commit date, which
-      # newer git prints as `Z` and Apple's git as `+00:00`.
+      # Apple's git, as on the orchestrator's machine.
       - run: |
           mkdir -p "$RUNNER_TEMP/bin" && ln -s /usr/bin/git "$RUNNER_TEMP/bin/git" && echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - run: git --version && python3 --version && bash scripts/gates.sh

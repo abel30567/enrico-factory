@@ -107,8 +107,8 @@ the orchestrator's macOS machine. `/tmp/orch-state/baseline.txt` (written by SET
   run at a time, then `diff /tmp/orch-state/baseline.txt /tmp/orch-state/gates-now.txt`. The full output is in
   `/tmp/orch-state/gates.log`. A failing id that is not in the baseline is a finding. Never edit a test or the
   code to make a baseline failure pass, and never report a baseline failure as a finding.
-- The check named `gates` on the pull request (GitHub Actions, macOS) is the gate run that counts for the merge.
-  Once the pull request exists, read it with `gh pr checks <PR>` (wait up to 20 minutes for it to finish) and
+- The check named `gates` on the pull request (GitHub Actions, Linux, about 2 minutes) is the gate run that counts for the merge.
+  Once the pull request exists, read it with `gh pr checks <PR>` (wait up to 10 minutes for it to finish) and
   report its state in your marker comment. A failing `gates` check is a finding even if the box run is clean.
 
 {WIDE if role in ("builder", "fixer") else NARROW}

@@ -1,0 +1,8 @@
+{"platform": "youtube",
+ "kinds": {
+  "shorts": {
+   "mark_zone": {"value": {"9:16": {"top": 0.02, "bottom": 0.2, "left": 0.02, "right": 0.02}}, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"}
+  }
+ },
+ "disclosure": {"field": "status.containsSyntheticMedia", "value": true, "source": "https://developers.google.com/youtube/v3/docs/videos", "read_at": "2026-11-11"},
+ "policy": []}
