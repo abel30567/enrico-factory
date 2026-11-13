@@ -10,6 +10,7 @@ pull request; the ``LOCK`` marker is only the record of that and is never read h
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -19,8 +20,10 @@ FREEZE = "factory:freeze"
 TRACKED = "tracked"
 HOLD = "hold"
 LABEL_KEYS = ("room", "stage", "unit")
+SHOTS = "production/{}/shots.json"
 
 _TITLE = re.compile(r"\[([^\[\]\s]+)\]\s+(\S.*)")
+_SHOT_UNIT = re.compile(r"([^/]+)/([^/]+)-[0-9]+")
 
 
 class TicketError(Exception):
@@ -167,6 +170,28 @@ def sequences(p, root, episode: str) -> list:
     return sorted(found)
 
 
+def shot_sequence(unit: str) -> str | None:
+    """The sequence ``<ep>/<Q>`` of the shot unit ``<ep>/<shot>``, the shot id less its last ``-<n>``; None when
+    the unit is not ``<episode>/<sequence>-<n>``."""
+    m = _SHOT_UNIT.fullmatch(unit)
+    return f"{m.group(1)}/{m.group(2)}" if m else None
+
+
+def shots(p, root, unit: str) -> list:
+    """The shot units ``<ep>/<shot>`` of ``production/<ep>/shots.json`` on the base, in file order; for a
+    sequence unit only the sequence's own. Empty when the file is missing, unreadable or not a list."""
+    ep = episode(unit)
+    text = gitstate.show(root, production.base(p), SHOTS.format(ep))
+    try:
+        rows = json.loads(text) if text is not None else None
+    except ValueError:
+        return []
+    if not isinstance(rows, list):
+        return []
+    found = [f"{ep}/{row['shot']}" for row in rows if isinstance(row, dict) and isinstance(row.get("shot"), str)]
+    return found if unit == ep else [shot for shot in found if shot_sequence(shot) == unit]
+
+
 def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     """Brief section 9 rule 4: the upstream stage of the same unit is locked, or the format skips it.
 
@@ -191,6 +216,15 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
         for q in found:
             if not is_locked(state, room, after, f"{unit}/{q}"):
                 return False, note + f"upstream stage {after} is not locked for {unit}/{q}"
+        return True, note + f"upstream stage {after} is locked for {unit}"
+    if ours_type in ("episode", "sequence") and theirs_type == "shot":
+        found = shots(p, root, unit)
+        if not found:
+            return False, note + (f"upstream stage {after} is not locked for {unit}: "
+                                  f"no shot in {SHOTS.format(episode(unit))} on the base")
+        for shot in found:
+            if not is_locked(state, room, after, shot):
+                return False, note + f"upstream stage {after} is not locked for {shot}"
         return True, note + f"upstream stage {after} is locked for {unit}"
     unrelated = theirs_type != ours_type and not (ours_type == "sequence" and theirs_type == "episode")
     for number, other in state.tickets.items():

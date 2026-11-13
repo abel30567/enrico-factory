@@ -385,10 +385,10 @@ class UpstreamRuleTest(OneRule):
         w.set_record("pulls", 2, state="closed", merged_at=None)
         self.assertOnly(w, 8, {4}, "upstream stage premise is not locked for ep01")
 
-    def test_cheaper_stages_is_a_named_stub(self):
+    def test_cheaper_stages_of_a_story_ticket(self):
         w = World(self, ())
         p, state = w.load()
-        self.assertIs(lockrules.cheaper_stages_locked(p, state, state.tickets[7]), True)
+        self.assertEqual(lockrules.cheaper_stages(p, state, state.tickets[7], w.root), "")
 
 
 class SelectedRuleTest(OneRule):
