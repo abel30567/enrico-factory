@@ -3,10 +3,10 @@
 Pure: nothing here writes to GitHub or git, nor posts anything. It reads the state ``kit.lib.tickets``
 loaded, git through ``kit.lib.gitstate`` and the blinding key through ``kit.lib.blind``.
 
-``evaluate`` always returns twelve rules, in order: the ten of section 9; eleventh, that a released
-episode's files are never changed; and twelfth, ``bible-version``, that every edit list the pull request
-changes names the newest amendment of its head. A reason is one line of fixed words, ids and paths; it never quotes
-a comment's prose.
+``evaluate`` always returns twelve rules, in order: the ten of section 9, then (rule 11) that a released
+episode's files are never changed, and (rule 12, ``bible-version``) that every edit list the pull request
+changes names the newest amendment of its head. A reason is one line of fixed words, ids and paths; it never
+quotes a comment's prose.
 """
 
 from __future__ import annotations
