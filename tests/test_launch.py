@@ -1128,5 +1128,71 @@ class ResourceDown(unittest.TestCase):
         self.w.prepare("drafter", 5)
 
 
+class OutOfUsage(unittest.TestCase):
+    """ISSUE-249: a launch whose slot has no account with usage left is refused before anything is created."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def accounts(self, data):
+        self.w.state.mkdir(mode=0o700, exist_ok=True)
+        (self.w.state / "accounts.json").write_text(json.dumps(data))
+
+    def stopped(self, data):
+        self.w.state.mkdir(mode=0o700, exist_ok=True)
+        (self.w.state / "stopped.json").write_text(json.dumps(data))
+        self.w.set_issue(20, title="[DOWN] inference.primary", body="", state="open", labels=["resource:down"],
+                         created_at="2026-11-10T00:00:00Z")
+
+    def refused(self, message, role, number):
+        before = self.w.snapshot()
+        listing = sorted(os.listdir(self.w.state))
+        with self.assertRaises(LaunchError) as caught:
+            self.w.prepare(role, number)
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertEqual(sorted(os.listdir(self.w.state)), listing)
+
+    def test_the_launch_is_refused(self):
+        """Behaviour 3."""
+        self.accounts({SEED: "2026-11-11T17:00:00Z"})
+        self.refused("slot MAKER is out of usage until 2026-11-11T17:00:00Z", "drafter", 5)
+
+    def test_the_time_written_is_usable_twin(self):
+        self.accounts({SEED: NOW})
+        self.assertEqual(self.w.prepare("drafter", 5).meta["id"], "5-1")
+
+    def test_the_earliest_time(self):
+        """Behaviour 4: the earliest time of the accounts of the slot."""
+        self.w.local(ACCOUNTS_MAKER=f"{SEED}, acct-two")
+        self.accounts({SEED: "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T16:30:00Z"})
+        self.refused("slot MAKER is out of usage until 2026-11-11T16:30:00Z", "drafter", 5)
+
+    def test_a_stopped_account_is_left_out(self):
+        """Behaviour 4: the earliest time among the accounts not stopped."""
+        self.w.local(ACCOUNTS_MAKER=f"{SEED}, acct-two")
+        self.accounts({SEED: "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T16:30:00Z"})
+        self.stopped({"acct-two": 20})
+        self.refused("slot MAKER is out of usage until 2026-11-11T18:00:00Z", "drafter", 5)
+
+    def test_every_account_stopped_is_the_resource(self):
+        """Behaviour 4, ruling 5: a role that is blocked gets the resource refusal, not the usage one."""
+        self.w.local(ACCOUNTS_MAKER=f"{SEED}, acct-two")
+        self.accounts({SEED: "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T16:30:00Z"})
+        self.stopped({SEED: 20, "acct-two": 20})
+        self.refused("resource inference.primary is down (#20)", "drafter", 5)
+
+    def test_the_family_other_is_not_a_wait(self):
+        """Behaviour 5: a role on the proxy uses no account of its slot."""
+        self.accounts({SEED: "2026-11-11T18:00:00Z"})
+        self.w.local(ACCOUNTS_CHECKER=SEED, PROXY_URL="http://localhost:8317", MODEL_OTHER="other-model-1")
+        self.w.prepare("reviewer", 7)
+
+    def test_the_family_other_falls_back_twin(self):
+        self.accounts({SEED: "2026-11-11T18:00:00Z"})
+        self.w.local(ACCOUNTS_CHECKER=SEED, MODEL_OTHER="other-model-1")
+        self.refused("slot CHECKER is out of usage until 2026-11-11T18:00:00Z", "reviewer", 7)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -3,7 +3,8 @@
 ``report`` finds or files that issue and records a stopped account in ``stopped.json`` in the state
 directory, ``{"<account>": <issue number>}``, under an exclusive lock on ``down.lock`` there. An account
 is stopped while its entry names an open issue that carries the label. ``blocking`` says whether a launch
-of a role must wait. A person closes the issue once the login is renewed or the proxy restarted; no
+of a role must wait. ``waiting`` says whether a launch must wait because no account of its slot has usage
+left, and files nothing. A person closes the issue once the login is renewed or the proxy restarted; no
 program closes, edits or comments on it, and a closed issue is never reused.
 
 Nothing written here holds an account name, a setting value, a token or a path: the issue names the
@@ -16,6 +17,7 @@ import fcntl
 import json
 import os
 import tempfile
+from datetime import datetime
 
 from kit.lib import harness, production
 from kit.lib.harness import HarnessError
@@ -25,6 +27,7 @@ LABEL = "resource:down"
 PRIMARY = "inference.primary"
 OTHER = "inference.other"
 STOPPED = "stopped.json"
+ACCOUNTS = "accounts.json"
 LOCK = "down.lock"
 
 
@@ -61,6 +64,19 @@ def _read(state_dir) -> dict:
         data = None
     if not isinstance(data, dict):
         raise HarnessError(f"{STOPPED} is not a JSON object")
+    return data
+
+
+def exhausted(state_dir) -> dict:
+    """``{account: time it is usable again}`` from ``accounts.json``; empty when there is none."""
+    try:
+        data = json.loads((state_dir / ACCOUNTS).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError:
+        data = None
+    if not isinstance(data, dict):
+        raise HarnessError(f"{ACCOUNTS} is not a JSON object")
     return data
 
 
@@ -122,3 +138,26 @@ def blocking(p, issues, role):
     if all(name in held for name in names):
         return PRIMARY, min(held[name] for name in names)
     return None
+
+
+def waiting(p, issues, role, now):
+    """``(slot, time it is usable again)`` when no account of the slot of ``role`` has usage left at
+    ``now``, given the open ``issues``; else None. The time is the earliest written for an account not
+    stopped, as written. A setting or file that cannot be read is not a wait."""
+    try:
+        meta = p.roles[role]["meta"]
+        if harness.model(p.settings, meta)[1] == "other":
+            return None
+        slot = meta["model"].upper()
+        state_dir = production.state_dir(p)
+        held = _stopped_in(state_dir, issues)
+        left = [name for name in harness.accounts(p.settings, slot) if name not in held]
+        if not left:
+            return None
+        times = exhausted(state_dir)
+        if harness.pick(left, times, now) is not None:
+            return None
+        return slot, min((times[name] for name in left),
+                         key=lambda value: datetime.strptime(value, production.TIME_FORMAT))
+    except (HarnessError, ProductionError, OSError, KeyError, TypeError, ValueError):
+        return None
