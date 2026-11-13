@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "ivy's coat is drawn red in media:ivy-turnaround; the model sheet gives the coat P2, #3A6EA5.",
+      "evidence": "bible/style/model-sheets/ivy.md coat; media/ivy-turnaround.png"
+    }
+  ]
+}

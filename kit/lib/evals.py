@@ -143,6 +143,8 @@ def _case(path, role, role_kind, actor, lint_ids):
     for name in (SIDES if spec["kind"] == "pair" else ("tree",)):
         if not (path / name).is_dir():
             raise EvalError(f"{where}: missing {name}/")
+    if spec["kind"] == "pair" and (path / "media").exists():
+        raise EvalError(f"{where}: a pair case holds no media/")
     return Case(role, path.name, spec["kind"], path, task, spec, role_kind, actor)
 
 
