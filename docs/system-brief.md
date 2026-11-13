@@ -53,7 +53,7 @@ every role prompt, and the gates in sections 9 and 11 enforce the ones a program
 |---|---|---|
 | Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter, the brand kit. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
-| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work | build, check, score, or lock in another room |
+| Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work, except the `retro` ticket the gaming monitor files (section 11) | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
 | Lint | Deterministic checks: PASS, FAIL or ERROR | make a judgment call |
 | Checkers and judges | Judged review by an agent that did not make the work, from another model family where one is available | fix the work, see the maker's reasoning, lock |
@@ -214,7 +214,7 @@ the orchestrator selects one.
 | story | `sequences` | episode | head-of-story | every scene assigned to one sequence | continuity-supervisor |
 | story | `style` | style lock | art-director, media-wrangler | references resolve, palette values present | look-reviewer |
 | story | `board` | sequence | story-artist, media-wrangler | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
-| story | `reel` | episode | editorial, media-wrangler | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
+| story | `reel` | episode | editorial, media-wrangler | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge (blind) |
 | production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame; reads `production/<ep>/shots.json`, `reel/edit-list.json` | none |
 | production | `assets` | asset | asset-builder, render-wrangler | naming, references, budgets, scale against the bible, skeleton; reads `assets/state.json`, `bible/canon/` | look-reviewer |
 | production | `rigging` | asset | rigger, render-wrangler | range of motion, limits, interpenetration, rig hash; reads `rigging/state.json` | deformation-reviewer |
@@ -285,7 +285,7 @@ to it on the base branch, and nothing else may write it.
 | Playbook | `playbook/PB-<n>.md` | retro-agent, audience-analyst, render-reviewer | A lesson with evidence, confidence and an expiry date. Expired lessons are dropped |
 | Pivot queue | issues labelled `pivot`, class `P0`..`P3` | researcher, trend-scout, audience-analyst | Each states what it touches and a hypothesis written before testing |
 | Judge calibration set | `calibration/` | audience-analyst | Scenes labelled with real audience response. The only path by which audience data changes how judges score |
-| Registries | `registry/assets.tsv`, `variants.tsv`, `posts.tsv` | orchestrators, on lock | Asset versions and dependents; file hash per variant; live post, hash and beat map |
+| Registries | `registry/assets.tsv`, `variants.tsv`, `posts.tsv`, `verdicts.tsv` | orchestrators, on lock | Asset versions and dependents; file hash per variant; live post, hash and beat map; the side of each judge of a blind lock (section 11) |
 | Platform rulebook | `rulebook/<platform>.json` | post-supervisor, from platform notes | Specs, safe zones, policy; read by the platform gate |
 | Results log | `lab/results.tsv` | lab-director | Append-only: every experiment, kept or not |
 | Ledger | `ledger/spend.tsv` | `factory gate`, `factory run` | Append-only: every gated job and its caller (the gate's row), and the real cost of its one call (the `run` row) |
@@ -468,12 +468,35 @@ commits the files on the pull request's branch.
 
 | Monitor | Trips when | Action |
 |---|---|---|
-| Gaming the judges | rubric scores rise while held-out judges and the retell test stay flat | freeze the run, rotate judges, open a retro |
+| Gaming the judges | in the latest blind lock of each of the last 3 episodes, the other judges prefer the new version and neither `held-out-judge` nor the retell criterion of `audience-sim` does | freeze the run, file a `retro` ticket naming the judges to rotate |
 | Charter drift | episode summaries move away from the charter across 3 episodes | force a charter review |
-| Chasing metrics | engagement rises while distinctiveness falls | halve engagement's weight for one round |
+| Chasing metrics | on one platform, end retention rises while distinctiveness falls across 3 episodes | hold the next `premise` lock until the showrunner rules |
 | Canon contradiction | the lint finds a fact against the canon ledger | block the lock, route to head of story |
 | No convergence | no blind win after K rounds at a level | one re-break to the outline, then ship the best so far |
 | Budget | cost or time passes its cap | stop the run, ship the best so far |
+
+- **Recorded verdicts.** When `factory lock` locks a pull of a `blind` stage that has a locked version,
+  it appends to `registry/verdicts.tsv` on the base one row per judge the lock relied on: `locked_at`,
+  `episode`, `stage`, `pull`, `role`, `side` (`new`, `old` or `none`, from the blinding key) and
+  `retell`. `retell` is the side of criterion 1 in the evidence of `audience-sim` (a result that starts
+  with `A`, `B` or `even`); it is `-` for another judge, or when it cannot be read.
+- **Gaming the judges.** An episode's round is its rows of the latest lock at a stage whose judges
+  include `held-out-judge`. The round rises when more than half of the other judges are `new`. It
+  stays flat when `held-out-judge` is not `new` and the `retell` of `audience-sim` is `old` or `none`.
+  The last 3 episodes by `locked_at`, each risen and flat, trip it. The `[MONITOR]` issue carries the
+  label `factory:freeze`, so the run stops from the next tick as with `factory freeze`. The `retro`
+  ticket names the judges that were `new` in all three rounds. Rotating them is a change to their
+  rubric and prompt that the retro proposes and the lab replays (section 13); the monitor picks no
+  judge, because that is a creative call. `factory unfreeze` lifts the freeze. A window whose issue
+  exists, open or closed, does not trip again.
+- **Chasing metrics.** Episodes are taken in the order their `premise` locked. Engagement is the
+  `retention` of the last row of the post `<ep>/<platform>` in `calibration/retention.tsv` on the base:
+  the share still watching at the end. An episode whose cell is `-` is left out. Distinctiveness is the
+  share of the premise's words (four letters or more, lower-cased, not all digits) found in no premise
+  of an earlier episode. It trips when, over the last 3 episodes with engagement on that platform,
+  engagement rises strictly and distinctiveness falls strictly. Engagement has no weight to halve:
+  rule 3 already keeps it out of every lock. So for one round, the next `premise` lock after the trip's
+  issue waits for a `RULING` of the showrunner newer than that issue. The round ends with that lock.
 
 ## 12. Loops
 
