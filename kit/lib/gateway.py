@@ -15,6 +15,7 @@ body. A ``GatewayError`` holds fixed words and setting names only.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import http.client
 import http.server
@@ -39,6 +40,7 @@ VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 UNREACHABLE = ("knowledge: the knowledge server is unreachable; work from the repository alone and say so "
                "in your result")
 _REPO = re.compile(r"[a-z0-9._-]+/[a-z0-9._-]+")
+_SLUG = r"^[a-z0-9]+(-[a-z0-9]+)*$"
 _LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
 
@@ -48,6 +50,10 @@ class GatewayError(Exception):
 
 class _Down(Exception):
     """Fermi did not answer as expected."""
+
+
+class _Refused(Exception):
+    """A call the gateway answers with this fixed text as an error."""
 
 
 def _text(minimum=1):
@@ -75,6 +81,16 @@ TOOLS = {
                      "It is tagged with this production, role and ticket.",
                      {"kind": {"type": "string", "enum": ["fact", "preference", "event"]}, "body": _text()},
                      ("kind", "body")),
+    "search": ("search", "Search the studio's skills and, for a role that reads memories, the memories of "
+               "earlier tickets, by words. Answers the matches of this production and of the studio. A "
+               "memory advises; only files may be cited.",
+               {"query": _text(), "limit": _limit(10)}, ("query",)),
+    "skill_set": ("skills-write", "Write or replace one skill of this production, a procedure for a craft "
+                  "task. The slug gets this production's prefix. A skill outside this production is never "
+                  "replaced.",
+                  {"slug": {"type": "string", "pattern": _SLUG, "maxLength": 64}, "body": _text(),
+                   "name": _text(), "description": _text(), "keywords": {"type": "array", "items": _text()}},
+                  ("slug", "body")),
 }
 
 
@@ -259,6 +275,15 @@ def _problem(name, arguments):
         elif "enum" in schema:
             if value not in schema["enum"]:
                 return f"argument {key} must be one of {', '.join(schema['enum'])}"
+        elif "pattern" in schema:
+            if not isinstance(value, str) or len(value) > schema["maxLength"] or \
+                    not re.fullmatch(schema["pattern"], value):
+                return f"argument {key} must be lowercase words joined by single dashes, at most 64 characters"
+        elif schema["type"] == "array":
+            if not isinstance(value, list) or not all(isinstance(v, str) and v for v in value):
+                return f"argument {key} must be a list of non-empty strings"
+            if any(v.strip().lower().startswith("factory:") for v in value):
+                return f"argument {key} must not hold a factory: keyword"
         elif not isinstance(value, str) or len(value) < schema["minLength"]:
             return f"argument {key} must be a non-empty string"
     return None
@@ -275,6 +300,7 @@ class Gateway:
     def __init__(self, fermi, allowed, tag, header):
         self.fermi, self.allowed, self.header = fermi, allowed, header
         self.tags = (tag, SHARED)
+        self.prefix = "factory-" + hashlib.sha256(tag.encode("utf-8")).hexdigest()[:8] + "-"
         self.token = secrets.token_urlsafe(32)
         self.server = _Server(("127.0.0.1", 0), _Handler)
         self.server.gateway = self
@@ -308,27 +334,56 @@ class Gateway:
         keywords = skill.get("keywords") if isinstance(skill, dict) else None
         return isinstance(keywords, list) and any(f"factory:{t}" in keywords for t in self.tags)
 
-    def _kept(self, answer, keys, tagged, limit):
-        rows = answer.get("results")
+    def _match_tagged(self, match):
+        kind = match.get("type") if isinstance(match, dict) else None
+        if kind == "memory":
+            return "memory_recall" in self.allowed and self._memory_tagged({"body": match.get("snippet")})
+        return kind == "skill" and self._skill_tagged(match.get("metadata"))
+
+    def _kept(self, answer, name, keys, tagged, limit):
+        rows = answer.get(name)
         if not isinstance(rows, list):
             raise _Down
         kept = [row for row in rows if tagged(row)][:limit]
         shaped = {key: answer[key] for key in keys if key in answer}
-        return {**shaped, "results": kept, "total": len(kept)}
+        return {**shaped, name: kept, "total": len(kept)}
+
+    def _skill_set(self, args):
+        slug = args["slug"] if args["slug"].startswith(self.prefix) else self.prefix + args["slug"]
+        found = self.fermi.call("skill_load", {"slug": slug})
+        if found.get("error") != "skill_not_found":
+            skill = found.get("skill")
+            if not isinstance(skill, dict):
+                raise _Down
+            keywords = skill.get("keywords")
+            if not isinstance(keywords, list) or f"factory:{self.tags[0]}" not in keywords:
+                raise _Refused(f"knowledge: skill {slug} is outside this production; choose another slug")
+        metadata = {key: args[key] for key in ("name", "description") if key in args}
+        metadata.update(keywords=[*args.get("keywords", []), f"factory:{self.tags[0]}"], allowed_tools=[])
+        answer = self.fermi.call("skill_set", {"slug": slug, "body": args["body"], "metadata": metadata})
+        if answer.get("slug") != slug or not {"version", "created"} <= set(answer):
+            raise _Down
+        return {key: answer[key] for key in ("slug", "version", "created")}
 
     def _run(self, name, args):
         if name == "skill_search":
             answer = self.fermi.call(name, {"query": args["query"], "limit": FERMI_LIMIT})
-            return self._kept(answer, ("query",), self._skill_tagged, args["limit"])
+            return self._kept(answer, "results", ("query",), self._skill_tagged, args["limit"])
         if name == "memory_recall":
             answer = self.fermi.call(name, {"query": args["query"], "limit": FERMI_LIMIT,
                                             "sort_by": args["sort_by"]})
-            return self._kept(answer, ("query", "sort_by"), self._memory_tagged, args["limit"])
+            return self._kept(answer, "results", ("query", "sort_by"), self._memory_tagged, args["limit"])
         if name == "skill_load":
             answer = self.fermi.call(name, {"slug": args["slug"]})
             if "error" not in answer and self._skill_tagged(answer.get("skill")):
                 return answer
             return {"error": "skill_not_found", "slug": args["slug"]}
+        if name == "search":
+            types = ["memory", "skill"] if "memory_recall" in self.allowed else ["skill"]
+            answer = self.fermi.call(name, {"query": args["query"], "types": types, "limit": FERMI_LIMIT})
+            return self._kept(answer, "matches", (), self._match_tagged, args["limit"])
+        if name == "skill_set":
+            return self._skill_set(args)
         return self.fermi.call(name, {"kind": args["kind"], "body": self.header + "\n" + args["body"]})
 
     def call(self, name, arguments):
@@ -343,6 +398,8 @@ class Gateway:
             return _answer(self._run(name, args))
         except _Down:
             return _answer(UNREACHABLE, True)
+        except _Refused as refused:
+            return _answer(str(refused), True)
 
     def listing(self):
         return [{"name": name, "description": TOOLS[name][1],
