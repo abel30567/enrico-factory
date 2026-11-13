@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/pim.md": "adds Pim, a creature",
+    "bible/canon/ledger.tsv": "adds the rows pim / kind and pim / home"
+  },
+  "why": "Ansa needs a creature to talk to on the night shift. Pim was designed in the production, from the moths that gather at the works' own lamps.",
+  "evidence": {
+    "bible/charter.md": "the night shift of a glass works"
+  }
+}

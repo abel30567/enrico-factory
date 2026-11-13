@@ -35,7 +35,6 @@ from kit.lib.sandbox import SandboxError
 from kit.lib import sandbox
 
 EXHAUSTED_HOURS = 5
-ACCOUNTS = "accounts.json"
 TOKEN_FD = 3
 LAUNCHER_SUMMARY = "The launcher posted this: the run ended without an accepted result."
 _NEWLINE = re.compile(r"\r\n|[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
@@ -234,33 +233,20 @@ def _endpoints(settings, family, gateway_port=None) -> tuple:
     return tuple(found)
 
 
-def _exhausted(state_dir) -> dict:
-    """``{account: time it is usable again}`` from ``accounts.json``; empty when there is none."""
-    try:
-        data = json.loads((state_dir / ACCOUNTS).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except ValueError:
-        data = None
-    if not isinstance(data, dict):
-        raise HarnessError(f"{ACCOUNTS} is not a JSON object")
-    return data
-
-
 def _exhaust(state_dir, account, now) -> None:
     """Mark ``account`` out of usage for EXHAUSTED_HOURS from ``now``: read again, write, replace."""
-    data = _exhausted(state_dir)
+    data = down.exhausted(state_dir)
     until = datetime.strptime(now, production.TIME_FORMAT) + timedelta(hours=EXHAUSTED_HOURS)
     data[account] = until.strftime(production.TIME_FORMAT)
     fd, tmp = tempfile.mkstemp(dir=state_dir, prefix=".accounts-", suffix=".tmp")
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(data, indent=1, sort_keys=True) + "\n")
-    os.replace(tmp, state_dir / ACCOUNTS)
+    os.replace(tmp, state_dir / down.ACCOUNTS)
 
 
 def _pick(settings, slot, state_dir, now, stopped):
     names = [name for name in harness.accounts(settings, slot) if name not in stopped]
-    return harness.pick(names, _exhausted(state_dir), now)
+    return harness.pick(names, down.exhausted(state_dir), now)
 
 
 def _none_left(settings, slot, stopped) -> Outcome:

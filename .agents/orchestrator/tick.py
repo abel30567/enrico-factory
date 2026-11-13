@@ -18,7 +18,7 @@
 #   2. Each open issue labelled `tracked` + `status:ready` with no PR and no live builder -> orch launch builder
 #      KEY slug "<issue body>". `status:ready` is the orchestrator's judgement (dependencies closed, files
 #      disjoint from work in flight); the launch itself is mechanical. At most MAX_ATTEMPTS launches per issue.
-#   3. orch merge --apply (at most one merge); a CONFLICT gets a fixer.
+#   3. orch merge --apply (one merge, or one train of up to TRAIN_MAX); a CONFLICT gets a fixer.
 #   4. orch board sync --apply (after a launch, a hold or a merge, else every 30 min).
 # Output: ACTION lines (what it did), NEED lines (judgement for the orchestrator's wake), WAIT, STATE.
 import datetime as dt, fcntl, json, os, re, subprocess, sys
@@ -444,7 +444,7 @@ for i in sorted(ready or [], key=lambda i: i["number"]):
     except Exception as e:  # noqa: BLE001
         say("ERROR", f"issue #{i.get('number')} skipped this tick: {type(e).__name__}: {str(e)[:160]}")
 
-# 3. merge gate: at most one merge per tick
+# 3. merge gate: at most one merge, or one train, per tick
 out = act("merge gate", str(ORCH / "orch"), "merge", "--apply") if prs else ""
 # act() reports only the gate's last line; a CONFLICT anywhere else would leave its PR waiting forever
 for m in re.finditer(r"^CONFLICT\s+#(\d+) (\S+)", out or "", re.M):
@@ -457,6 +457,8 @@ for m in re.finditer(r"^CONFLICT\s+#(\d+) (\S+)", out or "", re.M):
                f"Merge origin/{BASE} into this branch and resolve every conflict so both sides survive: keep all of {BASE}'s "
                "changes and this PR's intent. Re-run GATES, then post [BUILDER] ADDRESSED with the proof.")
         mark(n, "FIXING", "merge conflict")
+for line in re.findall(r"^(?:TRAIN-RED|MISMATCH) .*", out or "", re.M):
+    say("NEED", f"merge gate: {line}")
 merged = re.findall(r"^MERGED\s+#(\d+) (\S+)", out or "", re.M)
 for num, key in merged:
     say("NEED", f"merged #{num} {key}: tick the plan, and label status:ready the tickets it unblocks "
