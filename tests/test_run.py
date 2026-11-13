@@ -249,8 +249,23 @@ class EntryPointTest(unittest.TestCase):
         self.assertEqual((done.returncode, done.stderr), (0, ""))
         self.assertTrue(done.stdout.startswith("usage: factory run"))
 
-    def test_the_kit_ships_no_tool(self):
-        self.assertEqual(sorted(p.name for p in (ROOT / "kit" / "lib" / "tools").glob("*.py")), ["__init__.py"])
+    def test_every_shipped_tool_has_the_tool_shape(self):
+        register, _ = resources.load(resources.REGISTER)
+        ids = {resource["id"] for resource in register["resources"]}
+        for path in sorted(cmd_run.TOOLS_DIR.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            with self.subTest(path.name):
+                self.assertIsNotNone(cmd_run.TOOL_NAME.fullmatch(path.stem))
+                module = cmd_run._load_tool(path.stem)
+                self.assertIsInstance(module.RESOURCE, str)
+                self.assertNotEqual(module.RESOURCE, "")
+                self.assertIn(module.RESOURCE, ids)
+                self.assertIsInstance(module.REASONS, tuple)
+                self.assertNotEqual(module.REASONS, ())
+                for reason in module.REASONS:
+                    self.assertIsInstance(reason, str)
+                self.assertTrue(callable(module.run))
 
 
 class CleanRunTest(unittest.TestCase):

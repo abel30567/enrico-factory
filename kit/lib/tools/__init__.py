@@ -1,7 +1,8 @@
 """The tools `factory run` calls, and the two exceptions a tool raises.
 
 A tool is the file ``<name>.py`` in this directory, where ``<name>`` is a job's ``tool`` and matches
-``[a-z][a-z0-9-]*``. `factory run` loads it by file location and makes one call. The kit ships no tool.
+``[a-z][a-z0-9-]*``. `factory run` loads it by file location and makes one call. Each tool the kit ships
+is one file here, added by its own ticket; adding one edits no other file.
 
 A tool module has:
 
