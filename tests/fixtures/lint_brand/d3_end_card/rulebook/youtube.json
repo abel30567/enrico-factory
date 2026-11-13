@@ -1,8 +1,37 @@
 {"platform": "youtube",
  "kinds": {
   "shorts": {
-   "mark_zone": {"value": {"9:16": {"top": 0.02, "bottom": 0.2, "left": 0.02, "right": 0.02}}, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"}
+   "container": {"value": "mp4", "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "codec": {"value": "h264", "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "aspects": {"value": ["9:16"], "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "resolution": {"value": {"9:16": [1080, 1920]}, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "min_fps": {"value": 24, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "max_fps": {"value": 60, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "min_seconds": {"value": 1, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "max_seconds": {"value": 60, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "max_bytes": {"value": 104857600, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "caption_zone": {"value": {"9:16": {"top": 0.1, "bottom": 0.25, "left": 0.05, "right": 0.15}}, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "mark_zone": {"value": {"9:16": {"top": 0.02, "bottom": 0.2, "left": 0.02, "right": 0.02}}, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "title_max_chars": {"value": 60, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"},
+   "caption_max_chars": {"value": 150, "source": "https://rulebook.example/youtube/shorts", "read_at": "2026-11-13"}
+  },
+  "long": {
+   "container": {"value": null, "source": null, "read_at": null},
+   "codec": {"value": null, "source": null, "read_at": null},
+   "aspects": {"value": null, "source": null, "read_at": null},
+   "resolution": {"value": null, "source": null, "read_at": null},
+   "min_fps": {"value": null, "source": null, "read_at": null},
+   "max_fps": {"value": null, "source": null, "read_at": null},
+   "min_seconds": {"value": null, "source": null, "read_at": null},
+   "max_seconds": {"value": null, "source": null, "read_at": null},
+   "max_bytes": {"value": null, "source": null, "read_at": null},
+   "caption_zone": {"value": null, "source": null, "read_at": null},
+   "mark_zone": {"value": null, "source": null, "read_at": null},
+   "title_max_chars": {"value": null, "source": null, "read_at": null},
+   "caption_max_chars": {"value": null, "source": null, "read_at": null}
   }
  },
  "disclosure": {"field": "status.containsSyntheticMedia", "value": true, "source": "https://developers.google.com/youtube/v3/docs/videos", "read_at": "2026-11-11"},
- "policy": []}
+ "policy": [
+  {"field": "status.privacyStatus", "value": "private", "source": "https://developers.google.com/youtube/v3/docs/videos/insert", "read_at": "2026-11-11"}
+ ]}

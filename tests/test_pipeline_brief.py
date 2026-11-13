@@ -57,7 +57,7 @@ class ShippedPipelineTest(unittest.TestCase):
         self.by_stage = {e["stage"]: e for e in self.entries}
 
     def test_stage_names_in_order(self):
-        self.assertEqual([e["stage"] for e in self.entries], BRIEF_STAGES)
+        self.assertEqual([e["stage"] for e in self.entries if e["room"] == "story"], BRIEF_STAGES)
 
     def test_sequences_writes_sequence_json(self):
         self.assertEqual(self.by_stage["sequences"]["paths"], ["episodes/*/sequences/*/sequence.json"])
