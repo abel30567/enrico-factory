@@ -1,8 +1,10 @@
-"""The producer's monitors the tick runs (system brief section 11): budget, canon contradiction, no convergence.
+"""The producer's monitors the tick runs (system brief section 11): budget, canon contradiction, no convergence,
+charter drift.
 
-A pure reading: nothing here writes to GitHub, git or the disk. ``trips(p, state, rows, now)`` gives one
+A pure reading: nothing here writes to GitHub, git or the disk. ``trips(p, state, rows, now, read)`` gives one
 dict per trip, budget trips first (caps in the order of ``_SEASON`` then ``_EPISODE``, episodes sorted),
-then canon by pull number, then no convergence by ticket number. A monitor that cannot be read gives
+then canon by pull number, then no convergence by ticket number, then charter drift (one trip at most; only
+when ``read``, the text of a path on the base, is given). A monitor that cannot be read gives
 ``{"monitor": <name>, "error": <exception>}`` in its place and no trip. ``instead(p, trips, ticket, entry)``
 is the step the tick takes in place of ``entry`` (a ``steps._entry``), or ``entry`` itself.
 
@@ -14,12 +16,15 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
+from fractions import Fraction
 
-from kit.lib import blind, ledger, markers, production, tickets
+from kit.lib import blind, gitstate, ledger, markers, production, tickets
 
 NO_WIN_ROUNDS = 3
 SHIP_ROUNDS = 2 * NO_WIN_ROUNDS
-MONITOR_ERRORS = (production.ProductionError, blind.BlindError, OSError)
+DRIFT_EPISODES = 3
+CHARTER = "bible/charter.md"  # lockrules.CHARTER
+MONITOR_ERRORS = (production.ProductionError, blind.BlindError, OSError, gitstate.GitError)
 STOPPED = ("launch", "blind", "gate", "run")
 
 _SEASON = (("CAP_SEASON_USD", "usd"), ("CAP_SEASON_COMPUTE_MIN", "compute_min"), ("CAP_SEASON_HOURS", None))
@@ -181,12 +186,87 @@ def _no_convergence(p, state) -> list:
     return found
 
 
-def trips(p, state, rows, now) -> list:
-    """Every trip, and an error item for a monitor that could not be read. ``rows`` None: no budget monitor."""
+# -- charter drift
+
+def _words(text) -> set:
+    return {w for w in re.findall(r"\w+", text.lower()) if len(w) >= 4 and not w.isdigit()}
+
+
+def _closeness(summary, charter) -> Fraction:
+    words = _words(summary)
+    if not words:
+        return Fraction(0)
+    return Fraction(len(words & charter), len(words))
+
+
+def _summary_stage(p):
+    """The first ``story`` stage whose unit is ``episode``, or None."""
+    return next((entry for entry in production.stages(p, "story") if entry.get("unit") == "episode"), None)
+
+
+def _charter_drift(p, state, read) -> list:
+    entry = _summary_stage(p)
+    if entry is None or not entry.get("paths"):
+        return []
+    stage, glob = entry["stage"], entry["paths"][0]
+    locked = {}  # episode -> merged_at
+    for n in sorted(state.tickets):
+        ticket = state.tickets[n]
+        if ticket["room"] != "story" or ticket["stage"] != stage:
+            continue
+        pull = tickets.locked_pull(state, n)
+        if pull is None or not pull.get("merged_at"):
+            continue
+        episode = tickets.episode(ticket["unit"])
+        if episode not in locked or pull["merged_at"] < locked[episode]:
+            locked[episode] = pull["merged_at"]
+    measured = []
+    for merged_at, episode in sorted((at, ep) for ep, at in locked.items()):
+        summary = read(glob.replace("*", episode, 1))
+        if summary is not None:
+            measured.append((merged_at, episode, summary))
+    measured = measured[-DRIFT_EPISODES:]
+    if len(measured) < DRIFT_EPISODES:
+        return []
+    charter = read(CHARTER)
+    charter = _words(charter) if charter is not None else set()
+    values = [_closeness(summary, charter) for _, _, summary in measured]
+    if not all(a > b for a, b in zip(values, values[1:])):
+        return []
+    after = measured[-1][0]
+    for pull in state.pulls.values():
+        if pull.get("merged_at") and pull["merged_at"] > after and pull["ticket"] in state.tickets:
+            ticket = state.tickets[pull["ticket"]]
+            amended = production.stage(p, ticket["room"], ticket["stage"])
+            if amended is not None and production.matches(CHARTER, amended.get("paths") or []):
+                return []
+    for ticket in _open(state):
+        if ticket["room"] == "story" and ticket["stage"] == stage and \
+                _ruled_after(p, state, ticket, tickets.pulls_of(state, ticket["number"]), (after, 0)):
+            return []
+    episodes = ", ".join(episode for _, episode, _ in measured)
+    closeness = ", ".join(f"{float(c):.2f}" for c in values)
+    reason = f"{episodes} move away from the charter (closeness {closeness})"
+    role = production.orchestrator(p, "story")
+    return [{"monitor": "charter-drift", "stage": stage, "reason": reason,
+             "line": f"monitor charter-drift: {reason}",
+             "title": f"[MONITOR] charter-drift {measured[-1][1]}",
+             "body": _body(["Monitor: charter drift", f"Episodes: {episodes}", f"Closeness: {closeness}",
+                            f"Action: force a charter review; no {stage} ticket locks until it "
+                            f"(system brief section 11). Routed to {role}.",
+                            f"To clear: lock a change to {CHARTER}, or post a RULING on an open {stage} "
+                            "ticket, then close this issue."])}]
+
+
+def trips(p, state, rows, now, read=None) -> list:
+    """Every trip, and an error item for a monitor that could not be read. ``rows`` None: no budget monitor.
+    ``read(path)`` gives the text of a path on the base or None; ``read`` None: no charter-drift monitor."""
     found = []
     monitors = [("canon", lambda: _canon(p, state)), ("no-convergence", lambda: _no_convergence(p, state))]
     if rows is not None:
         monitors.insert(0, ("budget", lambda: _budget(p, state, rows, now)))
+    if read is not None:
+        monitors.append(("charter-drift", lambda: _charter_drift(p, state, read)))
     for name, run in monitors:
         try:
             found += run()
@@ -217,9 +297,15 @@ def _no_convergence_instead(trip, ticket, entry):
     return {"state": "no-convergence", "step": trip["step"], "role": None, "pull": None, "reason": trip["reason"]}
 
 
+def _charter_drift_instead(trip, ticket, entry):
+    if ticket["room"] != "story" or ticket["stage"] != trip["stage"] or entry["step"] != "lock":
+        return entry
+    return {"state": "charter-drift", "step": "wake", "role": None, "pull": None, "reason": trip["reason"]}
+
+
 def instead(p, trips, ticket, entry) -> dict:
-    """The entry the first trip that changes it gives (no convergence, then canon, then budget), else ``entry``.
-    Only an open ticket is changed."""
+    """The entry the first trip that changes it gives (no convergence, then canon, then charter drift, then
+    budget), else ``entry``. Only an open ticket is changed."""
     if ticket["state"] != "open":
         return entry
     found = [t for t in trips if "error" not in t]
@@ -229,6 +315,10 @@ def instead(p, trips, ticket, entry) -> dict:
             return new
     for trip in [t for t in found if t["monitor"] == "canon"]:
         new = _canon_instead(trip, ticket, entry)
+        if new != entry:
+            return new
+    for trip in [t for t in found if t["monitor"] == "charter-drift"]:
+        new = _charter_drift_instead(trip, ticket, entry)
         if new != entry:
             return new
     for trip in [t for t in found if t["monitor"] == "budget"]:

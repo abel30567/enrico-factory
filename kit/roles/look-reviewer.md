@@ -3,7 +3,7 @@ role: look-reviewer
 room: studio
 kind: checker
 analog: look development supervisor
-stage: style
+stage: style, assets, lighting
 reads: bible/**, episodes/**, research/**, media/manifest.tsv
 may_not: fix the work
 model: checker

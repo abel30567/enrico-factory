@@ -8,12 +8,13 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import blind, ledger  # noqa: E402
+from kit.lib import blind, gitstate, ledger  # noqa: E402
 from test_tick import LABEL, Case, World, lines  # noqa: E402,F401
 
 LINE = "NEED - monitor budget: {cap} is passed for {scope}"
@@ -274,6 +275,159 @@ class Order(Monitors):
         self.assertEqual(lines(self.ticked(w)), ["STEP - refresh platform.tiktok",
                                                  LINE.format(cap="CAP_EPISODE_USD", scope=scope),
                                                  WAIT.format(cap="CAP_EPISODE_USD", scope=scope)])
+
+
+CHARTER = "# Charter\n\nA lighthouse keeper and her daughter guard the harbour through winter storms.\n"
+PITCHES = {"ep07": "# Pitch\n\nThe keeper and her daughter guard the harbour lighthouse in a winter storm.\n",
+           "ep08": "# Pitch\n\nThe daughter leaves the harbour for a city of glass towers and neon markets.\n",
+           "ep09": "# Pitch\n\nA robot detective solves murders on a desert moon full of neon casinos.\n"}
+LOCKS = {"ep07": (31, 32, "2026-11-04T09:00:00Z"), "ep08": (33, 34, "2026-11-05T09:00:00Z"),
+         "ep09": (35, 36, "2026-11-06T09:00:00Z")}
+DRIFT = "ep07, ep08, ep09 move away from the charter (closeness 0.75, 0.22, 0.00)"
+DRIFT_LINES = [f"NEED - monitor charter-drift: {DRIFT}", f"NEED #15 charter-drift {DRIFT}"]
+CLEAN = ["STEP #15 sync PR #16", "WAIT #15 lockable PR #17 is not the ticket's next step"]
+AMENDMENT = {"room": "story", "stage": "charter", "unit": "amendment", "after": "", "maker": "writer", "lint": [],
+             "checker": "", "judge": "", "blind": False, "pitches": 1, "paths": ["bible/charter.md"]}
+
+
+class CharterDrift(Monitors):
+    """World (15, 16, 17): ticket #15 at the summary stage pitch, its pitch #16 selected; ep07 to ep09 locked."""
+
+    def record(self, w, kind, number, data):
+        path = w.github / kind / f"{number}.json"
+        path.write_text(json.dumps({"number": number, **data}, indent=1, sort_keys=True) + "\n")
+
+    def lock(self, w, issue, pull, merged_at, stage, unit):
+        """A closed issue and its merged pull, as a lock long ago left them."""
+        self.record(w, "issues", issue, {
+            "body": f"{stage} for {unit}.\n", "created_at": "2026-11-01T09:00:00Z", "state": "closed",
+            "labels": ["room:story", f"stage:{stage}", "tracked", f"unit:{unit}"],
+            "title": f"[LK-{issue}] {stage} {unit}"})
+        self.record(w, "pulls", pull, {
+            "base_ref": "trunk", "body": f"Ticket: #{issue}\n", "created_at": "2026-11-02T09:00:00Z",
+            "head_ref": f"{stage}/{unit}", "labels": [], "merged_at": merged_at, "state": "merged", "ticket": issue,
+            "title": f"Work for #{issue}"})
+
+    def drift_world(self, selected=True):
+        w = self.world((15, 16, 17))
+        w.write("bible/charter.md", CHARTER)
+        for ep, text in sorted(PITCHES.items()):
+            w.write(f"episodes/{ep}/pitch.md", text)
+        w.commit("three pitches")
+        for ep, (issue, pull, merged_at) in sorted(LOCKS.items()):
+            self.lock(w, issue, pull, merged_at, "pitch", ep)
+        if selected:
+            w.add(15, "2026-11-10T10:00:00Z", "keeper", "[KEEPER] SELECTED #16\n\nThe pier holds.\n")
+        return w
+
+    def amendment_world(self):
+        w = self.drift_world()
+        path = w.root / ".factory" / "pipeline.json"
+        path.write_text(json.dumps([AMENDMENT, *json.loads(path.read_text())], indent=1) + "\n")
+        w.commit("a charter stage")
+        return w
+
+    # Behaviour 1
+    def test_three_falling_episodes_hold_the_lock_and_file(self):
+        w = self.drift_world()
+        self.dry_then_apply(w, DRIFT_LINES)
+        self.assertEqual(self.created(w), [(
+            "[MONITOR] charter-drift ep09",
+            "Monitor: charter drift\nEpisodes: ep07, ep08, ep09\nCloseness: 0.75, 0.22, 0.00\n"
+            "Action: force a charter review; no pitch ticket locks until it (system brief section 11). "
+            "Routed to keeper.\n"
+            "To clear: lock a change to bible/charter.md, or post a RULING on an open pitch ticket, "
+            "then close this issue.\n", [LABEL])])
+        self.assertEqual(lines(self.ticked(w, "--apply")), DRIFT_LINES)
+        self.assertEqual(len(w.ops("create_issue")), 1)
+        self.assertEqual({w.record("pulls", n)["state"] for n in (16, 17)}, {"open"})
+
+    def rewrite(self, w, rel, text):
+        """The world trips, then ``rel`` on the base holds ``text`` (None: removed)."""
+        self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+        if text is None:
+            (w.root / rel).unlink()
+        else:
+            w.write(rel, text)
+        w.commit(f"rewrite {rel}")
+
+    # Behaviour 2
+    def test_closeness_that_does_not_fall_strictly(self):
+        w = self.drift_world()
+        self.rewrite(w, "episodes/ep09/pitch.md", PITCHES["ep07"])
+        self.assertEqual(lines(self.ticked(w)), CLEAN)
+
+    # Behaviour 3
+    def test_too_few_episodes(self):
+        w = self.drift_world()
+        self.rewrite(w, "episodes/ep08/pitch.md", None)
+        for kind, number in (("issues", 33), ("pulls", 34)):
+            (w.github / kind / f"{number}.json").unlink()
+        out = self.ticked(w)
+        self.assertNotIn("charter-drift", out)
+        self.assertEqual(lines(out), CLEAN)
+
+    def test_a_charter_with_no_words(self):
+        w = self.drift_world()
+        self.rewrite(w, "bible/charter.md", "# Charter\n")
+        out = self.ticked(w)
+        self.assertNotIn("charter-drift", out)
+        self.assertEqual(lines(out), CLEAN)
+
+    # Behaviour 4
+    def test_a_ruling_of_the_orchestrator_clears_it(self):
+        w = self.drift_world()
+        self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+        w.add(15, "2026-11-10T11:00:00Z", "keeper", "[KEEPER] RULING\nThe charter stands.\n")
+        self.assertEqual(lines(self.ticked(w)), CLEAN)
+
+    def test_another_actors_or_an_older_ruling_does_not(self):
+        for role, at in (("writer", "2026-11-10T11:00:00Z"), ("keeper", "2026-11-05T09:00:00Z")):
+            with self.subTest(role=role, at=at):
+                w = self.drift_world()
+                w.add(15, at, role, f"[{role.upper()}] RULING\nThe charter stands.\n")
+                self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+
+    # Behaviour 5
+    def test_a_charter_lock_after_the_third_episode_clears_it(self):
+        w = self.amendment_world()
+        self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+        self.lock(w, 41, 42, "2026-11-07T09:00:00Z", "charter", "A-2")
+        self.assertEqual(lines(self.ticked(w)), CLEAN)
+
+    def test_a_charter_lock_before_the_third_episode_does_not(self):
+        w = self.amendment_world()
+        self.lock(w, 41, 42, "2026-11-06T08:00:00Z", "charter", "A-2")
+        self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+
+    # Behaviour 6
+    def test_only_the_lock_is_held(self):
+        w = self.drift_world(selected=False)
+        self.assertEqual(lines(self.ticked(w)), [*DRIFT_LINES, "STEP #15 launch keeper on #15"])
+
+    # Behaviour 7
+    def test_a_base_that_cannot_be_read(self):
+        w = self.drift_world()
+        show = gitstate.show
+
+        def failing(root, ref, path):
+            if path == "bible/charter.md":
+                raise gitstate.GitError("cat-file", 128, "fatal: bad object\n")
+            return show(root, ref, path)
+
+        with mock.patch.object(gitstate, "show", failing):
+            out = self.ticked(w, code=1)
+        self.assertEqual(lines(out), ["FAIL - monitor charter-drift: git cat-file: exit 128", *CLEAN])
+
+    # Behaviour 8
+    def test_order_is_by_lock_time(self):
+        w = self.drift_world()
+        self.assertEqual(lines(self.ticked(w)), DRIFT_LINES)
+        w.set_record("pulls", 32, merged_at=LOCKS["ep09"][2])
+        w.set_record("pulls", 36, merged_at=LOCKS["ep07"][2])
+        out = self.ticked(w)
+        self.assertNotIn("charter-drift", out)
+        self.assertEqual(lines(out), CLEAN)
 
 
 if __name__ == "__main__":

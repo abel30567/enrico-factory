@@ -100,9 +100,27 @@ def judge_sides(p, state, pull):
     return sides
 
 
-def cheaper_stages_locked(p, state, ticket) -> bool:
-    """In production, every cheaper stage of the shot is locked. Not built yet (ruling Q19)."""
-    return True
+def cheaper_stages(p, state, ticket, root) -> str:
+    """Section 9 rule 4: every cheaper stage of a shot is locked. For a ``shot`` stage, each earlier entry of
+    the room that the format does not skip is locked: a ``shot`` entry for the unit, a ``sequence`` entry for
+    the shot's sequence. The reason, "" when it holds or the stage's unit is not ``shot``."""
+    room, unit = ticket["room"], ticket["unit"]
+    entries = production.stages(p, room)
+    names = [e["stage"] for e in entries]
+    if ticket["stage"] not in names or entries[names.index(ticket["stage"])]["unit"] != "shot":
+        return ""
+    sequence = tickets.shot_sequence(unit)
+    if sequence is None:
+        return f"unit {unit} is not <episode>/<sequence>-<n>"
+    skipped = tickets.skips(p, root, unit)
+    missing = []
+    for e in entries[:names.index(ticket["stage"])]:
+        if e["stage"] in skipped:
+            continue
+        target = {"shot": unit, "sequence": sequence}.get(e["unit"])
+        if target is not None and not tickets.is_locked(state, room, e["stage"], target):
+            missing.append(f"{e['stage']} for {target}")
+    return f"cheaper stage(s) not locked: {', '.join(missing)}" if missing else ""
 
 
 def needs_amendment(entry, changed) -> bool:
@@ -175,9 +193,7 @@ def _upstream(p, state, ticket, root):
     ok, reason = tickets.upstream(p, state, ticket, root)
     if not ok:
         return reason
-    if not cheaper_stages_locked(p, state, ticket):
-        return "a cheaper stage of the shot is not locked"
-    return ""
+    return cheaper_stages(p, state, ticket, root)
 
 
 def _selected(state, ticket, entry, pull):

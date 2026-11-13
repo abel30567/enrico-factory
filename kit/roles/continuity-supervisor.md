@@ -3,7 +3,7 @@ role: continuity-supervisor
 room: studio
 kind: checker
 analog: script supervisor
-stage: sequences, board
+stage: sequences, board, cross-shot
 reads: bible/**, episodes/**
 may_not: fix the work
 model: checker
