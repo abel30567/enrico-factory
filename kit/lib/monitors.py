@@ -1,5 +1,5 @@
 """The producer's monitors the tick runs (system brief section 11): budget, canon contradiction, no convergence,
-charter drift.
+charter drift, and every monitor file of ``MONITORS_DIR``.
 
 A pure reading: nothing here writes to GitHub, git or the disk. ``trips(p, state, rows, now, read)`` gives one
 dict per trip, budget trips first (caps in the order of ``_SEASON`` then ``_EPISODE``, episodes sorted),
@@ -10,13 +10,24 @@ is the step the tick takes in place of ``entry`` (a ``steps._entry``), or ``entr
 
 A trip holds ``monitor``, ``line`` (after ``NEED - ``), ``title`` and ``body`` of its ``[MONITOR]`` issue.
 No amount and no cap value is written anywhere.
+
+A monitor file is ``monitor_<group>.py`` in ``MONITORS_DIR`` (``discover``), named ``<group>`` with every ``_``
+made ``-``, and loaded anew on every call of ``trips``. It exposes ``trips(p, state, rows, now, read)`` and
+``instead(p, trip, ticket, entry)``. Its ``trips`` gives a list of dicts with the strings ``line``, ``title`` and
+``body``, and optionally ``labels`` (strings, put on its ``[MONITOR]`` issue) and ``tickets`` (each
+``{"title", "body", "labels"}``, filed once by title); other keys are the module's. File monitors run only when
+``read`` is given, after charter drift, in the order of ``discover``. In ``instead`` they come after charter
+drift and before budget, by trip order. A file that does not follow this, or whose name is that of a built-in
+monitor, gives an error item with a ``MonitorError``.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import re
 from decimal import Decimal
 from fractions import Fraction
+from pathlib import Path
 
 from kit.lib import blind, gitstate, ledger, markers, production, tickets
 
@@ -26,10 +37,18 @@ DRIFT_EPISODES = 3
 CHARTER = "bible/charter.md"  # lockrules.CHARTER
 MONITOR_ERRORS = (production.ProductionError, blind.BlindError, OSError, gitstate.GitError)
 STOPPED = ("launch", "blind", "gate", "run")
+MONITORS_DIR = Path(__file__).resolve().parent
+BUILT_IN = ("budget", "canon", "no-convergence", "charter-drift")
+INTERFACE = "does not follow the monitor interface"
 
 _SEASON = (("CAP_SEASON_USD", "usd"), ("CAP_SEASON_COMPUTE_MIN", "compute_min"), ("CAP_SEASON_HOURS", None))
 _EPISODE = (("CAP_EPISODE_USD", "usd"), ("CAP_EPISODE_COMPUTE_MIN", "compute_min"), ("CAP_EPISODE_HOURS", None))
 _CANON = re.compile(r"- B\d+ canon episodes/[^/]+/ledger\.json:\d+ .*")
+_FILE = re.compile(r"monitor_([a-z][a-z0-9_]*)\.py")
+
+
+class MonitorError(production.ProductionError):
+    """A monitor file that does not follow the monitor interface; its text is the tick's message."""
 
 
 def _order(comment):
@@ -258,9 +277,70 @@ def _charter_drift(p, state, read) -> list:
                             "ticket, then close this issue."])}]
 
 
+# -- monitor files
+
+def discover() -> list:
+    """``(name, path)`` of every monitor file of ``MONITORS_DIR``, sorted by file name."""
+    found = []
+    for path in sorted(MONITORS_DIR.iterdir(), key=lambda path: path.name):
+        m = _FILE.fullmatch(path.name)
+        if m is not None and path.is_file():
+            found.append((m.group(1).replace("_", "-"), path))
+    return found
+
+
+def _load(name, path):
+    if name in BUILT_IN:
+        raise MonitorError(f"{path.name} has the name of a built-in monitor")
+    group = _FILE.fullmatch(path.name).group(1)
+    try:
+        spec = importlib.util.spec_from_file_location(f"factory_monitor_{group}", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except (Exception, SystemExit):
+        module = None
+    if not callable(getattr(module, "trips", None)) or not callable(getattr(module, "instead", None)):
+        raise MonitorError(INTERFACE)
+    return module
+
+
+def _strings(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, str) for v in value)
+
+
+def _is_trip(trip) -> bool:
+    if not isinstance(trip, dict) or not all(isinstance(trip.get(k), str) for k in ("line", "title", "body")):
+        return False
+    if "labels" in trip and not _strings(trip["labels"]):
+        return False
+    filed = trip.get("tickets", [])
+    return isinstance(filed, list) and all(
+        isinstance(t, dict) and isinstance(t.get("title"), str) and isinstance(t.get("body"), str)
+        and _strings(t.get("labels")) for t in filed)
+
+
+def _file_trips(name, path, p, state, rows, now, read) -> list:
+    module = _load(name, path)
+    try:
+        found = module.trips(p, state, rows, now, read)
+    except MONITOR_ERRORS:
+        raise
+    except Exception as error:
+        raise MonitorError(f"trips raised {type(error).__name__}")
+    if not isinstance(found, list) or not all(_is_trip(trip) for trip in found):
+        raise MonitorError(INTERFACE)
+    return [{**trip, "monitor": name, "instead": module.instead} for trip in found]
+
+
+def holds(trips) -> set:
+    """The states whose repeated equal entry the tick prints once: charter drift and every monitor file's."""
+    return {"charter-drift"} | {t["monitor"] for t in trips if t["monitor"] not in BUILT_IN}
+
+
 def trips(p, state, rows, now, read=None) -> list:
     """Every trip, and an error item for a monitor that could not be read. ``rows`` None: no budget monitor.
-    ``read(path)`` gives the text of a path on the base or None; ``read`` None: no charter-drift monitor."""
+    ``read(path)`` gives the text of a path on the base or None; ``read`` None: no charter-drift monitor and no
+    monitor file."""
     found = []
     monitors = [("canon", lambda: _canon(p, state)), ("no-convergence", lambda: _no_convergence(p, state))]
     if rows is not None:
@@ -272,6 +352,12 @@ def trips(p, state, rows, now, read=None) -> list:
             found += run()
         except MONITOR_ERRORS as error:
             found.append({"monitor": name, "error": error})
+    if read is not None:
+        for name, path in discover():
+            try:
+                found += _file_trips(name, path, p, state, rows, now, read)
+            except MONITOR_ERRORS as error:
+                found.append({"monitor": name, "error": error})
     return found
 
 
@@ -303,9 +389,23 @@ def _charter_drift_instead(trip, ticket, entry):
     return {"state": "charter-drift", "step": "wake", "role": None, "pull": None, "reason": trip["reason"]}
 
 
+def _file_instead(p, trip, ticket, entry):
+    name = trip["monitor"]
+    try:
+        new = trip["instead"](p, trip, ticket, entry)
+    except Exception as error:
+        raise MonitorError(f"monitor {name}: instead raised {type(error).__name__}")
+    if new == entry:
+        return entry
+    if (not isinstance(new, dict) or new.get("state") != name or new.get("step") not in ("wake", "none")
+            or not isinstance(new.get("reason"), str)):
+        raise MonitorError(f"monitor {name}: instead {INTERFACE}")
+    return {"state": name, "step": new["step"], "role": None, "pull": None, "reason": new["reason"]}
+
+
 def instead(p, trips, ticket, entry) -> dict:
-    """The entry the first trip that changes it gives (no convergence, then canon, then charter drift, then
-    budget), else ``entry``. Only an open ticket is changed."""
+    """The entry the first trip that changes it gives (no convergence, then canon, then charter drift, then the
+    monitor files, then budget), else ``entry``. Only an open ticket is changed."""
     if ticket["state"] != "open":
         return entry
     found = [t for t in trips if "error" not in t]
@@ -319,6 +419,10 @@ def instead(p, trips, ticket, entry) -> dict:
             return new
     for trip in [t for t in found if t["monitor"] == "charter-drift"]:
         new = _charter_drift_instead(trip, ticket, entry)
+        if new != entry:
+            return new
+    for trip in [t for t in found if t["monitor"] not in BUILT_IN]:
+        new = _file_instead(p, trip, ticket, entry)
         if new != entry:
             return new
     for trip in [t for t in found if t["monitor"] == "budget"]:

@@ -5,7 +5,9 @@ the comments and the blinding keys are written inside each world; no fixture is 
 """
 
 import json
+import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import blind, gitstate, ledger  # noqa: E402
+from kit.lib import monitors, tickets  # noqa: E402
 from test_tick import LABEL, Case, World, lines  # noqa: E402,F401
 
 LINE = "NEED - monitor budget: {cap} is passed for {scope}"
@@ -428,6 +431,173 @@ class CharterDrift(Monitors):
         out = self.ticked(w)
         self.assertNotIn("charter-drift", out)
         self.assertEqual(lines(out), CLEAN)
+
+
+PROBE = """from kit.lib import monitors
+
+
+def trips(p, state, rows, now, read):
+    return [{"line": "monitor probe: ep01 is watched", "title": "[MONITOR] probe ep01",
+             "body": "Monitor: probe\\n", "labels": LABELS,
+             "tickets": [{"title": "[RETRO-EP01] retro for ep01", "body": "Unit: ep01\\n", "labels": ["room:story"]}]}]
+
+
+def instead(p, trip, ticket, entry):
+    if ticket["stage"] != "pitch" or entry["step"] != "lock":
+        return entry
+    return {"state": "probe", "step": STEP, "role": None, "pull": None, "reason": "ep01 is watched"}
+"""
+BASE = ["STEP #15 lock PR #16", "WAIT #15 lockable PR #17 is not the ticket's next step"]
+TRIP = "NEED - monitor probe: ep01 is watched"
+FILE = "STEP - monitor probe file [RETRO-EP01] retro for ep01"
+HOLD = "NEED #15 probe ep01 is watched"
+RETRO = "[RETRO-EP01] retro for ep01"
+
+
+def probe(labels=(), step="wake"):
+    return f"LABELS = {list(labels)!r}\nSTEP = {step!r}\n" + PROBE
+
+
+class MonitorFiles(Monitors):
+    """ISSUE-376: monitor files ``monitor_<name>.py`` of ``monitors.MONITORS_DIR``, on the world (15, 16, 17)."""
+
+    def module(self, text, name="monitor_probe.py"):
+        """``text`` as the file ``name`` of a new ``MONITORS_DIR``."""
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder)
+        (folder / name).write_text(text)
+        patch = mock.patch.object(monitors, "MONITORS_DIR", folder)
+        patch.start()
+        self.addCleanup(patch.stop)
+        return folder
+
+    def probe_world(self, selected=True):
+        w = self.world((15, 16, 17))
+        if selected:
+            w.add(15, "2026-11-10T10:00:00Z", "keeper", "[KEEPER] SELECTED #16\n\nThe pier holds.\n")
+        return w
+
+    def issue(self, w, number, title, labels, state="closed"):
+        path = w.github / "issues" / f"{number}.json"
+        path.write_text(json.dumps({"body": "An issue.\n", "created_at": "2026-11-05T09:00:00Z", "labels": labels,
+                                    "number": number, "state": state, "title": title}, indent=1, sort_keys=True)
+                        + "\n")
+
+    def titles(self, w):
+        return [(e["title"], e["labels"]) for e in w.ops("create_issue")]
+
+    def test_the_world_without_a_monitor_file(self):
+        self.module("", name="README.md")
+        self.assertEqual(lines(self.ticked(self.probe_world())), BASE)
+
+    # Behaviour 1
+    def test_a_trip_its_label_its_ticket_and_the_freeze(self):
+        self.module(probe(["factory:freeze"]))
+        w = self.probe_world()
+        self.dry_then_apply(w, [TRIP, FILE, HOLD])
+        self.assertEqual(self.titles(w), [("[MONITOR] probe ep01", [LABEL, "factory:freeze"]),
+                                          (RETRO, ["room:story"])])
+        self.assertEqual(self.created(w)[1], (RETRO, "Unit: ep01\n", ["room:story"]))
+        self.assertEqual(w.tick("--apply"), (0, "FROZEN\n", ""))
+        self.assertEqual(len(w.ops("create_issue")), 2)
+
+    # Behaviour 2
+    def test_each_ticket_is_filed_once(self):
+        self.module(probe())
+        w = self.probe_world()
+        self.assertEqual(lines(self.ticked(w, "--apply")), [TRIP, FILE, HOLD])
+        self.assertEqual(self.titles(w), [("[MONITOR] probe ep01", [LABEL]), (RETRO, ["room:story"])])
+        self.assertEqual(lines(self.ticked(w, "--apply")), [TRIP, HOLD])
+        self.assertEqual(len(w.ops("create_issue")), 2)
+
+    # Behaviour 3
+    def test_a_title_that_is_taken(self):
+        for labels in (["room:story"], ["tracked", "room:story", "stage:final", "unit:ep01"]):
+            with self.subTest(labels=labels):
+                self.module(probe())
+                w = self.probe_world()
+                self.issue(w, 41, RETRO, labels)
+                self.assertEqual(lines(self.ticked(w, "--apply")), [TRIP, HOLD])
+                self.assertEqual(self.titles(w), [("[MONITOR] probe ep01", [LABEL])])
+
+    # Behaviour 4
+    def test_a_tracked_issue_that_does_not_parse_files_nothing(self):
+        self.module(probe())
+        w = self.probe_world()
+        self.issue(w, 41, "[X-1] broken", ["tracked", "room:story", "stage:final"], state="open")
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["NEED - ticket #41: no unit: label", TRIP, HOLD])
+        self.assertEqual(self.titles(w), [("[MONITOR] probe ep01", [LABEL])])
+
+    # Behaviour 5
+    def test_the_hold_prints_once(self):
+        self.module(probe())
+        w = self.probe_world(selected=False)
+        self.assertEqual(lines(self.ticked(w)), [TRIP, FILE, HOLD, "STEP #15 launch keeper on #15"])
+
+    # Behaviour 6
+    def test_the_name_is_the_file_name(self):
+        self.module(probe().replace("probe", "two-words"), name="monitor_two_words.py")
+        self.assertEqual(lines(self.ticked(self.probe_world())), [
+            "NEED - monitor two-words: ep01 is watched", "STEP - monitor two-words file [RETRO-EP01] retro for ep01",
+            "NEED #15 two-words ep01 is watched"])
+
+    def test_other_file_names_are_ignored(self):
+        for name in ("monitor_Probe.py", "probe.py"):
+            with self.subTest(name=name):
+                self.module(probe(), name=name)
+                self.assertEqual(lines(self.ticked(self.probe_world())), BASE)
+
+    # Behaviour 7
+    def failed(self, text, expected, name="monitor_probe.py"):
+        self.module(text, name=name)
+        self.assertEqual(lines(self.ticked(self.probe_world(), code=1)), expected)
+
+    def test_a_module_that_does_not_load_or_has_no_trips(self):
+        for text in ("def trips(:\n", "def trips(p, state, rows, now, read):\n    return []\n"):
+            with self.subTest(text=text):
+                self.failed(text, ["FAIL - monitor probe: does not follow the monitor interface", *BASE])
+
+    def test_trips_that_are_not_trips(self):
+        text = probe().replace("    return [{", "    return [{\"line\": \"x\"}]\n    [{", 1)
+        self.failed(text, ["FAIL - monitor probe: does not follow the monitor interface", *BASE])
+
+    def test_trips_that_raise(self):
+        text = probe().replace("    return [{", "    raise ValueError(\"x\")\n    [{", 1)
+        self.failed(text, ["FAIL - monitor probe: trips raised ValueError", *BASE])
+
+    def test_trips_that_raise_a_monitor_error_pass_it_on(self):
+        text = "import kit.lib.gitstate as g\n" + probe().replace(
+            "    return [{", "    raise g.GitError(\"cat-file\", 128, \"fatal\\n\")\n    [{", 1)
+        self.failed(text, ["FAIL - monitor probe: git cat-file: exit 128", *BASE])
+
+    def test_the_name_of_a_built_in_monitor(self):
+        self.failed(probe(), ["FAIL - monitor charter-drift: monitor_charter_drift.py has the name of a built-in "
+                              "monitor", *BASE], name="monitor_charter_drift.py")
+
+    def test_an_instead_that_does_not_follow_the_interface(self):
+        self.failed(probe(step="lock"),
+                    [TRIP, FILE, "FAIL #15 read: monitor probe: instead does not follow the monitor interface"])
+
+    def test_an_instead_that_raises(self):
+        text = probe().replace("    if ticket[", "    raise KeyError(\"x\")\n    if ticket[", 1)
+        self.failed(text, [TRIP, FILE, "FAIL #15 read: monitor probe: instead raised KeyError"])
+
+    # Behaviour 8
+    def test_no_read_no_monitor_file(self):
+        self.module(probe())
+        w = self.probe_world()
+        p = w.p()
+        state = tickets.load(p, w.gh, p.root)
+        self.assertEqual(monitors.trips(p, state, [], "2026-11-10T12:00:00Z"), [])
+        self.assertEqual(len(monitors.trips(p, state, [], "2026-11-10T12:00:00Z", lambda path: None)), 1)
+
+    def test_an_empty_directory_has_no_monitor_file(self):
+        folder = self.module("", name="README.md")
+        (folder / "README.md").unlink()
+        self.assertEqual(monitors.discover(), [])
+        (folder / "monitor_b.py").write_text("")
+        (folder / "monitor_a_b.py").write_text("")
+        self.assertEqual(monitors.discover(), [("a-b", folder / "monitor_a_b.py"), ("b", folder / "monitor_b.py")])
 
 
 if __name__ == "__main__":
