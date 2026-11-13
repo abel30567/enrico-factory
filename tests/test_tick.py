@@ -39,6 +39,7 @@ sys.path.insert(0, str(ROOT))
 from kit.lib import blind, cmd_run, cmd_tick, gitstate, github, launch, ledger, lint, production  # noqa: E402
 from kit.lib import resources  # noqa: E402
 from kit.lib import cmd_lock  # noqa: E402
+from kit.lib import cmd_launch  # noqa: E402
 from kit.lib import steps  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "tick"
@@ -1282,3 +1283,124 @@ class Jobs(Case):
         self.assertIn("cap: CAP_EPISODE_USD  reason: over cap", w.comments(5)[-1]["body"].splitlines())
         self.assertEqual(self.rows(w), [("job", self.digest, "STOP")])
         self.assertFalse(self.fake_log.exists())
+
+
+class Workers(Case):
+    """ISSUE-252: with ``MAX_WORKERS`` the tick takes a launch step only while fewer workers run."""
+
+    CAPPED = ["STEP #18 launch painter on #18", "STEP #19 launch painter on #19",
+              "WAIT #20 ready 2 running, MAX_WORKERS is 2", "WAIT #21 ready 2 running, MAX_WORKERS is 2"]
+    ERROR = "tick: setting MAX_WORKERS is not a whole number >= 1\n"
+
+    def world(self, value="2"):
+        """#18 and the frames tickets #19, #20 and #21, every launch left unanswered; ``value`` None: no line."""
+        w = World(self.addCleanup, (18,))
+        for patch in (mock.patch.dict(os.environ, {"FACTORY_LAUNCH_WAIT": ""}),
+                      mock.patch.object(cmd_launch, "_detach")):
+            patch.start()
+            self.addCleanup(patch.stop)
+        for k in (7, 8, 9):
+            w.gh.create_issue(f"[FR-{k}] Frames for ep0{k}", "Frames.\n",
+                              ["tracked", "room:production", "stage:frames", f"unit:ep0{k}"])
+        if value is not None:
+            with open(w.root / "production.local.env", "a") as handle:
+                handle.write(f"MAX_WORKERS={value}\n")
+        return w
+
+    def launches(self, w, n):
+        return [c["body"].split("\n")[0] for c in w.comments(n) if " LAUNCH " in c["body"].split("\n")[0]]
+
+    def capped(self):
+        """Behaviour 1's world after its ``--apply``."""
+        w = self.world()
+        before = w.snapshot()
+        out = self.ticked(w)
+        self.assertEqual(lines(out), self.CAPPED)
+        self.assertTrue(out.endswith("tick: 2 steps, 0 need, 2 wait, 0 failed\n"), out)
+        self.assertEqual(w.snapshot(), before)
+        out = self.ticked(w, "--apply")
+        self.assertEqual(lines(out), self.CAPPED)
+        self.assertTrue(out.endswith("tick: 2 steps, 0 need, 2 wait, 0 failed\n"), out)
+        return w
+
+    def test_the_cap(self):
+        """Behaviour 1."""
+        w = self.capped()
+        self.assertEqual([self.launches(w, n) for n in (18, 19, 20, 21)],
+                         [["[FOREMAN] LAUNCH painter 18-1"], ["[FOREMAN] LAUNCH painter 19-1"], [], []])
+
+    def test_the_next_tick_launches_none(self):
+        """Behaviour 2."""
+        w = self.capped()
+        posts = len(w.ops("post"))
+        out = self.ticked(w, "--apply")
+        self.assertEqual(lines(out), ["WAIT #18 running painter launched at 2026-11-11T12:00:00Z",
+                                      "WAIT #19 running painter launched at 2026-11-11T12:00:00Z",
+                                      *self.CAPPED[2:]])
+        self.assertTrue(out.endswith("tick: 0 steps, 0 need, 4 wait, 0 failed\n"), out)
+        self.assertEqual(len(w.ops("post")), posts)
+
+    def test_an_answer_frees_a_place(self):
+        """Behaviour 3."""
+        w = self.capped()
+        w.add(18, "2026-11-11T12:05:00Z", "painter", "[PAINTER] BLOCKED\n")
+        out = self.ticked(w, "--apply")
+        self.assertEqual(lines(out), ["NEED #18 blocked the maker is BLOCKED on #18",
+                                      "WAIT #19 running painter launched at 2026-11-11T12:00:00Z",
+                                      "STEP #20 launch painter on #20",
+                                      "WAIT #21 ready 2 running, MAX_WORKERS is 2"])
+        self.assertTrue(out.endswith("tick: 1 steps, 1 need, 2 wait, 0 failed\n"), out)
+        self.assertEqual(self.launches(w, 20), ["[FOREMAN] LAUNCH painter 20-1"])
+
+    def test_no_cap(self):
+        """Behaviour 4, the clean twin: no line, and an empty value."""
+        for value in (None, ""):
+            with self.subTest(value=value):
+                w = self.world(value)
+                with mock.patch.object(steps, "running", create=True) as counted:
+                    out = self.ticked(w, "--apply")
+                self.assertEqual(counted.call_count, 0)
+                self.assertEqual(lines(out), [f"STEP #{n} launch painter on #{n}" for n in (18, 19, 20, 21)])
+                self.assertTrue(out.endswith("tick: 4 steps, 0 need, 0 wait, 0 failed\n"), out)
+
+    def test_a_bad_value(self):
+        """Behaviour 5."""
+        for value in ("0", "two", "1.5", "-1"):
+            for args in ((), ("--apply",)):
+                with self.subTest(value=value, args=args):
+                    w = self.world(value)
+                    log = w.github / "log.jsonl"
+                    before = log.read_bytes() if log.is_file() else None
+                    self.assertEqual(w.tick(*args), (2, "", self.ERROR))
+                    self.assertEqual(log.read_bytes() if log.is_file() else None, before)
+
+    def test_every_room_counts(self):
+        """Behaviour 6: a launch in the story room fills the one place of a tick of the production room."""
+        w = self.world("1")
+        number = w.gh.create_issue("[DR-9] Draft for ep09", "Draft.\n",
+                                   ["tracked", "room:story", "stage:draft", "unit:ep09"])
+        self.assertEqual(number, 22)
+        w.add(22, NOW, "keeper", "[KEEPER] LAUNCH writer 22-1\n")
+        out = self.ticked(w, "--room", "production")
+        self.assertEqual(lines(out), [f"WAIT #{n} ready 1 running, MAX_WORKERS is 1" for n in (18, 19, 20, 21)])
+
+    def running(self, w, n):
+        p = w.p()
+        state = cmd_tick.tickets.load(p, w.gh, w.root)
+        return steps.running(p, state, state.tickets[n]), state
+
+    def test_running_counts_every_pending_launch(self):
+        """Behaviour 7."""
+        w = World(self.addCleanup, (18,))
+        for k in (1, 2):
+            w.add(18, NOW, "foreman", f"[FOREMAN] LAUNCH painter 18-{k}\n")
+        count, state = self.running(w, 18)
+        found = steps.all_steps(w.p(), state, state.tickets[18], w.root, NOW)
+        self.assertEqual((count, [e["state"] for e in found]), (2, ["running"]))
+        w.add(18, later(5), "painter", "[PAINTER] BLOCKED\n")
+        self.assertEqual(self.running(w, 18)[0], 1)
+        w = World(self.addCleanup, (19, 20))
+        w.add(20, later(1), "foreman", "[FOREMAN] LAUNCH inspector 20-1\n")
+        self.assertEqual(self.running(w, 19)[0], 1)
+        w.add(20, later(5), "inspector", "[INSPECTOR] APPROVED\n")
+        self.assertEqual(self.running(w, 19)[0], 0)
