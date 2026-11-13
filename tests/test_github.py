@@ -1020,6 +1020,28 @@ class SameRefusalsOnBothFormsTest(TmpCase):
     def test_an_issue_with_no_comment(self):
         self.assertEqual(self.both(lambda g: g.comments(2), ok("[[]]")), [])
 
+    def test_post_a_body_too_long(self):
+        """ISSUE-243 behaviour 1: the sent body would be 65537 characters."""
+        self.assert_refused(lambda g: g.post(3, "a" * 65508, "writer"),
+                            "post #3: the body is longer than 65536 characters")
+        self.assertEqual(self.fake.calls, [])
+        self.assertEqual(log_lines(self.d), [])
+
+    def test_post_a_body_too_long_to_an_unknown_number(self):
+        self.assert_refused(lambda g: g.post(99, "a" * 65508, "writer"),
+                            "post #99: the body is longer than 65536 characters")
+        self.assertEqual(self.fake.calls, [])
+
+    def test_post_a_body_that_fits_twin(self):
+        for body in ("a" * 65507, "a" * 65507 + "\n"):
+            with self.subTest(n=len(body)):
+                sent = "a" * 65507 + "\n<!-- factory:role writer -->"
+                answer = ok(json.dumps({"id": 7, "created_at": NOW, "body": sent, "user": {"login": "someone"}}))
+                got = self.both(lambda g: (lambda c: (c["role"], c["body"]))(g.post(3, body, "writer")), answer)
+                self.assertEqual(got, ("writer", "a" * 65507 + "\n"))
+                self.assertEqual(len(self.fake.stdin()["body"]), 65536)
+                self.assertEqual([line["op"] for line in log_lines(self.d)], ["post"])
+
     def test_create_issue_sends_each_label_once(self):
         self.assertEqual(self.both(lambda g: g.create_issue("t", "", ["hold", "hold"]), ok('{"number": 4}')), 4)
         self.assertEqual(self.fake.stdin()["labels"], ["hold"])
@@ -1114,6 +1136,17 @@ class NoGhStartedTest(unittest.TestCase):
         self.assertEqual(_gh_calls.pop(), ["gh", "api", "--paginate", "--slurp",
                                            f"repos/{REPO}/issues?state=open&per_page=100"])
         self.assertEqual(_gh_calls, [])
+
+
+class BodyFitsTest(unittest.TestCase):
+    """ISSUE-243 behaviour 2: the role line counts toward the limit."""
+
+    def test_the_role_line_counts(self):
+        self.assertTrue(github.fits("a" * 65507, "writer"))
+        self.assertFalse(github.fits("a" * 65507, "program:lint"))
+
+    def test_an_empty_body_fits(self):
+        self.assertTrue(github.fits("", "writer"))
 
 
 if __name__ == "__main__":

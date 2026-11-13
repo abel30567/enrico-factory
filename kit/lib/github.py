@@ -51,6 +51,7 @@ GIT_IDENTITY = ("-c", "user.name=factory", "-c", "user.email=factory@factory.inv
 REPO_NAME = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 FACTORY_LOGIN = "factory"
 LABEL_MAX = 50
+BODY_MAX = 65536
 HTTP_STATUS = re.compile(r"\(HTTP (\d{3})\)$")
 NOT_RESOLVED = "GraphQL: Could not resolve to "
 TLS_TIMEOUT = "TLS handshake timeout"
@@ -103,6 +104,21 @@ def _now() -> str:
 
 def _ended(body: str) -> str:
     return body if body.endswith("\n") else body + "\n"
+
+
+def _sent(body: str, role: str) -> str:
+    """The comment body ``Gh.post`` sends: the body, ended, and the role line."""
+    return _ended(body) + f"<!-- factory:role {role} -->"
+
+
+def fits(body: str, role: str) -> bool:
+    """Whether the body posted as ``role`` is at most ``BODY_MAX`` characters once sent."""
+    return len(_sent(body, role)) <= BODY_MAX
+
+
+def _check_body(number, body, role) -> None:
+    if not fits(body, role):
+        raise GitHubError(f"post #{number}: the body is longer than {BODY_MAX} characters")
 
 
 def _check_role(number, role) -> None:
@@ -204,6 +220,7 @@ class Recorded:
 
     def post(self, number: int, body: str, role: str) -> dict:
         _check_role(number, role)
+        _check_body(number, body, role)
         self._issue_or_pull("post", number)
         comment = {"id": self._next_comment_id(), "created_at": _now(), "author": FACTORY_LOGIN, "role": role,
                    "body": _ended(body)}
@@ -429,8 +446,8 @@ class Gh:
 
     def post(self, number: int, body: str, role: str) -> dict:
         _check_role(number, role)
-        sent = _ended(body) + f"<!-- factory:role {role} -->"
-        comment = _comment(self._api("post", number, "POST", f"issues/{number}/comments", {"body": sent}))
+        _check_body(number, body, role)
+        comment = _comment(self._api("post", number, "POST", f"issues/{number}/comments", {"body": _sent(body, role)}))
         if comment["author"].lower() not in self.logins:
             raise GitHubError(f"post #{number}: posted as a login that setting GITHUB_LOGINS does not name")
         return comment

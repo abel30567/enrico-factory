@@ -19,7 +19,7 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple
 
-from kit.lib import down, gateway, gitstate, harness, jobs, markers, production, prompt, steps, tickets
+from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, steps, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -186,6 +186,36 @@ def _default_task(p, state, kind, ticket, pull, judged):
 def _fence(text):
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
     return "`" * max(4, longest + 1)
+
+
+def _record(text, name, orchestrator, top, rest):
+    """The LAUNCH record: the lines ``top`` and ``rest``, then the prompt ``text`` fenced. When that does not
+    fit in one comment, a ``prompt cut:`` line follows ``top`` and the fence holds the most whole lines of
+    the prompt that fit; a line is a run of characters ending with a newline."""
+    fence = _fence(text)
+
+    def built(head, shown):
+        return "\n".join(head + rest + ["", fence]) + "\n" + shown + fence + "\n"
+
+    record = built(top, text)
+    if github.fits(record, orchestrator):
+        return record
+    lines = text.split("\n")[:-1]
+    n = len(lines)
+
+    def cut(k):
+        line = (f"prompt cut: the first {k} of {n} lines are shown; "
+                f"the whole prompt is runs/{name}/prompt.md under STATE_DIR")
+        return built(top + [line], "".join(x + "\n" for x in lines[:k]))
+
+    low, high = 0, n
+    while low < high:
+        k = (low + high + 1) // 2
+        if github.fits(cut(k), orchestrator):
+            low = k
+        else:
+            high = k - 1
+    return cut(low)
 
 
 def _checked_out(root, branch):
@@ -390,18 +420,16 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         raise LaunchError(str(error)) from None
     base_sha = gitstate.head(root, base)
     orchestrator = production.orchestrator(p, ticket["room"])
-    fence = _fence(text)
-    record = "\n".join([
+    record = _record(text, name, orchestrator, [
         f"[{p.actors[orchestrator]}] LAUNCH {role} {run_id}",
         f"prompt sha256: {digest}",
+    ], [
         f"model: {model}",
         f"family: {family}",
         f"harness: {version}",
         f"base: {base_sha}",
         f"head: {head or 'none'}",
-        "",
-        fence,
-    ]) + "\n" + text + fence + "\n"
+    ])
 
     # A relaunched maker's earlier worktree holds its branch; only one under the run worktrees may go.
     stale = []
