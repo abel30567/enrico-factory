@@ -37,7 +37,7 @@ STALL_MIN = 30
 HARNESS = re.compile(r"^(\.agents/|scripts/|\.github/)")
 NOW = dt.datetime.now(dt.timezone.utc)
 MAX_LOAD = float(os.environ.get("TICK_MAX_LOAD", 9))
-MIN_FREE_GB = float(os.environ.get("TICK_MIN_FREE_GB", 3))
+MIN_FREE_PCT = float(os.environ.get("TICK_MIN_FREE_PCT", 20))
 MAX_AGENTS = int(os.environ.get("TICK_MAX_AGENTS", 6))
 LIMIT_WINDOW_S = 3600        # hold after a rejection that names no reset time
 LIMIT_MAX_HOLD_S = 8 * 86400 # never hold longer than this, whatever the reset time says
@@ -103,10 +103,11 @@ def issue_of(pr_body, key):
 
 
 # --- resource guards ---------------------------------------------------------------------------------------
-def free_gb():
-    out, rc = sh("vm_stat")
-    page, pages = re.search(r"page size of (\d+)", out), re.findall(r"Pages (?:free|inactive):\s+(\d+)", out)
-    return int(page.group(1)) * sum(map(int, pages)) / 2**30 if rc == 0 and page and len(pages) == 2 else None
+def free_pct():
+    """What the kernel counts as available memory. Free plus inactive pages stay low on an idle Mac (#286)."""
+    out, rc = sh("/usr/bin/memory_pressure")
+    m = re.search(r"System-wide memory free percentage:\s*(\d+)%", out)
+    return int(m.group(1)) if rc == 0 and m else None
 
 
 def workers_alive():
@@ -187,9 +188,9 @@ def static_guards():
     load = os.getloadavg()[0]
     if load >= MAX_LOAD:
         why.append(f"load {load:.1f} >= {MAX_LOAD:g}")
-    free = free_gb()
-    if free is not None and free < MIN_FREE_GB:
-        why.append(f"{free:.1f} GB free+inactive < {MIN_FREE_GB:g} GB")
+    free = free_pct()
+    if free is not None and free < MIN_FREE_PCT:
+        why.append(f"memory {free}% free < {MIN_FREE_PCT:g}%")
     hit = limit_hit()
     if hit:
         why.append(f"usage-limit rejection in {hit[0]} (held until {hit[1]:%Y-%m-%d %H:%M}Z)")
