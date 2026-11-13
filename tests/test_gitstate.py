@@ -107,7 +107,7 @@ class GitTest(RepoTest):
             gitstate.git(self.tmp / "not-a-repo", "status")
 
     def test_env_is_added(self):
-        out = gitstate.git(self.root, "var", "GIT_AUTHOR_IDENT", env={"GIT_AUTHOR_NAME": "someone"})
+        out = gitstate.git(self.root, "var", "GIT_AUTHOR_IDENT", env={"GIT_AUTHOR_NAME": "someone", "GIT_AUTHOR_EMAIL": "someone@example.invalid"})
         self.assertTrue(out.startswith("someone "))
 
     def test_no_shell_and_stdin_closed(self):
