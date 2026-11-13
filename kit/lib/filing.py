@@ -19,15 +19,27 @@ is filed.
 when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
 when a ``distribution/window`` ticket locks, labelled ``room:story``. Each is filed once: an issue with its
 title, open or closed, in ``State.others`` is never filed again.
+
+A locked ``story/reel`` ticket is the locked story package of its episode (brief section 6, ``intake``): when the
+pipeline has ``production/intake``, the production stages after ``intake`` are filed from it. A ``shot`` stage is
+filed once per shot of ``episodes/<ep>/reel/edit-list.json`` on the base, as unit ``<ep>/<shot>``; an ``asset``
+stage once per character and set those shots' files ``episodes/<ep>/sequences/<Q>/shots/<shot>.json`` name on the
+base, as unit ``<id>``. No ``intake`` ticket is filed and no file is written.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 from kit.lib import gitstate, production, tickets
 
 _KEY = re.compile(r"[^A-Za-z0-9]+")
+
+PACKAGE = ("story", "reel")
+INTAKE = ("production", "intake")
+EDIT_LIST = "episodes/{}/reel/edit-list.json"
+ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 
 PACKETS = {("story", "reel"): "intent-packet", ("distribution", "window"): "platform-notes"}
 
@@ -87,6 +99,64 @@ def _filing(ticket: dict, pull: dict, upstreams: list, room: str, stage: str, un
     return {"from": ticket["number"], "pull": pull["number"], "room": room, "stage": stage, "unit": unit,
             "title": f"[{key(stage, unit)}] {stage} for {unit}", "body": body,
             "labels": [tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]}
+
+
+def _read(p, root, path):
+    """The JSON value of ``path`` on the base, or None when it is missing or not JSON."""
+    text = gitstate.show(root, production.base(p), path)
+    try:
+        return json.loads(text) if text is not None else None
+    except ValueError:
+        return None
+
+
+def _shots(p, root, episode: str) -> list:
+    """The shot ids of the events of the episode's edit list on the base, in event order, each once."""
+    data = _read(p, root, EDIT_LIST.format(episode))
+    if not isinstance(data, dict) or not isinstance(data.get("events"), list):
+        return []
+    found = []
+    for event in data["events"]:
+        shot = event.get("shot") if isinstance(event, dict) else None
+        if isinstance(shot, str) and ID.fullmatch(shot) and shot not in found:
+            found.append(shot)
+    return found
+
+
+def _assets(p, root, episode: str, shots: list) -> list:
+    """The ids of the characters and sets the files of ``shots`` name on the base, sorted, each once."""
+    prefix = f"episodes/{episode}/sequences/"
+    sha = gitstate.head(root, production.base(p))
+    out = gitstate.git(root, "--literal-pathspecs", "ls-tree", "-r", "-z", "--name-only", sha, "--", prefix)
+    paths = {}
+    for path in sorted(out.split("\0")):
+        parts = path[len(prefix):].split("/") if path.startswith(prefix) else []
+        if len(parts) == 3 and parts[0] and parts[1] == "shots" and parts[2].endswith(".json"):
+            paths.setdefault(parts[2][:-len(".json")], path)
+    found = set()
+    for shot in shots:
+        data = _read(p, root, paths[shot]) if shot in paths else None
+        if not isinstance(data, dict):
+            continue
+        names = data.get("characters") if isinstance(data.get("characters"), list) else []
+        found.update(name for name in [*names, data.get("set")] if isinstance(name, str) and ID.fullmatch(name))
+    return sorted(found)
+
+
+def _intake(p, root, ticket: dict, pull: dict, taken: set, order: dict) -> list:
+    """The production tickets after ``intake`` to file from the locked story package ``ticket``, sorted."""
+    if production.stage(p, *INTAKE) is None:
+        return []
+    room, episode = INTAKE[0], tickets.episode(ticket["unit"])
+    shots = _shots(p, root, episode)
+    units = {"shot": [f"{episode}/{shot}" for shot in shots], "asset": _assets(p, root, episode, shots)}
+    candidates = []
+    for entry in _next(p, *INTAKE, []):
+        for unit in units.get(entry["unit"], []):
+            if (room, entry["stage"], unit) not in taken:
+                taken.add((room, entry["stage"], unit))
+                candidates.append(_filing(ticket, pull, [(ticket, pull)], room, entry["stage"], unit))
+    return sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
 
 
 def _intent_title(ticket: dict) -> str:
@@ -156,6 +226,8 @@ def due(p, state: tickets.State, root) -> list:
         if pull is None:
             continue
         room, stage = ticket["room"], ticket["stage"]
+        if (room, stage) == PACKAGE:
+            found += _intake(p, root, ticket, pull, taken, order)
         if not any(entry["after"] == stage for entry in production.stages(p, room)):
             continue
         upstream_unit = production.stage(p, room, stage)["unit"]

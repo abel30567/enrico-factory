@@ -1,0 +1,12 @@
+{
+ "id": "Q1-2",
+ "scene": "S1",
+ "beat": "B2",
+ "duration": 3,
+ "characters": [
+  "ama"
+ ],
+ "set": "harbour",
+ "camera": "medium",
+ "action": "She looks out."
+}

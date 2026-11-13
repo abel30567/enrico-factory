@@ -1,0 +1,12 @@
+{
+ "id": "Q2-2",
+ "scene": "S2",
+ "beat": "B3",
+ "duration": 2,
+ "characters": [
+  "mira"
+ ],
+ "set": "tide-flats",
+ "camera": "wide",
+ "action": "She waits."
+}
