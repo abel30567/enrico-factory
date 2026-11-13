@@ -289,13 +289,22 @@ def _run(p, gh, state, rows, target, apply, number=None):
 
 def main(argv):
     parser = argparse.ArgumentParser(prog="factory run", description=__doc__.split(": ", 1)[1].split("\n")[0])
-    parser.add_argument("job", help="the job file the gate passed")
+    parser.add_argument("job", nargs="?", help="the job file the gate passed")
     parser.add_argument("--pull", type=int, help="read the job file and its inputs at the head of this pull")
+    parser.add_argument("--read", nargs=2, metavar=("TOPIC", "PLATFORM"),
+                        help="instead of a job, read the videos of a topic on a platform (kit/lib/reads.py)")
     parser.add_argument("--root", default=".", help="a directory inside the production (default: .)")
     parser.add_argument("--apply", action="store_true", help="make the call and record it")
     args = parser.parse_args(argv)
     try:
+        if args.read is None and args.job is None:
+            raise Refused("give a job file or --read <topic> <platform>")
+        if args.read is not None and (args.job is not None or args.pull is not None):
+            raise Refused("--read takes no job file and no --pull")
         p = production.load(production.find_root(args.root))
+        if args.read is not None:
+            from kit.lib import reads
+            return reads.main(p, *args.read, args.apply)
         gh = github.connect(p.settings)
         if args.apply:
             gh.sync_base(p.root, production.base(p))

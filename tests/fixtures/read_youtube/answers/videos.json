@@ -1,0 +1,223 @@
+{
+ "reference": "https://developers.google.com/youtube/v3/docs/videos/list",
+ "read_on": "2026-11-13",
+ "answers": [
+  {
+   "query": {
+    "id": "yt-a,yt-b,yt-c",
+    "maxResults": "50",
+    "part": "contentDetails,snippet,statistics"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#videoListResponse",
+    "etag": "etag-video",
+    "pageInfo": {
+     "totalResults": 2,
+     "resultsPerPage": 2
+    },
+    "items": [
+     {
+      "kind": "youtube#video",
+      "etag": "etag-yt-a",
+      "id": "yt-a",
+      "snippet": {
+       "publishedAt": "2026-11-10T08:00:00Z",
+       "channelId": "ch-1",
+       "title": "Skarrowfen Wickabel",
+       "description": "",
+       "channelTitle": "Skarrowfen",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-10T08:00:00Z"
+      },
+      "contentDetails": {
+       "duration": "PT45S",
+       "dimension": "2d",
+       "definition": "hd",
+       "caption": "false",
+       "licensedContent": false,
+       "projection": "rectangular"
+      },
+      "statistics": {
+       "viewCount": "5400",
+       "likeCount": "320",
+       "favoriteCount": "0",
+       "commentCount": "41"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-yt-b",
+      "id": "yt-b",
+      "snippet": {
+       "publishedAt": "2026-11-11T09:00:00.5Z",
+       "channelId": "ch-2",
+       "title": "Wickabel Skarrowfen",
+       "description": "",
+       "channelTitle": "Wickabel",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-11T09:00:00.5Z"
+      },
+      "contentDetails": {
+       "duration": "PT4M10S",
+       "dimension": "2d",
+       "definition": "hd",
+       "caption": "false",
+       "licensedContent": false,
+       "projection": "rectangular"
+      },
+      "statistics": {
+       "viewCount": "880",
+       "favoriteCount": "0",
+       "commentCount": "0"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "query": {
+    "id": "yt-a,yt-b,yt-d01,yt-d02,yt-d03,yt-d04,yt-d05,yt-d06,yt-d07,yt-d08,yt-d09,yt-d10,yt-d11,yt-q",
+    "maxResults": "50",
+    "part": "statistics"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#videoListResponse",
+    "etag": "etag-video",
+    "pageInfo": {
+     "totalResults": 14,
+     "resultsPerPage": 14
+    },
+    "items": [
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-a",
+      "id": "yt-a",
+      "statistics": {
+       "viewCount": "5400",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-b",
+      "id": "yt-b",
+      "statistics": {
+       "viewCount": "880",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d01",
+      "id": "yt-d01",
+      "statistics": {
+       "viewCount": "1100",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d02",
+      "id": "yt-d02",
+      "statistics": {
+       "viewCount": "1200",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d03",
+      "id": "yt-d03",
+      "statistics": {
+       "viewCount": "1300",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d04",
+      "id": "yt-d04",
+      "statistics": {
+       "viewCount": "1400",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d05",
+      "id": "yt-d05",
+      "statistics": {
+       "viewCount": "1500",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d06",
+      "id": "yt-d06",
+      "statistics": {
+       "viewCount": "1600",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d07",
+      "id": "yt-d07",
+      "statistics": {
+       "viewCount": "1700",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d08",
+      "id": "yt-d08",
+      "statistics": {
+       "viewCount": "1800",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d09",
+      "id": "yt-d09",
+      "statistics": {
+       "viewCount": "1900",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d10",
+      "id": "yt-d10",
+      "statistics": {
+       "viewCount": "2000",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-d11",
+      "id": "yt-d11",
+      "statistics": {
+       "viewCount": "2100",
+       "favoriteCount": "0"
+      }
+     },
+     {
+      "kind": "youtube#video",
+      "etag": "etag-v-yt-q",
+      "id": "yt-q",
+      "statistics": {
+       "viewCount": "0",
+       "favoriteCount": "0"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}
