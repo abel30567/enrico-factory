@@ -1267,16 +1267,20 @@ class RecordAtTheLimit(unittest.TestCase):
         run = w.prepare("drafter", 5, task_file=task)
         return w.gh.comments(5)[-1]["body"], (run.dir / "prompt.md").read_text()
 
-    def test_the_boundary(self):
+    def extra(self):
+        """The task padding for which the whole record is exactly the longest that fits."""
         small, _ = self.record(0)
-        extra = budget("showlead") - len(small)
-        body, text = self.record(extra)
+        return budget("showlead") - len(small)
+
+    def test_at_the_limit_whole_twin(self):
+        body, text = self.record(self.extra())
         self.assertTrue(github.fits(body, "showlead"))
         self.assertFalse(github.fits(body + "a", "showlead"))
         self.assertFalse(any(line.startswith("prompt cut:") for line in body.split("\n")))
         self.assertEqual(fenced(body)[0], text)
 
-        body, text = self.record(extra + 1)
+    def test_one_character_more_is_cut(self):
+        body, text = self.record(self.extra() + 1)
         lines = body.split("\n")
         self.assertIsNotNone(CUT.match(lines[2]), lines[2])
         self.assertTrue(github.fits(body, "showlead"))
