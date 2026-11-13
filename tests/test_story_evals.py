@@ -26,12 +26,16 @@ FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
 FACTORY = ROOT / "kit" / "factory"
 PIPELINE = json.loads((KIT / "pipeline.json").read_text(encoding="utf-8"))
 
-CHECKERS = ("fact-checker", "canon-reviewer", "story-editor", "continuity-supervisor", "look-reviewer")
-MAKERS = ("story-writer", "script-writer", "head-of-story", "story-artist", "editorial")
-JUDGES = ("pitch-judge",)
-NO_SUITE = ("showrunner", "devils-advocate", "retro-agent", "researcher", "canon-keeper", "art-director",
-            "media-wrangler", "trend-scout", "audience-analyst", "render-reviewer", "braintrust",
-            "audience-sim", "distinctiveness-judge", "held-out-judge")
+SUITES = tuple(sorted(p.name for p in (KIT / "evals").iterdir() if p.is_dir()))
+KIND = {role: evals.role_file(KIT, role)[0]["kind"] for role in SUITES}
+CHECKERS = tuple(role for role in SUITES if KIND[role] == "checker")
+MAKERS = tuple(role for role in SUITES if KIND[role] == "maker")
+JUDGES = tuple(role for role in SUITES if KIND[role] == "judge")
+NOTE = ".no-suite.md"
+NO_SUITE = tuple(sorted(p.name[:-len(NOTE)] for p in (KIT / "evals").glob("*" + NOTE)))
+NOTE_TEXT = re.compile(r"# `(?P<role>[a-z0-9-]+)`: no suite yet\n\nWhy not yet: .+\nWave: (?P<wave>[0-9]+|never)\n")
+MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "pair": 4}
+NEVER = "held-out-judge"
 CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
 SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
@@ -40,6 +44,10 @@ READ_FIRST = re.compile(r"(?ms)^## Read first\n(.*?)(?=^## |\Z)")
 INSTALLED = ("bible/", "media/", "registry/", ".factory/")
 # Not decided by ISSUE-247: no program reads or writes registry/posts.tsv and nothing defines its columns.
 NOT_PROVIDED = {("canon-reviewer", "registry/posts.tsv")}
+
+
+def declared(role):
+    return json.loads((KIT / "evals" / role / "suite.json").read_text(encoding="utf-8"))["cases"]
 
 
 def cases(role):
@@ -238,7 +246,7 @@ class CompletenessTest(unittest.TestCase):
             for case in cases(role):
                 count += 1
                 self.assertEqual(completeness(KIT, case, self.dir / f"{role}-{case.id}" / "run"), [])
-        self.assertEqual(count, 68)
+        self.assertEqual(count, sum(declared(role) for role in SUITES))
         self.assertEqual(read_first(KIT, "look-reviewer"),
                          ["bible/canon/ledger.tsv", "bible/charter.md", "media/manifest.tsv"])
 
@@ -276,15 +284,18 @@ class CompletenessTest(unittest.TestCase):
 
 class SuitesTest(unittest.TestCase):
     def test_every_suite_loads_with_its_counts(self):
-        for role in CHECKERS:
-            kinds = [c.kind for c in cases(role)]
-            self.assertGreaterEqual(kinds.count("seeded"), 6, role)
-            self.assertGreaterEqual(kinds.count("clean"), 3, role)
-        for role in MAKERS:
-            self.assertGreaterEqual(len(cases(role)), 3, role)
-        pairs = cases("pitch-judge")
-        self.assertGreaterEqual(len(pairs), 4)
-        self.assertEqual(sum(c.spec["better"] == "old" for c in pairs), 2)
+        for group in (CHECKERS, MAKERS, JUDGES):
+            self.assertTrue(group)
+        for role in SUITES:
+            suite = cases(role)
+            self.assertEqual(len(suite), declared(role), role)
+            self.assertEqual(len(suite), sum(p.is_dir() for p in (KIT / "evals" / role).iterdir()), role)
+            kinds = [c.kind for c in suite]
+            for kind in evals.CASE_KINDS[KIND[role]]:
+                self.assertGreaterEqual(kinds.count(kind), MINIMUM[kind], f"{role}: {kind}")
+            if KIND[role] == "judge":
+                old = sum(c.spec["better"] == "old" for c in suite)
+                self.assertLessEqual(abs(old - (len(suite) - old)), 1, role)
 
     def test_case_ids(self):
         for role in CHECKERS + MAKERS + JUDGES:
@@ -300,14 +311,17 @@ class SuitesTest(unittest.TestCase):
             self.assertNotIn(kinds, ("s" * kinds.count("s") + "c" * kinds.count("c"),
                                      "c" * kinds.count("c") + "s" * kinds.count("s")), role)
 
-    def test_suites_and_readme_cover_every_role(self):
-        suites = sorted(p.name for p in (KIT / "evals").iterdir() if p.is_dir())
-        self.assertEqual(suites, sorted(CHECKERS + MAKERS + JUDGES))
-        self.assertEqual(sorted(p.stem for p in (KIT / "roles").glob("*.md")), sorted(suites + list(NO_SUITE)))
-        readme = (KIT / "evals" / "README.md").read_text(encoding="utf-8")
+    def test_suites_and_notes_cover_every_role(self):
+        self.assertEqual(sorted(p.stem for p in (KIT / "roles").glob("*.md")), sorted(SUITES + NO_SUITE))
+        self.assertEqual(set(SUITES) & set(NO_SUITE), set())
         for role in NO_SUITE:
-            self.assertIn(f"`{role}`", readme)
-        for rule in ("The lab owns the suites", "<nn>-<slug>"):
+            note = NOTE_TEXT.fullmatch((KIT / "evals" / (role + NOTE)).read_text(encoding="utf-8"))
+            self.assertIsNotNone(note, role)
+            self.assertEqual(note["role"], role)
+            self.assertEqual(note["wave"] == "never", role == NEVER, role)
+        self.assertIn(NEVER, NO_SUITE)
+        readme = (KIT / "evals" / "README.md").read_text(encoding="utf-8")
+        for rule in ("The lab owns the suites", "<nn>-<slug>", "suite.json", "evals/<role>.no-suite.md"):
             self.assertIn(rule, readme)
 
     def test_tasks_do_not_tell(self):
@@ -455,9 +469,13 @@ class MakerTest(unittest.TestCase):
 
 class JudgeTest(unittest.TestCase):
     def test_pair_cases(self):
-        ids = next(e["lint"] for e in PIPELINE if "pitch-judge" in production.stage_roles(e, "judge"))
-        for case in cases("pitch-judge"):
-            where = case.id
+        for role in JUDGES:
+            self.check_pairs(role)
+
+    def check_pairs(self, role):
+        ids = next(e["lint"] for e in PIPELINE if role in production.stage_roles(e, "judge"))
+        for case in cases(role):
+            where = f"{role}/{case.id}"
             self.assertNotEqual(tree_hash(case.path / "old"), tree_hash(case.path / "new"), where)
             for name in ("old", "new"):
                 results = lint.run(case.path / name, only=ids)

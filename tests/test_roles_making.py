@@ -302,13 +302,22 @@ class ShippedFilesTest(unittest.TestCase):
         makers = {m for e in STORY for m in names(e["maker"])}
         self.assertEqual(makers | set(UNNAMED), {r for r, v in ROLES.items() if v[0] in BRANCHED})
 
-    def test_factory_lists_25_story_and_studio_roles(self):
+    def test_factory_lists_every_role_file_by_room(self):
         result = subprocess.run([sys.executable, str(FACTORY), "roles"], capture_output=True,
                                 text=True, cwd=ROOT)
         self.assertEqual(result.returncode, 0)
         lines = result.stdout.splitlines()
-        self.assertEqual([l for l in lines if not l.startswith("  ")], ["story:", "studio:"])
-        self.assertEqual(len([l for l in lines if l.startswith("  ")]), 25)
+        by_room = {}
+        for path in sorted((KIT / "roles").glob("*.md")):
+            meta, _ = frontmatter.parse(path.read_text(encoding="utf-8"))
+            by_room.setdefault(meta["room"], []).append((path.stem, meta["kind"]))
+        self.assertLessEqual(set(by_room), set(roles.ROOMS))
+        self.assertLessEqual({"story", "studio"}, set(by_room))
+        expected = []
+        for room in sorted(by_room):
+            expected.append(f"{room}:")
+            expected += [f"  {role_id} ({kind})" for role_id, kind in sorted(by_room[room])]
+        self.assertEqual(lines, expected)
         self.assertIn("  media-wrangler (operator)", lines)
 
     def test_no_model_flag_or_path_in_any_role_file(self):
