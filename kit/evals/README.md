@@ -3,6 +3,9 @@
 Each directory `evals/<role>/` is the eval suite of one role (brief section 13): cases with an outcome a
 program can grade. `factory eval <role>` runs a suite; `lib/evals.py` loads and grades it.
 
+`evals/golden/` is not a role's suite. It holds the golden test levels and, in `evals/golden/corpus/`, the
+seeded-defect corpus of the checks, which `factory corpus` runs. `factory init` does not install it.
+
 ## Who owns the suites
 
 The lab owns the suites. No role and no engineering team may edit the suite it is measured by: a suite

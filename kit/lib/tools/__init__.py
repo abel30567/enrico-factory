@@ -1,7 +1,17 @@
 """The tools `factory run` calls, and the two exceptions a tool raises.
 
 A tool is the file ``<name>.py`` in this directory, where ``<name>`` is a job's ``tool`` and matches
-``[a-z][a-z0-9-]*``. `factory run` loads it by file location and makes one call. The kit ships no tool.
+``[a-z][a-z0-9-]*``. `factory run` loads it by file location and makes one call. Each tool the kit ships
+is one file here, added by its own ticket; adding one edits no other file.
+
+A read tool is not a job tool: it is the file ``reads/<platform>.py``, ``<platform>`` one of the platforms of
+`kit/lib/trends.py`, and `factory run --read <topic> <platform>` loads it by file location (`kit/lib/reads.py`).
+It has ``PLATFORM`` (its platform), ``RESOURCE`` and ``REASONS`` as below, ``API`` (the default base URL of the
+platform's API, setting ``<PLATFORM>_API_URL`` replacing it), ``BUDGET`` (``(<setting>, <limit>)``: the setting
+of the searches allowed a day and its highest value) and ``read(call) -> {"videos": [...]}``, the videos of a
+stored read (`kit/lib/trends.py`). Its ``call`` has exactly ``api`` (the base URL), ``read_at`` (the read's
+time), ``secrets`` (as below) and ``topic`` (the platform's part of the topic file). It raises ``Failed(reason)``
+or ``Down()`` as below; amounts are not read.
 
 A tool module has:
 

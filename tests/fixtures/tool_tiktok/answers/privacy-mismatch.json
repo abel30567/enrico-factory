@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "privacy_level_option_mismatch",
+   "log_id": "20261113090000000000000000033702",
+   "message": "The privacy level is not among the creator's options."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 400
+}

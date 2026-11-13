@@ -1,0 +1,20 @@
+{
+ "source": "https://docs.meshy.ai/en/api/rigging-and-animation",
+ "read": "2026-11-13",
+ "status": 200,
+ "body": {
+  "id": "018b314a-a1b5-716d-c222-2f1776f7f579",
+  "type": "rig",
+  "status": "IN_PROGRESS",
+  "created_at": 1747032400453,
+  "progress": 40,
+  "started_at": 1747032401314,
+  "finished_at": 0,
+  "expires_at": 1747291618417,
+  "task_error": {
+   "message": ""
+  },
+  "result": null,
+  "preceding_tasks": 0
+ }
+}

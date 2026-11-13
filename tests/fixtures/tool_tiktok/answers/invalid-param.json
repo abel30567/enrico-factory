@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "invalid_param",
+   "log_id": "20261113090000000000000000039861",
+   "message": "The request contains an invalid parameter."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 400
+}

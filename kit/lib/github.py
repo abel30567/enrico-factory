@@ -329,6 +329,12 @@ def _rest_issue(raw: dict) -> dict:
     return _issue({**raw, "body": raw["body"] or "", "createdAt": raw["created_at"]})
 
 
+def _rest_pull(raw: dict) -> dict:
+    return _pull({**raw, "body": raw["body"] or "", "state": "merged" if raw["merged_at"] else raw["state"],
+                  "createdAt": raw["created_at"], "headRefName": raw["head"]["ref"],
+                  "baseRefName": raw["base"]["ref"], "mergedAt": raw["merged_at"]})
+
+
 def _pull(raw: dict) -> dict:
     return {**_issue(raw), "head_ref": raw["headRefName"], "base_ref": raw["baseRefName"],
             "ticket": ticket_of(raw["body"]), "merged_at": raw["mergedAt"]}
@@ -412,10 +418,12 @@ class Gh:
         return sorted((i for i in found if state == "all" or i["state"] == state), key=lambda i: i["number"])
 
     def pulls(self, state="open") -> list:
+        """Every pull in ``state``, read page by page from the REST API, which calls a merged pull closed."""
         _check_state("pulls", state, PULL_STATES)
-        out = self._call("pulls", None, ["gh", "pr", "list", "-R", self.repo, "--state", state,
-                                         "--limit", "1000", "--json", PULL_FIELDS])
-        found = [_pull(raw) for raw in json.loads(out)]
+        asked = "closed" if state == "merged" else state
+        out = self._call("pulls", None, ["gh", "api", "--paginate", "--slurp",
+                                         f"repos/{self.repo}/pulls?state={asked}&per_page=100"])
+        found = [_rest_pull(raw) for page in json.loads(out) for raw in page]
         return sorted((p for p in found if state == "all" or p["state"] == state), key=lambda p: p["number"])
 
     def _view_issue(self, op: str, number: int) -> dict:

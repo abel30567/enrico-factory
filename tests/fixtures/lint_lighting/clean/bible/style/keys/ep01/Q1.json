@@ -1,0 +1,12 @@
+{
+  "luma": 0.4,
+  "color": [
+    0.3,
+    0.22,
+    0.15
+  ],
+  "sun": {
+    "min_elevation_deg": 2,
+    "max_elevation_deg": 12
+  }
+}

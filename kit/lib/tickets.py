@@ -75,7 +75,8 @@ def frozen(gh) -> bool:
 
 
 def load(p, gh, root) -> State:
-    """Every ticket, the pulls that name one, their comments and, for an open pull, its git state."""
+    """Every ticket, the pulls that name one and, for an open pull, its git state. Comments are read only for
+    an open ticket and for a pull that is open or names an open ticket; any other pull holds none."""
     issues = gh.issues("all")
     state = State(frozen=_frozen(issues))
     entries = {}
@@ -95,12 +96,14 @@ def load(p, gh, root) -> State:
         state.tickets[ticket["number"]] = ticket
         entries[ticket["number"]] = entry
     for number in sorted(state.tickets):
-        state.ticket_comments[number] = gh.comments(number)
+        if state.tickets[number]["state"] == "open":
+            state.ticket_comments[number] = gh.comments(number)
     for pull in gh.pulls("all"):
         number = pull.get("ticket")
         if number not in state.tickets:
             continue
-        comments = gh.comments(pull["number"])
+        read = pull["state"] == "open" or state.tickets[number]["state"] == "open"
+        comments = gh.comments(pull["number"]) if read else []
         pull = {**pull, "comments": comments}
         if pull["state"] == "open":
             pull["git"] = gitstate.pull_state(root, pull, comments)

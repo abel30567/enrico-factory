@@ -1,0 +1,1 @@
+{"room": "story", "stage": "config", "unit": "loop", "after": "", "maker": "experimenter", "lint": [], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": [".factory/roles/**", ".factory/lib/lints/**"]}

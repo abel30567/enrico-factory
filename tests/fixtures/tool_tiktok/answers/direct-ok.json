@@ -1,0 +1,15 @@
+{
+ "body": {
+  "data": {
+   "publish_id": "v_pub_url~v2.7302181654213478191"
+  },
+  "error": {
+   "code": "ok",
+   "log_id": "20261113090000000000000000071295",
+   "message": ""
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 200
+}
