@@ -382,12 +382,15 @@ class UploadTest(unittest.TestCase):
         invalid_grant = clean_scenario()
         invalid_grant[("POST", TOKEN_URL)] = answer("token-invalid-grant")
         two_lines = "\n".join(KEY_LINES[:2]) + "\n"
-        for name, key, scenario in (("clean", None, clean_scenario()), ("not private", None, put_public),
-                                    ("two lines", two_lines, clean_scenario()),
-                                    ("invalid grant", None, invalid_grant)):
+        for name, key, scenario, exit_code in (("clean", None, clean_scenario(), 0),
+                                               ("not private", None, put_public, 1),
+                                               ("two lines", two_lines, clean_scenario(), 2),
+                                               ("invalid grant", None, invalid_grant, 2)):
             with self.subTest(name):
                 w = World(self) if key is None else World(self, key=key)
                 code, out, err = w.run(scenario)
+                self.assertEqual(code, exit_code, out + err)
+                self.assertEqual((w.job_dir() / "out" / "post.json").is_file(), exit_code < 2)
                 texts = [out, err, w.ledger_text()]
                 for rel in ("out/post.json", "result.json"):
                     if (w.job_dir() / rel).is_file():
