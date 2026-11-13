@@ -1,0 +1,10 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/ari.md": "adds the sheet",
+    "bible/canon/characters/noor.md": "adds the sheet",
+    "bible/canon/places/dunes.md": "adds the sheet"
+  },
+  "why": "The first canon of the show. Every subject it adds was designed in the production, from its own premise and settings, and is cleared by this amendment; none comes from another work.",
+  "evidence": {}
+}

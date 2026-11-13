@@ -1,10 +1,11 @@
 {
   "class": "canon",
   "changes": {
-    "bible/canon/ledger.tsv": "the row ada / home becomes Orchard House (was the mill)",
-    "bible/canon/characters/ada.md": "gets the move"
+    "bible/canon/characters/ada.md": "adds the sentence: She was born at Orchard House.",
+    "bible/canon/ledger.tsv": "adds the row ada / birthplace",
+    "bible/canon/places/orchard-house.md": "adds the sheet"
   },
-  "why": "The mill burns at the end of the first season, and Ada moves to Orchard House for good.",
+  "why": "Orchard House is where Ada was born, a place the canon does not name yet. It was designed in the production, from the farmhouses of the vale's own orchards, and is cleared by this amendment.",
   "evidence": {
     "bible/charter.md": "The show follows the cider makers of Hollin vale through the seasons"
   }

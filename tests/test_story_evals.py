@@ -192,7 +192,7 @@ class BuildRunDirTest(unittest.TestCase):
                      "media/manifest.tsv", "production.env"):
             self.assertIn(path, built)
         tree = files(case.path / "tree")
-        self.assertEqual(len(tree), 3)
+        self.assertEqual(len(tree), 4)
         for path in tree:
             self.assertEqual((run_dir / path).read_bytes(), (case.path / "tree" / path).read_bytes(), path)
 
@@ -533,9 +533,9 @@ class RefusalTest(unittest.TestCase):
                          (False, "lint PASS; " + named))
 
     def test_twins_are_near_misses(self):
-        added = {"story-writer": ["bible/canon/characters/pim.md"],
-                 "story-artist": ["bible/canon/characters/pim.md", "bible/style/characters/pim.md",
-                                  "media/manifest.tsv"]}
+        added = {"story-writer": ["bible/amendments/A-1.json", "bible/canon/characters/pim.md"],
+                 "story-artist": ["bible/amendments/A-1.json", "bible/canon/characters/pim.md",
+                                  "bible/style/characters/pim.md", "media/manifest.tsv"]}
         for role in TWINS:
             refusal, twin, _ = self.suite(role)
             self.assertEqual((refusal.kind, twin.kind), ("refusal", "replay"), role)
