@@ -10,6 +10,11 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
 if [ "${1:-}" = "--uninstall" ]; then rm -f "$PLIST"; echo "removed $LABEL"; exit 0; fi
+# macOS privacy protection: a launchd job cannot read ~/Desktop, ~/Documents or ~/Downloads ("Operation not permitted")
+case "$D" in "$HOME"/Desktop/*|"$HOME"/Documents/*|"$HOME"/Downloads/*)
+  echo "install-tick: launchd cannot read $D. Clone the repository outside Desktop, Documents and Downloads"
+  echo "  (for example ~/orch/$REPO_NAME), copy local.env into it, and run 'orch heartbeat' from that checkout."; exit 1 ;;
+esac
 
 dirs=""
 for t in node python3 git gh; do
