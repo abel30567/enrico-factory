@@ -5,7 +5,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 _VARS = ("REPO REPO_NAME GH_REPO BASE KEY_RE STATE WTROOT MAX_CODE_FILES CODE_EXT MERGE_METHOD BOARD_TITLE "
-         "JIRA_URL JIRA_PROJECT JIRA_STATUSES JIRA_POINTS_FIELD HEALTH_URL ORCH_DIR").split()
+         "JIRA_URL JIRA_PROJECT JIRA_STATUSES JIRA_POINTS_FIELD HEALTH_URL ORCH_DIR GATES TRAIN_MAX").split()
 _SCRIPT = '. "$1" >/dev/null 2>&1 || exit 1; for v in ' + " ".join(_VARS) + '; do printf "%s=%s\\0" "$v" "${!v}"; done'
 _p = subprocess.run(["bash", "-c", _SCRIPT, "_", str(HERE / "config.sh")], capture_output=True, text=True)
 if _p.returncode:
