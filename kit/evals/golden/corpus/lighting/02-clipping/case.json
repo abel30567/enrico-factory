@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/ep01/Q2-1/lighting/render\\.json:1 clipping "
+  ]
+}

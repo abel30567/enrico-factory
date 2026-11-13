@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/assets/ama/assets/state\\.json:1 naming "
+  ]
+}
