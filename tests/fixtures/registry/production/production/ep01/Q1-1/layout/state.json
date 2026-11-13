@@ -1,0 +1,18 @@
+{
+ "actors": [
+  {
+   "asset": "asset:ama",
+   "id": "ama",
+   "kind": "character",
+   "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  {
+   "asset": "asset:pier",
+   "id": "pier",
+   "kind": "set",
+   "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+ ],
+ "shot": "Q1-1",
+ "stage": "layout"
+}

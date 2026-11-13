@@ -1,0 +1,13 @@
+{
+ "body": "Do the stage layout for unit ep01/Q2-1.\n",
+ "created_at": "2026-11-07T09:00:00Z",
+ "labels": [
+  "room:production",
+  "stage:layout",
+  "tracked",
+  "unit:ep01/Q2-1"
+ ],
+ "number": 11,
+ "state": "closed",
+ "title": "[LAYOUT-EP01-Q2-1] layout for ep01/Q2-1"
+}

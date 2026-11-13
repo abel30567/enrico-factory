@@ -6,7 +6,8 @@ writes nothing. With it, it locks the first lockable candidate, by pull number, 
 ticket. Before it reads, ``--apply`` brings the local base up to GitHub's (``sync_base``), and again after
 the merge. Exit 0 report printed, 2 frozen, usage, or the production or GitHub cannot be read (a sync that
 fails before the read included), 3 merge failed (the LOCK is void), 4 merged and the ticket closed but the
-local base not synced.
+local base not synced, 5 merged and the ticket closed, but the asset registry row or a stale shot's ticket not
+written.
 """
 
 import argparse
@@ -17,7 +18,7 @@ import sys
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import github, ledger, lockrules, production, tickets  # noqa: E402
+from kit.lib import github, ledger, lockrules, production, registry, tickets  # noqa: E402
 from kit.lib.gitstate import GitError  # noqa: E402
 from kit.lib.github import GitHubError  # noqa: E402
 from kit.lib.production import ProductionError  # noqa: E402
@@ -106,6 +107,13 @@ def lock(p, gh, state, ticket, pull) -> int:
     print(f"locked PR #{number} at {merged[:12]}")
     if unsynced is not None:
         raise Unsynced(f"PR #{number} is merged at {merged[:12]}, base not synced: {unsynced}")
+    try:
+        lines = registry.record(p, gh, p.root, state, ticket, pull)
+    except (registry.RegistryError, GitError, GitHubError) as error:
+        print("lock: registry: " + " ".join(str(error).split()), file=sys.stderr)
+        return 5
+    for line in lines:
+        print(line)
     return 0
 
 
