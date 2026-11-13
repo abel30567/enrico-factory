@@ -42,8 +42,10 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 
 ## What you produce
 
-- **lessons** `playbook/PB-<n>.md`, the next free numbers: one lesson each, with its evidence,
-  a confidence and an expiry date.
+- **lessons** `playbook/PB-<n>.md`, the next free numbers: one lesson each. Front matter
+  `confidence:` `low`, `medium` or `high`; `expires:` the last day it holds, `YYYY-MM-DD`; and
+  `evidence:` `<path>:<line>` of a file or `#<n>` of a verdict, comma-separated, no space before a `#`.
+  Then the lesson.
 - **proposals** `lab/proposals/<name>.md`: a change to a role file or a rubric, as the exact new
   text, the evidence for it, and the replay suite it must pass. A proposal ships only after it
   passes; you never edit `.factory/` yourself.
