@@ -1,0 +1,97 @@
+{
+ "reference": "https://developers.google.com/youtube/v3/docs/search/list",
+ "read_on": "2026-11-13",
+ "answers": [
+  {
+   "query": {
+    "maxResults": "50",
+    "part": "snippet",
+    "publishedAfter": "2026-11-06T09:00:00Z",
+    "q": "Skarrowfen Wickabel",
+    "regionCode": "GB",
+    "type": "video"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#searchListResponse",
+    "etag": "etag-search",
+    "nextPageToken": "CAMQAA",
+    "regionCode": "GB",
+    "pageInfo": {
+     "totalResults": 4,
+     "resultsPerPage": 4
+    },
+    "items": [
+     {
+      "kind": "youtube#searchResult",
+      "etag": "etag-s0",
+      "id": {
+       "kind": "youtube#channel",
+       "channelId": "ch-3"
+      },
+      "snippet": {
+       "publishedAt": "2026-11-01T10:00:00Z",
+       "channelId": "ch-3",
+       "title": "Wickabel",
+       "description": "",
+       "channelTitle": "Wickabel",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-01T10:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#searchResult",
+      "etag": "etag-s1",
+      "id": {
+       "kind": "youtube#video",
+       "videoId": "yt-a"
+      },
+      "snippet": {
+       "publishedAt": "2026-11-10T08:00:00Z",
+       "channelId": "ch-1",
+       "title": "Skarrowfen Wickabel",
+       "description": "",
+       "channelTitle": "Skarrowfen",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-10T08:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#searchResult",
+      "etag": "etag-s2",
+      "id": {
+       "kind": "youtube#video",
+       "videoId": "yt-b"
+      },
+      "snippet": {
+       "publishedAt": "2026-11-11T09:00:00Z",
+       "channelId": "ch-2",
+       "title": "Wickabel Skarrowfen",
+       "description": "",
+       "channelTitle": "Wickabel",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-11T09:00:00Z"
+      }
+     },
+     {
+      "kind": "youtube#searchResult",
+      "etag": "etag-s3",
+      "id": {
+       "kind": "youtube#video",
+       "videoId": "yt-c"
+      },
+      "snippet": {
+       "publishedAt": "2026-11-12T07:30:00Z",
+       "channelId": "ch-2",
+       "title": "Wickabel",
+       "description": "",
+       "channelTitle": "Wickabel",
+       "liveBroadcastContent": "none",
+       "publishTime": "2026-11-12T07:30:00Z"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

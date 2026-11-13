@@ -1,0 +1,57 @@
+{
+ "reference": "https://developers.google.com/youtube/v3/docs/channels/list",
+ "read_on": "2026-11-13",
+ "answers": [
+  {
+   "query": {
+    "id": "ch-1,ch-2",
+    "maxResults": "50",
+    "part": "contentDetails,statistics"
+   },
+   "status": 200,
+   "body": {
+    "kind": "youtube#channelListResponse",
+    "etag": "etag-channel",
+    "pageInfo": {
+     "totalResults": 2,
+     "resultsPerPage": 2
+    },
+    "items": [
+     {
+      "kind": "youtube#channel",
+      "etag": "etag-ch-1",
+      "id": "ch-1",
+      "contentDetails": {
+       "relatedPlaylists": {
+        "likes": "",
+        "uploads": "UU-ch-1"
+       }
+      },
+      "statistics": {
+       "viewCount": "260000",
+       "subscriberCount": "12000",
+       "hiddenSubscriberCount": false,
+       "videoCount": "12"
+      }
+     },
+     {
+      "kind": "youtube#channel",
+      "etag": "etag-ch-2",
+      "id": "ch-2",
+      "contentDetails": {
+       "relatedPlaylists": {
+        "likes": "",
+        "uploads": "UU-ch-2"
+       }
+      },
+      "statistics": {
+       "viewCount": "880",
+       "hiddenSubscriberCount": true,
+       "videoCount": "3"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}
