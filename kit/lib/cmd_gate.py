@@ -23,6 +23,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kit.lib import gitstate, github, ledger, production, tickets  # noqa: E402
+from kit.lib.lints import rights  # noqa: E402
 
 JOB_KEYS = ("caller", "expected", "inputs", "ticket", "tool")
 EXPECTED_KEYS = ("compute_min", "usd")
@@ -127,6 +128,10 @@ def _job_request(p, state, path_text, number=None):
             raise Refused(f"pull #{number} is not the open pull of ticket #{job['ticket']}")
         ref, where = pull["git"]["head"], f"pull #{number}"
     _check_inputs(p, job, ref, where)
+    reason = rights.refusal(lambda path: gitstate.show(p.root, ref, path),
+                            gitstate.show(p.root, production.base(p), rights.NOT_OURS), job["inputs"])
+    if reason is not None:
+        raise Refused(reason)
     ticket = state.tickets.get(job["ticket"])
     if ticket is None or ticket["state"] != "open":
         raise Refused(f"ticket #{job['ticket']} is not an open ticket")

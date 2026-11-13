@@ -25,7 +25,7 @@ LAYOUT = [".gitignore", "bible/amendments/.gitkeep", "bible/canon/.gitkeep", "bi
           "bible/charter.md", "bible/style/.gitkeep", "brand/.gitkeep", "calibration/.gitkeep", "episodes/.gitkeep",
           "lab/.gitkeep", "ledger/.gitkeep", "media/manifest.tsv", "playbook/.gitkeep", "production.env",
           "production.local.env.example", "registry/.gitkeep", "research/.gitkeep", "rulebook/.gitkeep",
-          "rules/production-rules.md", "sources/.gitkeep"]
+          "rules/production-rules.md", "sources/.gitkeep", "sources/rights.tsv"]
 ROOM_LAYOUT = {"production": "production/.gitkeep", "post": "post/.gitkeep",
                "distribution": "distribution/.gitkeep"}
 
@@ -174,6 +174,7 @@ class TreeTest(InitTest):
         self.assertEqual((target / "rules/production-rules.md").read_text(), "# Production rules\n")
         self.assertEqual((target / "media/manifest.tsv").read_text(), "id\tsha256\tbytes\tsource\n")
         self.assertEqual((target / "sources/.gitkeep").read_bytes(), b"")
+        self.assertEqual((target / "sources/rights.tsv").read_bytes(), b"path\twork\tholder\tbasis\tnote\n")
         env = (target / "production.env").read_text().splitlines()
         self.assertTrue(env[0].startswith("# "))
         self.assertEqual(env[1:], ["REPO=", "BASE=main", "ROOMS=story", "MEDIA_STORE=", "MODEL_MAKER=",
