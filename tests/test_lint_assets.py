@@ -123,6 +123,10 @@ class Assets(LintCase):
         self.assertGives(root, ["height '5 ft 4' of ama (bible/canon/ledger.tsv:2) is not '<number> m'"])
         self.assertPasses(self.variant({STATE: state(height_m=1.78)}, base=FIX / "clean"))
         self.assertPasses(self.variant({LEDGER: HEADER + "ama\theight\t1.62m\tinvented\t\n"}, base=FIX / "clean"))
+        two = HEADER + "ama\theight\t2 m\tinvented\t\n"
+        self.assertPasses(self.variant({LEDGER: two, STATE: state(height_m=2.2)}, base=FIX / "clean"))
+        self.assertGives(self.variant({LEDGER: two, STATE: state(height_m=2.21)}, base=FIX / "clean"),
+                         ["height_m 2.21 is not within 10% of 2 m (bible/canon/ledger.tsv:2)"])
         harbour = "production/assets/harbour/assets/state.json"
         body = state(asset="harbour", kind="set", height_m=12.0, skeleton=None)
         root = self.variant({harbour: body, LEDGER: HEADER + AMA_ROW + "harbour\theight\t20 m\tinvented\t\n"},

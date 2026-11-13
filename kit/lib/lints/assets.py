@@ -13,6 +13,7 @@ a prop's never. Only a character's skeleton is checked beyond its shape.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from pathlib import Path
 
 from ..lint import Finding, files, read_json, read_tsv
@@ -29,7 +30,7 @@ SHEETS = {"character": "bible/canon/characters", "set": "bible/canon/places"}
 # Placeholder until measured on the golden levels (#118).
 TRIANGLE_BUDGETS = {"character": 100000, "prop": 20000, "set": 1000000}
 TEXTURE_MAX = 4096
-SCALE_TOLERANCE = 0.1
+SCALE_TOLERANCE = Decimal("0.1")
 
 
 def _whole(value) -> bool:
@@ -125,7 +126,8 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
         m = HEIGHT.fullmatch(value)
         if m is None:
             found.append(("scale", f"height '{value}' of {asset} ({CANON_LEDGER}:{n}) is not '<number> m'"))
-        elif abs(data["height_m"] - float(m.group(1))) > SCALE_TOLERANCE * float(m.group(1)):
+        # Decimals from the written numbers, so that exactly 10% passes (binary floats round it over).
+        elif abs(Decimal(repr(data["height_m"])) - Decimal(m.group(1))) > SCALE_TOLERANCE * Decimal(m.group(1)):
             found.append(("scale", f"height_m {format(data['height_m'], 'g')} is not within 10% of {value} "
                                    f"({CANON_LEDGER}:{n})"))
     if kind == "character":
