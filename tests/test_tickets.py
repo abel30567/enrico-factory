@@ -210,7 +210,7 @@ class LoadTest(unittest.TestCase):
         self.assertEqual(sorted(state.pulls), [4, 5])
         merged, open_pull = state.pulls[4], state.pulls[5]
         self.assertEqual(merged["state"], "merged")
-        self.assertEqual([c["id"] for c in merged["comments"]], [2])
+        self.assertEqual(merged["comments"], [])
         self.assertNotIn("git", merged)
         self.assertNotIn("summary", merged)
         head = gitstate.head(self.w.root, "feat/PM-1-ep01")
@@ -220,8 +220,7 @@ class LoadTest(unittest.TestCase):
         self.assertEqual(open_pull["git"]["comments"], open_pull["comments"])
         self.assertEqual(open_pull["summary"]["maker"]["verb"], "READY")
         self.assertEqual(open_pull["summary"]["checkers"]["editor"]["verb"], "APPROVED")
-        self.assertEqual(sorted(state.ticket_comments), [1, 2])
-        self.assertEqual(state.ticket_comments[1], [])
+        self.assertEqual(sorted(state.ticket_comments), [2])
         self.assertEqual([c["id"] for c in state.ticket_comments[2]], [1])
         self.assertFalse(state.frozen)
 
@@ -230,7 +229,7 @@ class LoadTest(unittest.TestCase):
         tickets.load(self.w.p, counting, self.w.root)
         self.assertEqual(sorted(counting.calls, key=repr), sorted([
             ("issues", "all"), ("pulls", "all"),
-            ("comments", 1), ("comments", 2), ("comments", 4), ("comments", 5)], key=repr))
+            ("comments", 2), ("comments", 5)], key=repr))
 
     def test_queries(self):
         state = self.w.load()
