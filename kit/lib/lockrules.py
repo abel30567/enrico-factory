@@ -3,8 +3,9 @@
 Pure: nothing here writes to GitHub or git, nor posts anything. It reads the state ``kit.lib.tickets``
 loaded, git through ``kit.lib.gitstate`` and the blinding key through ``kit.lib.blind``.
 
-``evaluate`` always returns eleven rules, in order: the ten of section 9 and, eleventh, that a released
-episode's files are never changed. A reason is one line of fixed words, ids and paths; it never quotes
+``evaluate`` always returns twelve rules, in order: the ten of section 9; eleventh, that a released
+episode's files are never changed; and twelfth, ``bible-version``, that every edit list the pull request
+changes names the newest amendment of its head. A reason is one line of fixed words, ids and paths; it never quotes
 a comment's prose.
 """
 
@@ -17,7 +18,7 @@ from typing import NamedTuple
 from kit.lib import blind, frontmatter, gitstate, ledger, markers, production, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
-         "base", "released")
+         "base", "released", "bible-version")
 CANON_REVIEWER = "canon-reviewer"
 CHARTER = "bible/charter.md"
 AMENDMENT_CLASSES = ("charter", "arc", "canon")
@@ -25,11 +26,15 @@ VOTE_CLASSES = ("charter", "arc")
 VOTE_ACTOR = "BRAINTRUST"
 VOTE_MIN = 5
 RELEASE = "distribution/{}/release.json"
+AMENDMENTS = "bible/amendments"
 
 _AMENDMENT = re.compile(r"bible/amendments/A-\d+\.json")
 _CHECKS = re.compile(r"Checks required by stage (\S+): (.*)")
 _REPEAT = re.compile(r"(?:[-*]\s+)?(?:(B\d+) \(Blocker\)|(I\d+) \(Issue\)): REPEAT [^\s:]+:")
 _EPISODE_FILE = re.compile(r"(?:episodes|production|post)/([^/]+)/")
+_EDIT_LIST = re.compile(r"episodes/[^/]+/reel/edit-list\.json")
+_AMENDMENT_FILE = re.compile(r"bible/amendments/(A-([0-9]+))\.json")
+_AMENDMENT_ID = re.compile(r"A-[0-9]+")
 
 
 class Rule(NamedTuple):
@@ -311,8 +316,39 @@ def _released(pull, root):
     return f"changes files of a released episode: {', '.join(hits)}" if hits else ""
 
 
+def _newest(root, head):
+    """The id of the highest numbered ``bible/amendments/A-<n>.json`` at ``head``, or None. On equal
+    numbers the id that sorts last wins."""
+    found = [_AMENDMENT_FILE.fullmatch(path) for path in gitstate.files(root, head, AMENDMENTS)]
+    ids = [(int(m.group(2)), m.group(1)) for m in found if m]
+    return max(ids)[1] if ids else None
+
+
+def _bible_version(pull, root):
+    head = pull["git"]["head"]
+    lists = [(path, text) for path in pull["git"]["changed"] if _EDIT_LIST.fullmatch(path)
+             for text in [gitstate.show(root, head, path)] if text is not None]
+    if not lists:
+        return ""
+    newest = _newest(root, head)
+    reasons = []
+    for path, text in lists:
+        try:
+            doc = json.loads(text)
+        except ValueError:
+            doc = None
+        bible = doc.get("bible") if isinstance(doc, dict) else None
+        if not (isinstance(bible, str) and _AMENDMENT_ID.fullmatch(bible)):
+            reasons.append(f"{path}: bible is not the id A-<n> of an amendment")
+        elif newest is None:
+            reasons.append(f"{path}: bible is {bible}, the head has no {AMENDMENTS}/A-<n>.json")
+        elif bible != newest:
+            reasons.append(f"{path}: bible is {bible}, the newest amendment is {newest}")
+    return "; ".join(reasons)
+
+
 def evaluate(p, state, ticket, pull, root) -> list[Rule]:
-    """The eleven rules for locking ``pull`` on ``ticket``, every one evaluated."""
+    """The twelve rules for locking ``pull`` on ``ticket``, every one evaluated."""
     entry = production.stage(p, ticket["room"], ticket["stage"])
     changed = pull["git"]["changed"]
     maker = maker_role(entry, pull)
@@ -329,11 +365,12 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _gate(p, state, ticket, entry, pull, maker) if maker else no_maker,
         _base(ticket, pull, root),
         _released(pull, root),
+        _bible_version(pull, root),
     ]
     return [Rule(number, name, not reason, reason)
             for number, (name, reason) in enumerate(zip(NAMES, reasons), 1)]
 
 
 def lockable(rules) -> bool:
-    """All eleven rules hold."""
+    """All twelve rules hold."""
     return len(rules) == len(NAMES) and all(rule.ok for rule in rules)

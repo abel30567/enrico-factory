@@ -1,4 +1,4 @@
-"""Tests for kit/lib/lockrules.py: the eleven rules of the lock (system brief section 9).
+"""Tests for kit/lib/lockrules.py: the twelve rules of the lock (system brief section 9).
 
 The production is tests/fixtures/lock/production (its own `.factory/` kit, invented roles, rooms `story`
 and `production`), made into a git repository on branch `trunk` in a temporary directory. Each open
@@ -268,7 +268,7 @@ class OneRule(unittest.TestCase):
 
 
 class CleanTest(unittest.TestCase):
-    """Criterion 1: on the clean fixture every clean pull holds all eleven rules."""
+    """Criterion 1: on the clean fixture every clean pull holds all twelve rules."""
 
     @classmethod
     def setUpClass(cls):
@@ -285,11 +285,11 @@ class CleanTest(unittest.TestCase):
         for function, args, kwargs in reversed(cls._cleanups):
             function(*args, **kwargs)
 
-    def test_eleven_rules_in_order_all_ok(self):
+    def test_twelve_rules_in_order_all_ok(self):
         for number in CLEAN:
             with self.subTest(pull=number):
                 rules = self.w.rules(number)
-                self.assertEqual([r.number for r in rules], list(range(1, 12)))
+                self.assertEqual([r.number for r in rules], list(range(1, 13)))
                 self.assertEqual(tuple(r.name for r in rules), lockrules.NAMES)
                 self.assertEqual([r for r in rules if not r.ok], [])
                 self.assertTrue(all(isinstance(r, lockrules.Rule) and r.reason == "" for r in rules))
@@ -595,6 +595,130 @@ class ReleasedRuleTest(OneRule):
         w.release("ep02")
         self.assertTrue(lockrules.lockable(w.rules(8)))
         self.assertOnly(w, 16, {11}, "episodes/ep02/premise.md")
+
+
+EP01 = "episodes/ep01/reel/edit-list.json"
+EP02 = "episodes/ep02/reel/edit-list.json"
+
+
+def edit_list(bible):
+    return json.dumps({"fps": 24, "bible": bible, "events": []}) + "\n"
+
+
+class BibleVersionTest(OneRule):
+    """Rule 12: every edit list the pull request changes names the newest amendment of its head."""
+
+    def world(self, pull=21, edits=None, amendments=("A-1", "A-2"), base=None):
+        """``edits`` on ``pull``; ``amendments`` (names under bible/amendments/, ``.json`` added when there is
+        no extension) and ``base`` ({path: text}) written on trunk, then the base merged into ``pull``."""
+        w = World(self, (pull,), edits={pull: edits or {}})
+        for name in amendments:
+            w.move_base(f"bible/amendments/{name if '.' in name else name + '.json'}", '{"class": "canon"}\n')
+        for rel, text in sorted((base or {}).items()):
+            w.move_base(rel, text)
+        w.merge_base_into(pull)
+        return w
+
+    def test_older_amendment_fails(self):
+        w = self.world(edits={EP01: edit_list("A-1")})
+        self.assertOnly(w, 21, {12}, f"{EP01}: bible is A-1, the newest amendment is A-2")
+        self.assertEqual(w.rules(21)[11].reason, f"{EP01}: bible is A-1, the newest amendment is A-2")
+        code, out, err = w.lock()
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn(f"  rule 12 bible-version: {EP01}: bible is A-1, the newest amendment is A-2",
+                      out.splitlines())
+
+    def test_newest_amendment_locks(self):
+        w = self.world(edits={EP01: edit_list("A-2")})
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+        code, out, err = w.lock("--apply")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("locked PR #21 at ", out)
+        self.assertEqual(w.record("pulls", 21)["state"], "merged")
+
+    def test_edit_list_on_the_base_only_reads_the_pulls_that_change_it(self):
+        w = self.world(pull=8, base={EP01: edit_list("A-1")})
+        self.assertTrue(lockrules.lockable(w.rules(8)))
+        w = self.world(base={EP01: edit_list("A-1")})
+        self.assertTrue(w.rules(21)[11].ok)
+        w.push(21, EP01, json.dumps({"fps": 25, "bible": "A-1", "events": []}) + "\n")
+        rule = w.rules(21)[11]
+        self.assertEqual((rule.number, rule.name, rule.ok), (12, "bible-version", False))
+        self.assertEqual(rule.reason, f"{EP01}: bible is A-1, the newest amendment is A-2")
+        w.push(21, EP01, json.dumps({"fps": 25, "bible": "A-2", "events": []}) + "\n")
+        self.assertTrue(w.rules(21)[11].ok)
+
+    def test_numbers_compare_as_integers(self):
+        tens = [f"A-{n}" for n in range(1, 11)]
+        w = self.world(edits={EP01: edit_list("A-9")}, amendments=tens)
+        self.assertOnly(w, 21, {12}, f"{EP01}: bible is A-9, the newest amendment is A-10")
+        w = self.world(edits={EP01: edit_list("A-10")}, amendments=tens)
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+
+    def test_equal_numbers_the_id_that_sorts_last_wins(self):
+        w = self.world(edits={EP01: edit_list("A-02")}, amendments=("A-1", "A-02", "A-2"))
+        self.assertOnly(w, 21, {12}, f"{EP01}: bible is A-02, the newest amendment is A-2")
+        w = self.world(edits={EP01: edit_list("A-2")}, amendments=("A-1", "A-02", "A-2"))
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+
+    def test_other_files_under_amendments_are_ignored(self):
+        others = ("A-1", "A-2", "A-9.md", "A3-founding.md", "B-5.json", "notes/A-7.json")
+        w = self.world(edits={EP01: edit_list("A-1")}, amendments=others)
+        self.assertOnly(w, 21, {12}, f"{EP01}: bible is A-1, the newest amendment is A-2")
+        w = self.world(edits={EP01: edit_list("A-2")}, amendments=others)
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+
+    def test_unreadable_edit_list(self):
+        texts = ["{fps", "[]\n", json.dumps({"fps": 24, "events": []}), json.dumps({"fps": 24, "bible": 2}),
+                 edit_list("A2"), edit_list("A-2.json")]
+        for text in texts:
+            with self.subTest(text=text):
+                w = self.world(edits={EP01: text})
+                self.assertOnly(w, 21, {12})
+                self.assertEqual(w.rules(21)[11].reason, f"{EP01}: bible is not the id A-<n> of an amendment")
+
+    def test_head_with_no_amendment(self):
+        w = self.world(edits={EP01: edit_list("A-1")}, amendments=("A-1.md", "B-1.json"))
+        self.assertOnly(w, 21, {12})
+        self.assertEqual(w.rules(21)[11].reason,
+                         f"{EP01}: bible is A-1, the head has no bible/amendments/A-<n>.json")
+
+    def test_two_edit_lists(self):
+        w = self.world(edits={EP01: edit_list("A-2"), EP02: edit_list("A-1")})
+        self.assertOnly(w, 21, {12})
+        self.assertEqual(w.rules(21)[11].reason, f"{EP02}: bible is A-1, the newest amendment is A-2")
+        w = self.world(edits={EP02: edit_list("A-1"), EP01: "{fps"})
+        self.assertOnly(w, 21, {12})
+        self.assertEqual(w.rules(21)[11].reason, f"{EP01}: bible is not the id A-<n> of an amendment; "
+                                                 f"{EP02}: bible is A-1, the newest amendment is A-2")
+        w = self.world(edits={EP01: edit_list("A-2"), EP02: edit_list("A-2")})
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+
+    def test_deleted_edit_list_is_skipped(self):
+        w = self.world(base={EP01: edit_list("A-1")})
+        w.push(21, EP01, None)
+        _, state = w.load()
+        self.assertIn(EP01, state.pulls[21]["git"]["changed"])
+        self.assertTrue(w.rules(21)[11].ok)
+
+    def test_stale_head_fails_the_base_then_the_bible_version(self):
+        w = self.world(edits={EP01: edit_list("A-1")}, amendments=("A-1",))
+        self.assertTrue(lockrules.lockable(w.rules(21)))
+        w.move_base("bible/amendments/A-2.json", '{"class": "canon"}\n')
+        self.assertOnly(w, 21, {10}, "head does not contain the base trunk")
+        w.merge_base_into(21)
+        self.assertOnly(w, 21, {12}, f"{EP01}: bible is A-1, the newest amendment is A-2")
+
+    def test_twelfth_rule_in_the_json_report(self):
+        w = self.world(edits={EP01: edit_list("A-1")})
+        rules = w.rules(21)
+        self.assertEqual([r.number for r in rules], list(range(1, 13)))
+        self.assertEqual(rules[-1].name, "bible-version")
+        code, out, err = w.lock("--json")
+        self.assertEqual((code, err), (0, ""))
+        last = json.loads(out)[0]["rules"][-1]
+        self.assertEqual(last, {"name": "bible-version", "number": 12, "ok": False,
+                                "reason": f"{EP01}: bible is A-1, the newest amendment is A-2"})
 
 
 class FreshnessTest(OneRule):

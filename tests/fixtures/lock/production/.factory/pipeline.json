@@ -4,7 +4,7 @@
  {"room": "story", "stage": "bible", "unit": "amendment", "after": "", "maker": "keeper", "lint": ["canon"], "checker": "canon-reviewer", "judge": "braintrust", "blind": false, "pitches": 1, "paths": ["bible/charter.md", "bible/canon/**", "bible/amendments/**"]},
  {"room": "story", "stage": "style", "unit": "look", "after": "", "maker": "designer", "lint": ["media"], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["bible/style/**"]},
  {"room": "story", "stage": "board", "unit": "episode", "after": "", "maker": "artist", "lint": ["structure"], "checker": "editor", "judge": ["critic", "elder", "viewer"], "blind": true, "pitches": 1, "paths": ["episodes/*/board/**"]},
- {"room": "story", "stage": "cut", "unit": "episode", "after": "", "maker": "cutter", "lint": ["media"], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/cut/**"]},
+ {"room": "story", "stage": "cut", "unit": "episode", "after": "", "maker": "cutter", "lint": ["media"], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/cut/**", "episodes/*/reel/**"]},
  {"room": "production", "stage": "frames", "unit": "episode", "after": "", "maker": "painter", "lint": [], "checker": "inspector", "judge": "", "blind": false, "pitches": 1, "paths": ["production/*/frames/**"]},
  {"room": "production", "stage": "render", "unit": "episode", "after": "frames", "maker": "painter", "lint": [], "checker": "inspector", "judge": "", "blind": false, "pitches": 1, "paths": ["production/*/render/**"]}
 ]
