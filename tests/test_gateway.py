@@ -33,7 +33,10 @@ KEY = "fermi-key-pelican-7d2a-do-not-print"
 TAG = "example/salt-marsh"
 FERMI_ERROR = "fermi internal trace: heron-table locked"
 FERMI_TOOLS = {"memory_recall": {"query", "limit", "sort_by"}, "memory_write": {"kind", "body", "pinned"},
-               "skill_search": {"query", "limit"}, "skill_load": {"slug"}}
+               "skill_search": {"query", "limit"}, "skill_load": {"slug"},
+               "search": {"query", "types", "limit", "entity", "memoryContext"},
+               "skill_set": {"slug", "body", "metadata", "origin_memory_id"}}
+PREFIX = "factory-a87ee4c9-"
 
 
 def memory(n, body, created_at=None):
@@ -54,12 +57,14 @@ def free_port():
 
 class FakeFermi:
     """Fermi's MCP endpoint on 127.0.0.1. ``mode`` is None, ``stream``, ``503``, ``notjson``, ``iserror``
-    or ``slow``. ``records`` holds, per request, the headers, method, tool, arguments and rows answered."""
+    or ``slow``; ``fail_tool`` answers 503 and ``empty_tool`` answers ``{}`` to one named tool only.
+    ``records`` holds, per request, the headers, method, tool, arguments and rows answered."""
 
     def __init__(self, test, memories=(), skills=()):
         self.memories = [dict(m) for m in memories]
         self.skills = [dict(s) for s in skills]
         self.records, self.mode, self.sessions = [], None, 0
+        self.fail_tool = self.empty_tool = None
         fake = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -103,7 +108,7 @@ class FakeFermi:
         self.records.append(record)
         if self.mode == "slow":
             time.sleep(1)
-        if self.mode == "503":
+        if self.mode == "503" or self.fail_tool and record["tool"] == self.fail_tool:
             return self.send(h, 503, b"busy", "text/plain")
         if "id" not in message:
             return self.send(h, 202, b"", None)
@@ -117,6 +122,8 @@ class FakeFermi:
                       "serverInfo": {"name": "fermi", "version": "0"}}
         elif self.mode == "iserror":
             result = {"content": [{"type": "text", "text": FERMI_ERROR}], "isError": True}
+        elif self.empty_tool and record["tool"] == self.empty_tool:
+            result = {"content": [{"type": "text", "text": "{}"}], "isError": False}
         else:
             answer, record["rows"] = self.tool(params["name"], params.get("arguments") or {})
             result = {"content": [{"type": "text", "text": json.dumps(answer)}], "isError": False}
@@ -148,12 +155,44 @@ class FakeFermi:
                     if args["query"] in " ".join([s["slug"], s["name"], s["description"], *s["keywords"]])]
             rows = rows[:args.get("limit", 10)]
             return {"query": args["query"], "results": rows, "total": len(rows)}, rows
+        if name == "search":
+            return self.search(args)
+        if name == "skill_set":
+            metadata = args.get("metadata") or {}
+            old = next((s for s in self.skills if s["slug"] == args["slug"]), None)
+            row = skill(args["slug"], list(metadata.get("keywords", [])), body=args["body"])
+            row.update({k: metadata[k] for k in ("name", "description") if k in metadata},
+                       version=old.get("version", 1) + 1 if old else 1, metadata=metadata)
+            self.skills = [s for s in self.skills if s is not old] + [row]
+            return {"slug": row["slug"], "version": row["version"], "created": old is None,
+                    "r2_key": f"skills/{row['slug']}/v{row['version']}.md"}, [row]
         found = [s for s in self.skills if s["slug"] == args["slug"]]
         if not found:
             return {"error": "skill_not_found", "slug": args["slug"]}, []
         s = found[0]
         return {"skill": {k: s[k] for k in ("slug", "name", "description", "keywords")}, "body": s["body"],
                 "resources": []}, [s]
+
+    def search(self, args):
+        """Fermi's ``search``: the memory and skill matches of the asked ``types``, and for every query one
+        message, one capability and one secret match (tagged, so that only their type drops them)."""
+        types = args.get("types", ["capability", "memory", "secret", "skill"])
+        query = args["query"]
+        other = {"snippet": f"[factory:{TAG}]\n{query}", "score": 0.9,
+                 "metadata": {"keywords": [f"factory:{TAG}", "factory:studio"]}}
+        memories = [{"type": "memory", "id": str(m["id"]), "name": m["kind"], "snippet": m["body"], "score": 0.8,
+                     "metadata": {"kind": m["kind"]}} for m in self.memories if query in m["body"]]
+        skills = [{"type": "skill", "id": s["slug"], "name": s["slug"], "snippet": s["description"], "score": 0.7,
+                   "metadata": {"keywords": s["keywords"]}} for s in self.skills
+                  if query in " ".join([s["slug"], s["name"], s["description"], *s["keywords"]])]
+        rows = [{"type": "message", "id": "m-1", "name": "chat", **other},
+                *(memories if "memory" in types else []),
+                {"type": "capability", "id": "c-1", "name": "browser", **other},
+                *(skills if "skill" in types else []),
+                {"type": "secret", "id": "s-1", "name": "heron-token", **other}][:args.get("limit", 10)]
+        counts = {"message": 1, "capability": 1, "secret": 1, "memory": len(memories), "skill": len(skills)}
+        return {"matches": rows, "offline": False, "warnings": [], "guidance": "Load a skill by its slug.",
+                "telemetry": {"candidateCounts": counts}, "memories": []}, rows
 
 
 class Base(unittest.TestCase):
@@ -297,13 +336,6 @@ class Behaviour2Tools(Base):
         for t in rpc(self.start("skills, memory-read, memory-write"), "tools/list")["result"]["tools"]:
             self.assertIs(t["inputSchema"]["additionalProperties"], False, t["name"])
             self.assertTrue(t["description"], t["name"])
-
-    def test_defect_no_tool_for_empty_search_and_skills_write(self):
-        for line in ("", None, "search", "skills-write", "search, skills-write"):
-            self.assertEqual(gateway.tools(line), [], line)
-            self.assertFalse(gateway.wanted(self.settings(), line), line)
-            self.assertEqual(gateway.check({"GATEWAY": "on"}, line), [], line)
-        self.assertEqual(tool_names(self.start("skills, search")), ["skill_load", "skill_search"])
 
 
 class Behaviour3NoTool(Base):
@@ -648,6 +680,249 @@ class Behaviour14Sandbox(unittest.TestCase):
         port = mcp_port(self.w)
         self.assertIn(f'(remote ip "localhost:{port}")', (self.w.run_dir("writer-3-1") / "sandbox.sb").read_text())
         self.assertNotIn(f":{self.fake.port}", (self.w.run_dir("writer-3-1") / "sandbox.sb").read_text())
+
+
+class Behaviour15SearchTools(Base):
+
+    def test_defect_empty_line_gets_no_tool(self):
+        self.assertEqual(gateway.tools("search"), ["search"])
+        self.assertEqual(gateway.tools("skills-write"), ["skill_set"])
+        self.assertEqual(gateway.tools("skills, memory-read, search"),
+                         ["memory_recall", "search", "skill_load", "skill_search"])
+        self.assertTrue(gateway.wanted(self.settings(), "search"))
+        self.assertNotEqual(gateway.check({"GATEWAY": "on"}, "search"), [])
+        for line in ("", None):
+            self.assertEqual(gateway.tools(line), [], line)
+            self.assertFalse(gateway.wanted(self.settings(), line), line)
+            self.assertEqual(gateway.check({"GATEWAY": "on"}, line), [], line)
+
+    def test_twin_search_gateway_lists_search_only(self):
+        listed = rpc(self.start("search"), "tools/list")["result"]["tools"]
+        self.assertEqual([t["name"] for t in listed], ["search"])
+        self.assertIs(listed[0]["inputSchema"]["additionalProperties"], False)
+        self.assertEqual(listed[0]["description"], gateway.TOOLS["search"][1])
+        self.assertEqual(self.fake.records, [])
+
+
+class Behaviour16SearchFilter(Base):
+
+    memories = Behaviour4RecallFilter.memories
+    skills = [skill("heron-ours", ["heron", "factory:example/salt-marsh"]),
+              skill("heron-studio", ["heron", "factory:studio"]),
+              skill("heron-other", ["heron", "factory:example/other-show"]),
+              skill("heron-owner", ["heron"])]
+
+    def search(self, **arguments):
+        text, error = call(self.start("memory-read, search"), "search", {"query": "heron", **arguments})
+        self.assertFalse(error, text)
+        return text, json.loads(text)
+
+    def test_defect_other_types_and_tags_are_dropped(self):
+        text, answer = self.search()
+        self.assertEqual([(m["type"], m["id"]) for m in answer["matches"]],
+                         [("memory", "1"), ("memory", "2"), ("memory", "7"), ("skill", "heron-ours"),
+                          ("skill", "heron-studio")])
+        self.assertEqual(answer, {"matches": answer["matches"], "total": 5})
+        self.assertEqual(list(answer), ["matches", "total"])
+        rows = self.fake.calls()[0]["rows"]
+        self.assertEqual(answer["matches"][0], rows[1])
+        self.assertEqual({r["type"] for r in rows}, {"message", "capability", "secret", "memory", "skill"})
+        self.assertNotIn("message", {m["type"] for m in answer["matches"]})
+        self.assertNotIn("capability", {m["type"] for m in answer["matches"]})
+        self.assertNotIn("secret", {m["type"] for m in answer["matches"]})
+        for word in ("telemetry", "candidateCounts", "offline", "warnings", "guidance", "memories"):
+            self.assertNotIn(word, text)
+
+    def test_twin_limit_one(self):
+        _, answer = self.search(limit=1)
+        self.assertEqual([m["id"] for m in answer["matches"]], ["1"])
+        self.assertEqual(answer["total"], 1)
+        self.assertEqual(self.fake.calls()[0]["arguments"],
+                         {"query": "heron", "types": ["memory", "skill"], "limit": 50})
+
+
+class Behaviour17SearchMemoryRead(Base):
+
+    memories = [memory(1, "[factory:example/salt-marsh] writer #3\nThe heron leaves at dusk.")]
+    skills = [skill("heron-ours", ["heron", "factory:example/salt-marsh"])]
+
+    def test_defect_memory_dropped_without_memory_read(self):
+        original = self.fake.tool
+        self.fake.tool = lambda name, args: original(name, {**args, "types": ["memory", "skill"]})
+        text, error = call(self.start("search"), "search", {"query": "heron"})
+        self.assertFalse(error, text)
+        self.assertEqual(self.fake.calls()[0]["arguments"], {"query": "heron", "types": ["skill"], "limit": 50})
+        self.assertIn("memory", [r["type"] for r in self.fake.calls()[0]["rows"]])
+        self.assertEqual([(m["type"], m["id"]) for m in json.loads(text)["matches"]], [("skill", "heron-ours")])
+
+    def test_twin_memory_kept_with_memory_read(self):
+        text, error = call(self.start("search, memory-read"), "search", {"query": "heron"})
+        self.assertFalse(error, text)
+        self.assertEqual([(m["type"], m["id"]) for m in json.loads(text)["matches"]],
+                         [("memory", "1"), ("skill", "heron-ours")])
+
+
+class Behaviour18SearchArguments(Base):
+
+    memories = [memory(n, f"[factory:studio]\nheron {n}") for n in range(1, 13)]
+
+    def test_defect_invalid_arguments(self):
+        gw = self.start("memory-read, search")
+        cases = [({"query": "heron", "entity": "s-1"}, "argument entity is not taken"),
+                 ({"query": "heron", "types": ["secret"]}, "argument types is not taken"),
+                 ({"query": "heron", "memoryContext": "x"}, "argument memoryContext is not taken"),
+                 ({"query": "heron", "limit": 51}, "argument limit must be an integer from 1 to 50"),
+                 ({"query": ""}, "argument query must be a non-empty string")]
+        for arguments, problem in cases:
+            self.assertEqual(call(gw, "search", arguments),
+                             (f"knowledge: invalid arguments for search: {problem}", True), arguments)
+        self.assertEqual(self.fake.records, [])
+
+    def test_twin_default_limit(self):
+        text, error = call(self.start("memory-read, search"), "search", {"query": "heron"})
+        self.assertFalse(error, text)
+        self.assertEqual(json.loads(text)["total"], 10)
+        self.assertEqual(self.fake.calls()[0]["arguments"]["limit"], 50)
+
+
+def skill_sets(fake):
+    return [r["arguments"] for r in fake.calls() if r["tool"] == "skill_set"]
+
+
+class Behaviour19SkillSet(Base):
+
+    def write(self):
+        return call(self.start("skills-write"), "skill_set",
+                    {"slug": "outline-beats", "body": "Step one.", "keywords": ["outline"]})
+
+    def test_twin_written_with_prefix_and_tag(self):
+        text, error = self.write()
+        self.assertFalse(error, text)
+        self.assertEqual(json.loads(text), {"slug": PREFIX + "outline-beats", "version": 1, "created": True})
+        self.assertEqual([(r["tool"], r["arguments"]) for r in self.fake.calls()],
+                         [("skill_load", {"slug": PREFIX + "outline-beats"}),
+                          ("skill_set", {"slug": PREFIX + "outline-beats", "body": "Step one.",
+                                         "metadata": {"keywords": ["outline", "factory:example/salt-marsh"],
+                                                      "allowed_tools": []}})])
+        gw = self.start("skills")
+        found = json.loads(call(gw, "skill_search", {"query": "outline"})[0])
+        self.assertEqual([s["slug"] for s in found["results"]], [PREFIX + "outline-beats"])
+        loaded = json.loads(call(gw, "skill_load", {"slug": PREFIX + "outline-beats"})[0])
+        self.assertEqual(loaded["body"], "Step one.")
+
+    def test_defect_other_production_cannot_read_it(self):
+        self.assertFalse(self.write()[1])
+        other = self.start("skills", REPO="example/other-show")
+        self.assertEqual(json.loads(call(other, "skill_load", {"slug": PREFIX + "outline-beats"})[0]),
+                         {"error": "skill_not_found", "slug": PREFIX + "outline-beats"})
+        self.assertEqual(json.loads(call(other, "skill_search", {"query": "outline"})[0])["results"], [])
+
+
+class Behaviour20SkillSetOutside(Base):
+
+    skills = [skill(PREFIX + "taken", ["factory:example/other-show"]),
+              skill(PREFIX + "shared", ["factory:studio"]),
+              skill(PREFIX + "bare", []),
+              skill(PREFIX + "mine", ["mine", "factory:example/salt-marsh"])]
+
+    def test_defect_skill_outside_production_is_not_replaced(self):
+        gw = self.start("skills-write")
+        for slug in ("taken", "shared", "bare"):
+            self.assertEqual(call(gw, "skill_set", {"slug": slug, "body": "Replaced."}),
+                             (f"knowledge: skill {PREFIX}{slug} is outside this production; choose another slug",
+                              True), slug)
+        self.assertEqual([r["tool"] for r in self.fake.calls()], ["skill_load"] * 3)
+        self.assertEqual(skill_sets(self.fake), [])
+        self.assertEqual([s["body"] for s in self.fake.skills[:3]], ["Step one: read the outline."] * 3)
+
+    def test_twin_own_skill_is_changed(self):
+        gw = self.start("skills-write")
+        for slug, version in (("mine", 2), (PREFIX + "mine", 3)):
+            text, error = call(gw, "skill_set", {"slug": slug, "body": "Changed."})
+            self.assertFalse(error, text)
+            self.assertEqual(json.loads(text), {"slug": PREFIX + "mine", "version": version, "created": False})
+        self.assertEqual([a["slug"] for a in skill_sets(self.fake)], [PREFIX + "mine"] * 2)
+        self.assertFalse([s["slug"] for s in self.fake.skills if s["slug"].startswith(PREFIX * 2)])
+        self.assertEqual(len(self.fake.skills), 4)
+
+
+class Behaviour21SkillSetArguments(Base):
+
+    def test_defect_invalid_arguments(self):
+        gw = self.start("skills-write")
+        slug = "argument slug must be lowercase words joined by single dashes, at most 64 characters"
+        cases = [({"slug": "Outline_Beats", "body": "x"}, slug),
+                 ({"slug": "a" * 65, "body": "x"}, slug),
+                 ({"slug": "outline-", "body": "x"}, slug),
+                 ({"slug": "outline\n", "body": "x"}, slug),
+                 ({"slug": "outline", "body": "x", "keywords": "outline"},
+                  "argument keywords must be a list of non-empty strings"),
+                 ({"slug": "outline", "body": "x", "keywords": [""]},
+                  "argument keywords must be a list of non-empty strings"),
+                 ({"slug": "outline", "body": "x", "keywords": ["outline", "factory:studio"]},
+                  "argument keywords must not hold a factory: keyword"),
+                 ({"slug": "outline", "body": "x", "origin_memory_id": "1"}, "argument origin_memory_id is not taken"),
+                 ({"slug": "outline", "body": "x", "metadata": {}}, "argument metadata is not taken"),
+                 ({"slug": "outline", "body": "x", "allowed_tools": []}, "argument allowed_tools is not taken"),
+                 ({"slug": "outline"}, "argument body is required"),
+                 ({"slug": "outline", "body": "x", "name": ""}, "argument name must be a non-empty string")]
+        for arguments, problem in cases:
+            self.assertEqual(call(gw, "skill_set", arguments),
+                             (f"knowledge: invalid arguments for skill_set: {problem}", True), arguments)
+        self.assertEqual(self.fake.records, [])
+
+    def test_twin_name_and_description_reach_metadata(self):
+        text, error = call(self.start("skills-write"), "skill_set",
+                           {"slug": "outline-beats", "body": "Step one.", "name": "Outline beats",
+                            "description": "How to outline beats."})
+        self.assertFalse(error, text)
+        self.assertEqual(skill_sets(self.fake)[0]["metadata"],
+                         {"name": "Outline beats", "description": "How to outline beats.",
+                          "keywords": ["factory:example/salt-marsh"], "allowed_tools": []})
+        self.assertEqual(self.fake.skills[-1]["name"], "Outline beats")
+
+
+class Behaviour22SkillSetDown(Base):
+
+    def write(self, gw):
+        return call(gw, "skill_set", {"slug": "outline-beats", "body": "Step one."})
+
+    def test_defect_fermi_fails_skill_set(self):
+        self.fake.fail_tool = "skill_set"
+        self.assertEqual(self.write(self.start("skills-write")), (gateway.UNREACHABLE, True))
+        self.assertEqual([r["tool"] for r in self.fake.calls()], ["skill_load", "skill_set"])
+
+    def test_defect_empty_skill_load_answer(self):
+        self.fake.empty_tool = "skill_load"
+        self.assertEqual(self.write(self.start("skills-write")), (gateway.UNREACHABLE, True))
+        self.assertEqual([r["tool"] for r in self.fake.calls()], ["skill_load"])
+
+    def test_twin_recovers(self):
+        gw = self.start("skills-write")
+        self.fake.fail_tool = "skill_set"
+        self.assertEqual(self.write(gw), (gateway.UNREACHABLE, True))
+        self.fake.fail_tool = None
+        text, error = self.write(gw)
+        self.assertFalse(error, text)
+        self.assertEqual(json.loads(text), {"slug": PREFIX + "outline-beats", "version": 1, "created": True})
+
+
+class Behaviour23SearchNoTool(Base):
+
+    def test_defect_tools_outside_the_line(self):
+        gw = self.start("skills, memory-read, search")
+        for name in ("skill_set", "session_search"):
+            self.assertEqual(call(gw, name, {"slug": "x", "body": "y"}), (f"knowledge: no tool {name}", True))
+        writer = self.start("skills-write")
+        for name in ("skill_load", "search"):
+            self.assertEqual(call(writer, name, {"query": "x"}), (f"knowledge: no tool {name}", True))
+        self.assertEqual(self.fake.records, [])
+
+    def test_twin_skills_write_gateway(self):
+        gw = self.start("skills-write")
+        self.assertEqual(tool_names(gw), ["skill_set"])
+        self.assertFalse(call(gw, "skill_set", {"slug": "outline-beats", "body": "Step one."})[1])
+        self.assertEqual([r["tool"] for r in self.fake.calls()], ["skill_load", "skill_set"])
 
 
 class Checks(Base):
