@@ -302,7 +302,7 @@ class MatchesTest(unittest.TestCase):
 
 def _rules(text):
     return [re.sub(r"\s+", " ", body.replace("**", "")).strip()
-            for body in re.findall(r"(?m)^[1-7]\. (.*)$", text)]
+            for body in re.findall(r"(?m)^[1-8]\. (.*)$", text)]
 
 
 class RulesOfPowerTest(unittest.TestCase):
@@ -311,13 +311,13 @@ class RulesOfPowerTest(unittest.TestCase):
         section = re.search(r"(?ms)^## 2\. Rules of power$(.*?)^##+ ", brief).group(1)
         kit_text = (ROOT / "kit" / "rules-of-power.md").read_text()
         expected = _rules(section)
-        self.assertEqual(len(expected), 7)
+        self.assertEqual(len(expected), 8)
         self.assertEqual(_rules(kit_text), expected)
         numbers = re.findall(r"(?m)^(\d+)\. ", kit_text)
-        self.assertEqual(numbers, [str(n) for n in range(1, 8)])
+        self.assertEqual(numbers, [str(n) for n in range(1, 9)])
         self.assertTrue(kit_text.startswith("# Rules of power\n"))
         lines = [line for line in kit_text.splitlines() if line.strip()]
-        self.assertEqual(len(lines), 8)
+        self.assertEqual(len(lines), 9)
 
 
 class ImportsTest(unittest.TestCase):

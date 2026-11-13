@@ -67,6 +67,7 @@ FILES = {
     "media/manifest.tsv": "id\tsha256\tbytes\tsource\n",
     "bible/charter.md": "# Charter\n",
     "bible/canon/ledger.tsv": "subject\tattribute\tvalue\ttag\tsource\n",
+    "sources/rights.tsv": "path\twork\tholder\tbasis\tnote\n",
 }
 DIRECTORIES = ("sources", "research", "bible/canon", "bible/amendments", "bible/style", "brand", "playbook",
                "calibration", "registry", "rulebook", "ledger", "lab", "episodes")

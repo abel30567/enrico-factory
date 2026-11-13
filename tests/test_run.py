@@ -875,5 +875,20 @@ class RetryTest(unittest.TestCase):
         self.assertEqual(self.w.gate(job), (0, f"gate job {h2}: PASS cap - reason within caps\n", ""))
 
 
+class RightsRefusalTest(unittest.TestCase):
+    """ISSUE-274: a run reads research/not-ours.tsv on the base again, after the gate's PASS."""
+
+    def test_a_name_listed_after_the_gate_pass(self):
+        w = World(self)
+        job = w.script("pier", outputs={"pier.png": "Draw Wickabel on the pier.\n"}, usd=1, compute_min=2)
+        digest = w.passed(job)
+        w.commit("research/not-ours.tsv", "name\tholder\tlink\nWickabel\tthe makers of Skarrowfen\t"
+                                          "https://example.invalid/1\n")
+        self.assertEqual(w.run(job), (2, "", "run: input scripts/pier.json names 'Wickabel' "
+                                             "(research/not-ours.tsv:2)\n"))
+        self.assertEqual(w.fake_calls(), [])
+        self.assertEqual([(r["kind"], r["hash"]) for r in w.rows()], [("job", digest)])
+
+
 if __name__ == "__main__":
     unittest.main()

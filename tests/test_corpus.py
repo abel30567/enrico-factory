@@ -127,7 +127,7 @@ class CorpusTest(unittest.TestCase):
         faults = [  # (change to the copy, extra arguments, the line after "corpus: ")
             (shutil.rmtree, [], "{c}: not a directory"),
             (lambda c: write(c.parent / "bad.json", "{"), ["--pipeline", "{p}"], "{p}: not a JSON file"),
-            (lambda c: (c / "rights").mkdir(), [], "rights/: no such check"),
+            (lambda c: (c / "no-such-check").mkdir(), [], "no-such-check/: no such check"),
             (lambda c: shutil.copytree(c / "media/02-lantern-manifest", c / "media/5-bad"), [],
              "media/5-bad: case id is not <nn>-<slug>"),
             (case("nope"), [], "media/02-lantern-manifest/case.json: not a JSON file"),
