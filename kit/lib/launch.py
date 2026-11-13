@@ -19,7 +19,8 @@ import shutil
 from pathlib import Path
 from typing import NamedTuple
 
-from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, steps, tickets
+from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, snapshot, steps
+from kit.lib import tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -398,6 +399,11 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     found = down.waiting(p, issues, role, now)
     if found is not None:
         raise LaunchError(f"slot {found[0]} is out of usage until {found[1]}")
+    # Check 11: the snapshot of the ticket's topic, for a role that reads trends; built, not yet written.
+    try:
+        snap = snapshot.build(p, role, ticket["unit"])
+    except snapshot.SnapshotError as error:
+        raise LaunchError(str(error)) from None
 
     n = tickets.launches(state, t, role) + 1
     run_id = f"{number}-{n}"
@@ -527,6 +533,10 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             (run_dir / "config").mkdir(mode=0o700)
         except OSError as error:
             raise LaunchError(f"run {name}: {error.strerror}") from None
+        try:
+            snapshot.write(p, workdir, ticket["unit"], snap, cards=kind == "maker")
+        except snapshot.SnapshotError as error:
+            raise LaunchError(str(error)) from None
         try:
             comment = gh.post(number, record, orchestrator)
         except Exception:

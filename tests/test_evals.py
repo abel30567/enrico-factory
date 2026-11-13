@@ -387,7 +387,7 @@ class MetricsNoiseTest(unittest.TestCase):
             evals.metrics("checker", self.graded("clean", True))
         with self.assertRaisesRegex(EvalError, "lint_pass_rate is null"):
             evals.metrics("maker", [])
-        with self.assertRaisesRegex(EvalError, "no eval score for a role of kind analyst"):
+        with self.assertRaisesRegex(EvalError, "analyst score: verdict_rate is null, no case to count"):
             evals.metrics("analyst", [])
 
     def test_noise(self):

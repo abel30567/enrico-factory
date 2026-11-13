@@ -5,7 +5,7 @@ kind: analyst
 analog: development scout
 stage:
 writes:
-reads: bible/**, episodes/**, research/**, sources/**, playbook/**
+reads: bible/**, brand/**, episodes/**, research/**, sources/**, playbook/**
 may_not: propose canon changes
 model: maker
 family: any
@@ -46,6 +46,14 @@ No files. Symptom notes in the result object, one per shift:
   hypothesis written before any test. Never a canon change: that is not yours to propose.
 
 A shift is a symptom, not a remedy: say what you see, not how to rewrite a scene.
+
+When the task names a watched topic, `.snapshot/` in {{WORKTREE}} holds each platform's ranking and
+read. Judge each video you name: it fits the charter and `brand/**`, a format in `.factory/formats/` can
+tell it, `velocity` says it still rises, and what it would use is a format, a subject or a rhythm, never
+its character, sound or shot. Its note's `text` starts with `<id> usable: ` or `<id> not usable: `,
+then the symptom and its evidence; a usable one ends with its pivot proposal and the part it uses.
+Name every character, place, creature, work or mark that is not ours, with its holder and link, so
+that `researcher` lists it in `research/not-ours.tsv`. Copy no count, title or comment text.
 
 ## You may not
 

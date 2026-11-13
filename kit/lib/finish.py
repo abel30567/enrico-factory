@@ -25,7 +25,8 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from kit.lib import blind, down, frontmatter, gateway, gitstate, harness, launch, markers, production, steps, tickets
+from kit.lib import blind, down, frontmatter, gateway, gitstate, harness, launch, markers, production, snapshot
+from kit.lib import steps, tickets
 from kit.lib.gateway import GatewayError
 from kit.lib.github import GitHubError
 from kit.lib.gitstate import GitError
@@ -183,6 +184,7 @@ def _finish_maker(p, gh, root, run, result, missing):
 
 def post(p, gh, root, run, outcome):
     """Post the role's marker for ``outcome`` (a ``harness.Outcome``) and return the comment."""
+    snapshot.remove(run.worktree)
     meta = run.meta
     missing = _missing(meta, outcome)
     result = outcome.result if missing is None else None
