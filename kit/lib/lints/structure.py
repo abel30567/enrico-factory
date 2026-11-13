@@ -1,11 +1,15 @@
 """Structure: every episode has its format's beats, in order, inside the runtime, and every later file
-accounts for every earlier one (brief sections 10 and 16).
+accounts for every earlier one, and every bible sheet has its shape (brief sections 10 and 16).
 
 Rule ids: premise (1), beats (2), durations (3), scene-beats (4), script-scenes (5), lines (6),
-sequences (7), shots (8), edit-list (9), depends (10), intent-packet (11). Findings in JSON files are on
-line 1. Times in `reel/edit-list.json` are seconds, like every other duration in an episode. The edit
-list's `bible` is the id `A-<n>` of the amendment the reel was cut from; from the reel on, an episode
-has its `intent-packet.json`.
+sequences (7), shots (8), edit-list (9), depends (10), intent-packet (11), sheets (12). Findings in JSON
+files are on line 1. Times in `reel/edit-list.json` are seconds, like every other duration in an
+episode. The edit list's `bible` is the id `A-<n>` of the amendment the reel was cut from; from the reel
+on, an episode has its `intent-packet.json`. A shot needs the canon sheet and the model sheet of each of
+its characters and of its set. A sheet is checked wherever it exists: a canon sheet opens with a
+description and holds one line `origin: source ...` or `origin: house ...`, a canon character sheet
+holds `## Behaviour` and `## Motivation` with text, and a model sheet cites a reference image as a link
+to `media:<id>`.
 """
 
 from __future__ import annotations
@@ -15,12 +19,15 @@ from pathlib import Path
 
 from .. import frontmatter, roles
 from ..frontmatter import as_list
-from ..lint import Finding, LintError, read_json, read_text, walk
+from ..lint import Finding, LintError, link_targets, markdown_lines, read_json, read_text, walk
+from .references import MEDIA
 
 KIT = Path(__file__).resolve().parents[2]  # the kit that contains the running lib/
 EPISODE = re.compile(r"^episodes/([^/]+)/(.+)$")
 SEQUENCE = re.compile(r"^sequences/([^/]+)/sequence\.json$")
 SHOT = re.compile(r"^sequences/([^/]+)/shots/[^/]+\.json$")
+SHEET = re.compile(r"^bible/(canon|style)/(characters|places)/[^/]+\.md$")
+HEADING = re.compile(r"^#{1,6}(\s|$)")
 BEAT_HEADING = re.compile(r"^## B(\d+) (\S.*?)\s*$")
 SCENE_HEADING = re.compile(r"^## S(\d+) (\S.*?)\s*$")
 DURATION = re.compile(r"^duration:\s*(\d+(?:\.\d+)?)$")
@@ -31,6 +38,7 @@ AMENDMENT_ID = re.compile(r"A-[0-9]+")
 SHOT_KEYS = ("id", "scene", "beat", "duration", "characters", "set", "camera", "action")
 LINE_KEYS = ("id", "scene", "speaker", "text")
 PACKET_KEYS = {"hook", "spoilers", "cta", "tone"}
+CHARACTER_HEADINGS = ("## Behaviour", "## Motivation")
 
 
 def _number(value) -> bool:
@@ -214,11 +222,16 @@ def _shot(rel: str, data, scenes, scene_beats, files):
     if not isinstance(characters, list) or not all(isinstance(c, str) for c in characters):
         found.append(Finding(rel, 1, "shots", "characters is not a list of ids"))
     else:
-        found += [Finding(rel, 1, "shots", f"character {c} has no bible/canon/characters/{c}.md")
-                  for c in characters if f"bible/canon/characters/{c}.md" not in files]
-    if "set" in data and (not isinstance(data["set"], str)
-                          or f"bible/canon/places/{data['set']}.md" not in files):
-        found.append(Finding(rel, 1, "shots", f"set {data['set']!r} has no file under bible/canon/places/"))
+        for c in characters:
+            for kind in ("canon", "style"):
+                if f"bible/{kind}/characters/{c}.md" not in files:
+                    found.append(Finding(rel, 1, "shots", f"character {c} has no bible/{kind}/characters/{c}.md"))
+                    break
+    if "set" in data:
+        for kind in ("canon", "style"):
+            if not isinstance(data["set"], str) or f"bible/{kind}/places/{data['set']}.md" not in files:
+                found.append(Finding(rel, 1, "shots", f"set {data['set']!r} has no file under bible/{kind}/places/"))
+                break
     return data.get("id") if isinstance(data.get("id"), str) else None, found
 
 
@@ -261,6 +274,45 @@ def _packet(rel: str, data):
             or not all(isinstance(data[k], list) and all(_text(s) for s in data[k]) for k in ("spoilers", "cta")):
         return [Finding(rel, 1, "intent-packet", "not {hook, spoilers: [...], cta: [...], tone}")]
     return []
+
+
+def _canon_sheet(rel: str, text: str, character: bool) -> list[Finding]:
+    found, described, origin, section, sections = [], False, None, None, {}
+    for n, line in enumerate(text.splitlines(), 1):
+        if line.startswith("## "):
+            section = line.rstrip()
+            sections.setdefault(section, [n, False])
+            continue
+        is_origin = line.startswith("origin:")
+        if is_origin and origin is not None:
+            found.append(Finding(rel, n, "sheets", f"origin is repeated (first on line {origin})"))
+        elif is_origin:
+            origin = n
+            words = line[len("origin:"):].split()
+            if not words or words[0] not in ("source", "house"):
+                found.append(Finding(rel, n, "sheets", "origin is not 'source' or 'house'"))
+        if not line.strip() or HEADING.match(line):
+            continue
+        if section is None:
+            described = described or not is_origin
+        else:
+            sections[section][1] = True
+    if not described:
+        found.append(Finding(rel, 1, "sheets", "no description before the first '## ' heading"))
+    if origin is None:
+        found.append(Finding(rel, 1, "sheets", "no line 'origin: source' or 'origin: house'"))
+    for heading in CHARACTER_HEADINGS if character else ():
+        if heading not in sections:
+            found.append(Finding(rel, 1, "sheets", f"no '{heading}' heading"))
+        elif not sections[heading][1]:
+            found.append(Finding(rel, sections[heading][0], "sheets", f"'{heading}' has no text under it"))
+    return found
+
+
+def _model_sheet(rel: str, text: str) -> list[Finding]:
+    if any(MEDIA.match(target) for _, line in markdown_lines(text) for target in link_targets(line)):
+        return []
+    return [Finding(rel, 1, "sheets", "no reference image cited as a link to media:<id>")]
 
 
 def _episode(root: Path, ep: str, have: set[str], files: set[str], formats: _Formats) -> list[Finding]:
@@ -382,4 +434,10 @@ def check(root: Path) -> list[Finding]:
     formats, found, file_set = _Formats(), [], set(files)
     for ep in sorted(episodes):
         found += _episode(root, f"episodes/{ep}", episodes[ep], file_set, formats)
+    for rel in sorted(files):
+        m = SHEET.match(rel)
+        if m and m.group(1) == "canon":
+            found += _canon_sheet(rel, read_text(root, rel), m.group(2) == "characters")
+        elif m:
+            found += _model_sheet(rel, read_text(root, rel))
     return found

@@ -1,4 +1,4 @@
-"""structure: rules 1 to 11 of an episode's files."""
+"""structure: rules 1 to 11 of an episode's files, and rule 12, the shape of a bible sheet."""
 
 import json
 import os
@@ -17,6 +17,13 @@ CLEAN = FIX / "clean"
 E1, E2 = "episodes/ep01", "episodes/ep02"  # short-hook-payoff (skips outline), episode-acts
 P1, R1, R2 = f"{E1}/intent-packet.json", f"{E1}/reel/edit-list.json", f"{E2}/reel/edit-list.json"
 PIPELINE = json.loads((ROOT / "kit" / "pipeline.json").read_text(encoding="utf-8"))
+AMA, HARBOUR = "bible/canon/characters/ama.md", "bible/canon/places/harbour.md"
+AMA_LOOK, TOBI_LOOK = "bible/style/characters/ama.md", "bible/style/characters/tobi.md"
+TOBI, LIGHTHOUSE_LOOK = "bible/canon/characters/tobi.md", "bible/style/places/lighthouse.md"
+NO_ORIGIN = "no line 'origin: source' or 'origin: house'"
+BAD_ORIGIN = "origin is not 'source' or 'house'"
+NO_DESCRIPTION = "no description before the first '## ' heading"
+NO_REFERENCE = "no reference image cited as a link to media:<id>"
 INPUT = re.compile(r"^episodes/[^/]+/(premise\.md|beats\.md|outline\.md|script\.md|lines\.json"
                    r"|sequences/.+\.json|reel/edit-list\.json)$")
 
@@ -53,6 +60,16 @@ class Structure(LintCase):
 
     def fails(self, expected, files=None, drop=()):
         self.assertOnly(self.tree(files, drop), "structure", expected)
+
+    def says(self, expected, files=None, drop=(), root=None):
+        """structure FAILs with exactly `expected` (path, line, rule, message)."""
+        result = self.structure(root or self.tree(files, drop))
+        self.assertEqual(result.status, lint.FAIL, result.reason)
+        self.assertEqual([(f.path, f.line, f.rule, f.message) for f in result.findings], expected)
+
+    def passes(self, files=None, drop=()):
+        result = self.structure(self.tree(files, drop))
+        self.assertEqual(result.status, lint.PASS, result.findings)
 
     # Clean trees
 
@@ -343,13 +360,137 @@ class Structure(LintCase):
         self.assertTrue(body.startswith("[LINT] FAIL"), body)
         self.assertIn(f"- B1 structure {R1}:1 {P1} is missing", body.splitlines())
 
+    # Bible sheets (ISSUE-235)
+
+    def test_sheet_behaviour1_a_character_sheet_has_behaviour_and_motivation_with_text(self):
+        behaviour = "## Behaviour\n\nActs and speaks as the episode files in this tree show.\n"
+        motivation = "## Motivation\n\nWants what the episode files in this tree show.\n"
+        text = read(AMA)
+        self.assertTrue(text.endswith(f"\n{behaviour}\n{motivation}"), text)
+        head = text[:-len(f"{behaviour}\n{motivation}")]
+        cases = [
+            (head + motivation, [(AMA, 1, "sheets", "no '## Behaviour' heading")]),
+            (head + behaviour, [(AMA, 1, "sheets", "no '## Motivation' heading")]),
+            (head + "## Behaviour\n\n### Voice\n\n" + motivation,
+             [(AMA, 7, "sheets", "'## Behaviour' has no text under it")]),
+            (head + behaviour + "\n## Motivation\n\n",
+             [(AMA, 11, "sheets", "'## Motivation' has no text under it")]),
+            (head + "## behaviour\n\nCalm.\n\n" + motivation, [(AMA, 1, "sheets", "no '## Behaviour' heading")]),
+        ]
+        for body, expected in cases:
+            with self.subTest(expected):
+                self.says(expected, {AMA: body})
+        self.passes({AMA: f"{head}{motivation}\n{behaviour}"})
+        self.passes({AMA: f"{head}{behaviour}\n## Looks\n\nTall.\n\n{motivation}"})
+
+    def test_sheet_behaviour2_a_canon_sheet_has_one_origin_line(self):
+        for rel in (AMA, HARBOUR):
+            text = read(rel)
+            self.assertEqual(text.splitlines()[2], "origin: house A-1", rel)
+            cases = [
+                (text.replace("origin: house A-1\n\n", ""), [(rel, 1, "sheets", NO_ORIGIN)]),
+                (text.replace("origin: house A-1", "origin: borrowed"), [(rel, 3, "sheets", BAD_ORIGIN)]),
+                (text.replace("origin: house A-1", "origin:"), [(rel, 3, "sheets", BAD_ORIGIN)]),
+                (text.replace("origin: house A-1", "origin:  sourced from the letters"),
+                 [(rel, 3, "sheets", BAD_ORIGIN)]),
+                (text.replace("origin: house A-1\n", "origin: house A-1\norigin: source sources/harbour.md\n"),
+                 [(rel, 4, "sheets", "origin is repeated (first on line 3)")]),
+                (text + "\norigin: house A-2\n",
+                 [(rel, len(text.splitlines()) + 2, "sheets", "origin is repeated (first on line 3)")]),
+            ]
+            for body, expected in cases:
+                with self.subTest(rel=rel, expected=expected):
+                    self.says(expected, {rel: body})
+            self.passes({rel: text.replace("origin: house A-1", "origin: source sources/harbour.md")})
+            self.passes({rel: text.replace("origin: house A-1\n\n", "") + "\norigin: house A-1\n"})
+
+    def test_sheet_behaviour3_a_canon_sheet_opens_with_a_description(self):
+        self.says([(HARBOUR, 1, "sheets", NO_DESCRIPTION)], {HARBOUR: "# The harbour\n\norigin: house A-1\n"})
+        self.says([(HARBOUR, 1, "sheets", NO_DESCRIPTION)],
+                  {HARBOUR: "# The harbour\n\norigin: house A-1\n\n## Boats\n\nTwo boats.\n"})
+        ama = "# Ama\n\norigin: house A-1\n\n## Behaviour\n\nThe keeper.\n\n## Motivation\n\nThe light.\n"
+        self.says([(AMA, 1, "sheets", NO_DESCRIPTION)], {AMA: ama})
+        self.passes({AMA: ama.replace("origin: house A-1\n", "origin: house A-1\nThe keeper of the lighthouse.\n")})
+
+    def test_sheet_behaviour4_a_model_sheet_links_a_reference_image(self):
+        text = read(AMA_LOOK)
+        self.assertIn("![ama](media:ama-ref)", text)
+        cases = [
+            "# Ama\n\nA tall woman in a grey coat.\n",
+            "# Ama\n\nReference: media:ama-ref\n",
+            "# Ama\n\nReference: `![ama](media:ama-ref)`\n",
+            "# Ama\n\n```\n![ama](media:ama-ref)\n```\n",
+            "# Ama\n\nReference: ![ama](images/ama.png)\n",
+        ]
+        for body in cases:
+            with self.subTest(body):
+                self.says([(AMA_LOOK, 1, "sheets", NO_REFERENCE)], {AMA_LOOK: body})
+        self.passes({AMA_LOOK: text.replace("![ama](media:ama-ref)", "[ref](media:ama-ref)")})
+        unknown = self.tree({AMA_LOOK: text.replace("media:ama-ref", "media:ama-sketch")})
+        self.assertEqual(self.structure(unknown).status, lint.PASS)
+        self.assertEqual(lint.run(unknown, only=["references"])["references"].status, lint.FAIL)
+
+    def test_sheet_behaviour5_a_shot_needs_the_model_sheets_of_its_subjects(self):
+        shots = [rel for rel in lint.walk(CLEAN) if INPUT.match(rel) and "/shots/" in rel]
+        with_tobi = [rel for rel in shots if "tobi" in load(rel)["characters"]]
+        at_lighthouse = [rel for rel in shots if load(rel)["set"] == "lighthouse"]
+        self.assertEqual(len(with_tobi), 6)
+        self.assertEqual(len(at_lighthouse), 6)
+        self.says([(rel, 1, "shots", "character tobi has no bible/style/characters/tobi.md") for rel in with_tobi],
+                  drop=[TOBI_LOOK])
+        self.says([(rel, 1, "shots", "set 'lighthouse' has no file under bible/style/places/")
+                   for rel in at_lighthouse], drop=[LIGHTHOUSE_LOOK])
+        self.says([(rel, 1, "shots", "character tobi has no bible/canon/characters/tobi.md") for rel in with_tobi],
+                  drop=[TOBI_LOOK, TOBI])
+        self.says([(rel, 1, "shots", "set 'lighthouse' has no file under bible/canon/places/")
+                   for rel in at_lighthouse], drop=[LIGHTHOUSE_LOOK, "bible/canon/places/lighthouse.md"])
+        requests = self.tree({f"{E1}/sequences/Q1/shots/requests/r1.json": dump({"characters": ["nell"]})})
+        self.assertEqual(self.structure(requests).status, lint.PASS, self.structure(requests).findings)
+
+    def test_sheet_behaviour6_sheets_are_checked_without_an_episode(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / AMA).parent.mkdir(parents=True)
+            (root / AMA).write_text(read(AMA).replace("origin: house A-1\n\n", ""), encoding="utf-8")
+            self.says([(AMA, 1, "sheets", NO_ORIGIN)], root=root)
+            (root / AMA).write_text(read(AMA), encoding="utf-8")
+            (root / "bible/style/requests").mkdir(parents=True)
+            (root / "bible/style/requests/r1.json").write_text("{}\n", encoding="utf-8")
+            (root / "bible/style/palette.md").write_text("# Palette\n", encoding="utf-8")
+            (root / "bible/style/characters/old").mkdir(parents=True)
+            (root / "bible/style/characters/old/ama.md").write_text("# Ama\n", encoding="utf-8")
+            self.assertEqual(self.structure(root).status, lint.PASS, self.structure(root).findings)
+
+    def test_sheet_behaviour7_a_sheet_no_shot_cites_needs_no_model_sheet(self):
+        nell = read(TOBI).replace("# Tobi", "# Nell").replace("Ama's younger brother, a ferry hand.", "A net mender.")
+        mill = read(HARBOUR).replace("# The harbour", "# The mill")
+        self.passes({"bible/canon/characters/nell.md": nell, "bible/canon/places/mill.md": mill})
+        self.says([("bible/canon/characters/nell.md", 1, "sheets", NO_ORIGIN)],
+                  {"bible/canon/characters/nell.md": nell.replace("origin: house A-1\n\n", ""),
+                   "bible/canon/places/mill.md": mill})
+
+    def test_sheet_the_bible_and_style_stages_lint_the_sheets(self):
+        for stage in ("bible", "style"):
+            checks = next(e["lint"] for e in PIPELINE if e["stage"] == stage)
+            self.assertEqual(checks[0], "structure", stage)
+            self.assertTrue(lint.marker(lint.run(CLEAN, only=checks)).startswith("[LINT] PASS"), stage)
+        body = lint.marker(lint.run(self.tree({AMA_LOOK: "# Ama\n"}), only=["structure", "references", "media"]))
+        self.assertIn(f"- B1 structure {AMA_LOOK}:1 {NO_REFERENCE}", body.splitlines())
+
     def test_output_is_deterministic(self):
-        root = self.tree(self.edit(f"{E2}/outline.md", "beats: B3", "beats: B3, B9"),
-                         drop=[f"{E1}/lines.json"])
+        root = self.tree(dict(self.edit(f"{E2}/outline.md", "beats: B3", "beats: B3, B9"),
+                              **{AMA: read(AMA).replace("origin: house A-1", "origin: borrowed"),
+                                 HARBOUR: "# The harbour\n\norigin: house A-1\n",
+                                 TOBI: read(TOBI).replace("## Motivation", "## Wants"),
+                                 AMA_LOOK: "# Ama\n"}),
+                         drop=[f"{E1}/lines.json", LIGHTHOUSE_LOOK])
         a = cli("--root", str(root), "--only", "structure", "--json")
         b = cli("--root", str(root), "--only", "structure", "--json")
         self.assertEqual(a.stdout, b.stdout)
         self.assertEqual(a.returncode, 1)
+        messages = {f["message"] for f in json.loads(a.stdout)["checks"]["structure"]["findings"]}
+        self.assertLessEqual({BAD_ORIGIN, NO_DESCRIPTION, "no '## Motivation' heading", NO_REFERENCE,
+                              "set 'lighthouse' has no file under bible/style/places/"}, messages)
 
 
 if __name__ == "__main__":
