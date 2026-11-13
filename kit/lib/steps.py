@@ -210,6 +210,11 @@ def _job_rows(p, ticket, entry, pull, found):
                for job in found["jobs"]):
             k = len(found["jobs"])
             return _entry("report", "launch", role, n, f"{k} job(s) of #{n} ran and {role} has not reported")
+        maker = _maker_of(p, entry, pull)
+        if maker != role and _operator_left(p, entry, pull, role):
+            k = len(found["jobs"])
+            return _entry("cite", "launch", maker, n,
+                          f"{role} reported {k} job(s) on #{n} and {maker} has not cited their media")
     return None
 
 

@@ -1318,7 +1318,8 @@ class Jobs(Case):
 
     def test_a_request_goes_through_the_job(self):
         w = self.world()
-        w.steps(self.fetcher(), self.fetcher(files=False))
+        w.steps(self.fetcher(), self.fetcher(files=False),
+                step("You are the writer", {"marker": "READY", "summary": "Cited.", "evidence": EVIDENCE}))
         self.tick(w, ["STEP #5 launch fetcher on PR #6"])
         self.assertEqual(gitstate.show(w.root, w.ref(6), self.JOB), json.dumps(self.job, indent=1) + "\n")
         self.assertEqual(firsts(w.comments(6))[-1], ("fetcher", "[FETCHER] READY"))
@@ -1334,6 +1335,7 @@ class Jobs(Case):
         self.assertEqual(self.fake_log.read_text().split(), [self.digest])
         self.tick(w, ["STEP #5 launch fetcher on PR #6"])
         self.assertEqual(self.launches(w, "fetcher"), ["[KEEPER] LAUNCH fetcher 6-1", "[KEEPER] LAUNCH fetcher 6-2"])
+        self.tick(w, ["STEP #5 launch writer on PR #6"])
         self.tick(w, ["STEP #5 lint PR #6"])
         self.assertEqual(lines(self.ticked(w)), ["STEP #5 launch editor on PR #6"])
         self.assertEqual(len(self.launches(w, "fetcher")), 2)

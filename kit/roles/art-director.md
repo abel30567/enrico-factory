@@ -54,7 +54,7 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   `{for, prompt, refs}`, `for` the sheet, `prompt` the whole prompt text, `refs` reference images,
   each `media:<id>`. The media wrangler turns it into a job. A request that shows a character or a
   place names at least one reference image of it. Once the image exists you are launched again to
-  cite its `media:<id>` in the sheet.
+  cite its `media:<id>` in the sheet. Until then, write no model sheet of that subject.
 - A change to a locked style lock while an episode is in work needs an amendment the task names.
 
 Lints this stage must pass: `structure`, `references`, `media`. Run `.factory/factory lint`

@@ -411,9 +411,26 @@ class OperatorRowsTest(ChainCase):
         self.post("chief", "[CHIEF] LAUNCH fetcher 5-2\n")
         self.check(("running", "none", "fetcher", 5))
         self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("cite", "launch", "writer", 5),
+                   "fetcher reported 1 job(s) on #5 and writer has not cited their media")
+        self.post("chief", "[CHIEF] LAUNCH writer 5-2\n")
+        self.post("writer", "[WRITER] READY\nhead {head:5}\n")
         self.check(("lint", "lint", None, 5))
         self.verdicts()
         self.check(("lockable", "lock", None, 5))
+
+    def test_the_maker_cites_after_the_report(self):
+        # ISSUE-285 behaviour 7: the maker's READY after the operator's report ends the cite row.
+        digest = self.written()
+        self.gated(digest)
+        self.ledger(digest, "run", "DONE")
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-2\n")
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("cite", "launch", "writer", 5))
+        self.post("chief", "[CHIEF] LAUNCH writer 5-2\n")
+        self.check(("running", "none", "writer", 5))
+        self.post("writer", "[WRITER] READY\nhead {head:5}\n")
+        self.check(("lint", "lint", None, 5))
 
     def test_a_failed_run_wakes_before_the_lint(self):
         digest = self.written()
