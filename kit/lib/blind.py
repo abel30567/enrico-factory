@@ -3,7 +3,8 @@
 Everything lives under ``<state_dir>/blind/``, which no worker can read:
 - ``salt``: 32 random bytes, mode 0600, created on first use;
 - ``<pr>-<id>/key.json``: which of ``A`` and ``B`` is the old version and which the new one;
-- ``<pr>-<id>/pair/A/``, ``pair/B/``: the stage's files of each side, every modification time 0.
+- ``<pr>-<id>/pair/A/``, ``pair/B/``: the stage's files of each side, and the files the stage's judges read (their
+  ``reads`` globs) outside the stage's ``paths``, taken from the old side for both, every modification time 0.
 
 The id is derived from the salt, the pull number and the head, so the directory names no sha and no
 branch. The judge is given ``pair/`` alone. Nothing here talks to GitHub; git is read through
@@ -20,7 +21,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from kit.lib import gitstate, production, tickets
+from kit.lib import frontmatter, gitstate, production, tickets
 
 PREFERENCES = {"PREFERS A": "A", "PREFERS B": "B", "NO PREFERENCE": None}
 
@@ -85,16 +86,40 @@ def old_exists(p, state, pull) -> bool:
     return bool(entry["blind"]) and tickets.is_locked(state, ticket["room"], ticket["stage"], ticket["unit"])
 
 
-def _reduce(tree: Path, paths) -> None:
-    """Keep only the files whose tree-relative path matches ``paths``; drop the directories left empty."""
+def reads(p, entry) -> list[str]:
+    """The ``reads`` globs of every judge of the stage, each once, sorted; ``[]`` for a stage with no judge."""
+    return sorted({glob for role in production.stage_roles(entry, "judge")
+                   for glob in frontmatter.as_list(p.roles[role]["meta"].get("reads"))})
+
+
+def _entries(tree: Path) -> list[str]:
+    """The tree-relative posix paths of every file and symlink under ``tree``, sorted."""
+    found = []
+    for top, dirs, files in os.walk(tree):
+        here = Path(top)
+        found += [(here / name).relative_to(tree).as_posix()
+                  for name in files + [d for d in dirs if (here / d).is_symlink()]]
+    return sorted(found)
+
+
+def _reduce(tree: Path, keep) -> None:
+    """Keep only the files whose tree-relative path ``keep`` accepts, less the manifest; drop the directories
+    left empty."""
     for top, dirs, files in os.walk(tree, topdown=False):
         here = Path(top)
         for name in files + [d for d in dirs if (here / d).is_symlink()]:
             rel = (here / name).relative_to(tree).as_posix()
-            if rel == gitstate.MANIFEST or not production.matches(rel, paths):
+            if rel == gitstate.MANIFEST or not keep(rel):
                 os.remove(here / name)
         if here != tree and not any(here.iterdir()):
             here.rmdir()
+
+
+def _copy_context(context: Path, tree: Path) -> None:
+    """Every file of ``context`` into ``tree`` at the same path, byte for byte and symlink as symlink."""
+    for rel in _entries(context):
+        (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(context / rel, tree / rel, follow_symlinks=False)
 
 
 def _has_file(tree: Path) -> bool:
@@ -133,15 +158,23 @@ def prepare(p, state, root, pull) -> dict:
     sides = {"A": a_side, "B": "new" if a_side == "old" else "old"}
     base = gitstate.merge_base(root, pull["base_ref"], pull["head_ref"])
     refs = {"old": base, "new": head}
+    paths, globs = list(entry["paths"]), reads(p, entry)
     work = Path(tempfile.mkdtemp(prefix=".prepare-", dir=_dir(p)))
     try:
         for letter in ("A", "B"):
             tree = work / "pair" / letter
             gitstate.export(root, refs[sides[letter]], tree)
-            _reduce(tree, entry["paths"])
+            _reduce(tree, lambda rel: production.matches(rel, paths))
         old_letter = "A" if sides["A"] == "old" else "B"
         if not _has_file(work / "pair" / old_letter):
             raise BlindError("no locked version to compare")
+        if globs:
+            context = work / "context"
+            gitstate.export(root, base, context)
+            _reduce(context, lambda rel: production.matches(rel, globs) and not production.matches(rel, paths))
+            for letter in ("A", "B"):
+                _copy_context(context, work / "pair" / letter)
+            shutil.rmtree(context)
         _zero_times(work / "pair")
         home = path.parent
         if home.exists():  # an earlier run stopped before its key: not a pair
@@ -151,7 +184,7 @@ def prepare(p, state, root, pull) -> dict:
         if work.exists():
             shutil.rmtree(work)
     key = {"id": blinding_id, "pull": number, "head": head, "base": base, **sides,
-           "paths": list(entry["paths"]), "created_at": production.now()}
+           "paths": paths, "reads": globs, "created_at": production.now()}
     _write_key(path, key)
     return key
 

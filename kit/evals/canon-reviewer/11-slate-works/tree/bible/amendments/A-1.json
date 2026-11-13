@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/ansa.md": "adds Ansa",
+    "bible/canon/ledger.tsv": "adds the row ansa / trade"
+  },
+  "why": "the show needs its lamp keeper",
+  "evidence": {
+    "bible/charter.md": "the night shift of a glass works"
+  }
+}
