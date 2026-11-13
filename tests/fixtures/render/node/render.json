@@ -1,0 +1,49 @@
+{
+ "fps": 24,
+ "frames": [
+  1,
+  2
+ ],
+ "count": 2,
+ "width": 1080,
+ "height": 1920,
+ "frames_sha256": [
+  "b143d321b62910c1303f265ced08a5368212789885d78ded709b6a4ace1f7457",
+  "9d598c3d292d40e6844833d401df5315b562d465fb2ce02ed899756c39bad336"
+ ],
+ "sequence_sha256": "857f536305f3e8cbb58c6952c1ffcf9f02a50a0c5cac476a26180213cd0e271e",
+ "black": [],
+ "nan": [],
+ "text": [],
+ "samples": [
+  {
+   "frame": 1,
+   "luma": 0.42,
+   "clipped": 0.0,
+   "color": [
+    0.4,
+    0.42,
+    0.45
+   ]
+  },
+  {
+   "frame": 2,
+   "luma": 0.43,
+   "clipped": 0.0,
+   "color": [
+    0.41,
+    0.43,
+    0.45
+   ]
+  }
+ ],
+ "rerender": {
+  "frames": [
+   1
+  ],
+  "metric": "ColorVideoVDP",
+  "scores": [
+   9.95
+  ]
+ }
+}

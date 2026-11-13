@@ -27,6 +27,15 @@ A tool module has:
 - ``run(call) -> dict``: makes the one call and returns ``{"usd": <number>, "compute_min": <number>}``,
   the real cost, each a finite number of at least 0 with at most 4 decimal places.
 
+and may have:
+
+- ``STAGE_FILES``: a tuple of strings, output names. Such a tool's job also needs the resource ``store.assets``
+  usable and a ticket whose unit has a production directory (`production/<ep>/<shot>/<stage>` at a shot stage,
+  `production/<ep>/<stage>` at an episode stage, `production/assets/<asset>/<stage>` at an asset stage). After a
+  DONE call `factory run` puts every other output in the asset store (`kit/lib/assets.py`), then commits each
+  output named here in that directory on the pull's branch, and adds no manifest row. Without it, every output
+  gets a manifest row. A ``STAGE_FILES`` that is not a tuple of strings breaks the interface.
+
 ``call`` is a dict with exactly these keys:
 
 - ``hash``: the job's hash; ``ticket``: the ticket number; ``caller``: the operator role;
