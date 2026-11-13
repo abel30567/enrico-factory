@@ -98,8 +98,8 @@ class LockTest(LabTest):
     def test_1_a_keep_is_locked_by_the_target_room(self):
         w = LabWorld(self)
         rules = w.rules(PULL)
-        self.assertEqual([r.number for r in rules], list(range(1, 14)))
-        self.assertEqual(rules[-1].name, "keep")
+        self.assertEqual([r.number for r in rules], list(range(1, len(lockrules.NAMES) + 1)))
+        self.assertEqual(rules[12].name, "keep")
         self.assertEqual([r for r in rules if not r.ok], [])
         self.assertTrue(lockrules.lockable(rules))
         code, out, err = w.lock("--room", "story", "--apply")
