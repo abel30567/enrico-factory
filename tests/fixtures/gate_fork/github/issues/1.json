@@ -1,0 +1,10 @@
+{
+ "body": "role: inspector\n\n## Lab programs\n- inspector-eval lines 2-11\n- inspector-eval lines 12-17\n- inspector-eval lines 18-22\n\n## Cause\nA tool result is dropped when two tools answer in one turn.\n\n## Reproduction\ncommand: python3 repro/two-tools.py\n\n## Pinned build\nharness: 0.0.0 (fake)\ncommand: python3 repro/two-tools.py\nexit: 1\nsettings tried: SANDBOX=on, SANDBOX=off\n",
+ "created_at": "2026-11-13T00:00:00Z",
+ "labels": [
+  "harness-fork"
+ ],
+ "number": 1,
+ "state": "open",
+ "title": "Fork the harness for inspector"
+}

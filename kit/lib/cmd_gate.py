@@ -1,12 +1,15 @@
-"""factory gate <job-file-or-pr> [--pull N] [--root DIR] [--apply]: the producer's gate on a job or a lock.
+"""factory gate <job-file-or-pr-or-issue> [--pull N] [--root DIR] [--apply]: the producer's gate on a job, a lock or a harness fork.
 
 With `--apply` it first brings the local base up to GitHub's. With `--pull N` the job file, a path from the
 production root, and its inputs are read at the head of pull request N, which must be the job's ticket's
 open pull; without it the job file is read from disk and its inputs on the base.
-Prints one line: `gate <job|lock> <hash>: <PASS|STOP> cap <name or -> reason <reason>`. Without
+Prints one line: `gate <job|lock|fork> <hash>: <PASS|STOP> cap <name or -> reason <reason>`. Without
 `--apply` it writes nothing. With it, it appends the ledger line on the base, pushes it, and posts
 `[PRODUCER] GATE PASS` or `GATE STOP` on the ticket (a job) or the pull (a lock). A decision already
 recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or refused.
+
+A number that is an issue labelled harness-fork is checked by kit/lib/harnessfork.py against
+docs/harness.md section 9: no ledger line; with --apply, the marker is posted on the issue.
 """
 
 import argparse
@@ -22,7 +25,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import gitstate, github, ledger, production, tickets  # noqa: E402
+from kit.lib import gitstate, github, harnessfork, ledger, production, tickets  # noqa: E402
 from kit.lib.lints import rights  # noqa: E402
 
 JOB_KEYS = ("caller", "expected", "inputs", "ticket", "tool")
@@ -199,7 +202,30 @@ def _covered(request):
     return _printed("lock", digest, "PASS", "-", "within caps") + ALREADY
 
 
+def _fork(p, gh, issue, apply):
+    """The fork check of a harness-fork issue: the marker is posted on the issue, with no ledger line."""
+    number = issue["number"]
+    if issue["state"] != "open":
+        raise Refused(f"#{number} is a closed harness-fork issue")
+    digest = harnessfork.digest(number, issue["body"])
+    verdict, reason = harnessfork.decide(p, issue)
+    code = 0 if verdict == "PASS" else 1
+    printed = _printed("fork", digest, verdict, "-", reason)
+    recorded = _recorded(gh.comments(number), "fork", digest)
+    if (recorded is not None and ledger.gate_marker(recorded).verb == "GATE " + verdict
+            and _cap_line("-", reason) in recorded["body"].split("\n")):
+        print(printed + ALREADY)
+        return code
+    if apply:
+        gh.post(number, harnessfork.body(digest, verdict, reason), ledger.GATE_ROLE)
+    print(printed)
+    return code
+
+
 def _gate(p, gh, state, now, rows, target, apply, number=None):
+    found = harnessfork.issue(state, int(target)) if target.isdigit() and number is None else None
+    if found is not None:
+        return _fork(p, gh, found, apply)
     if target.isdigit() and number is None:
         request = _lock_request(p, state, int(target))
         covered = _covered(request)
@@ -242,7 +268,7 @@ def _gate(p, gh, state, now, rows, target, apply, number=None):
 
 def main(argv):
     parser = argparse.ArgumentParser(prog="factory gate", description=__doc__.split(": ", 1)[1].split("\n")[0])
-    parser.add_argument("target", help="a job file, or a pull request number for a lock")
+    parser.add_argument("target", help="a job file, a pull request number for a lock, or a harness-fork issue number")
     parser.add_argument("--pull", type=int, help="read the job file and its inputs at the head of this pull")
     parser.add_argument("--root", default=".", help="a directory inside the production (default: .)")
     parser.add_argument("--apply", action="store_true", help="append the ledger line and post the marker")
