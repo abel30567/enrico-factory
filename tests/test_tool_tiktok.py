@@ -42,7 +42,7 @@ MANIFEST_HEADER = "id\tsha256\tbytes\tsource\n"
 REASONS = ("request is not {video_url, title}", "account is not private", "privacy level not offered",
            "too many posts", "video url not verified", "platform unreachable", "upload refused")
 BAD_REQUEST = "run: tool tiktok-upload failed: request is not {video_url, title}\n"
-DOWN = "run: resource platform.tiktok is down\n"
+DOWN = "run: resource platform.tiktok is down (#5)\n"
 
 
 def request_fixture():

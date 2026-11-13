@@ -243,11 +243,12 @@ class Tools3dTest(unittest.TestCase):
     def test_key_refused_is_down(self):
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, (401, b'{"detail": "unauthorized"}'))
         job, digest = self.model_job()
-        for api in (self.vendor.base, f"http://127.0.0.1:{free_port()}"):
+        for number, api in ((5, self.vendor.base), (6, f"http://127.0.0.1:{free_port()}")):
             with self.subTest(api=api), mock.patch.object(vendor, "MODEL_API", api):
-                self.assertEqual(self.factory_run(job), (2, "", "run: resource gen.model3d is down\n"))
+                self.assertEqual(self.factory_run(job), (2, "", f"run: resource gen.model3d is down (#{number})\n"))
                 self.assertEqual(self.w.rows("run"), [])
                 self.assertFalse(self.w.job_dir(digest).exists())
+                self.w.edit("issues", number, state="closed")
         self.assertEqual(len(self.vendor.made("POST")), 1)
 
     def test_vendor_fails_after_the_start(self):
@@ -311,6 +312,7 @@ class Tools3dTest(unittest.TestCase):
         job, model = self.model_job()
         self.assertEqual(self.factory_run(job)[0], 2)
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, self.vendor.fixture("model/submit"))
+        self.w.edit("issues", 5, state="closed")
         self.assertEqual(self.factory_run(job), (0, line(model, "DONE", "0.3", "5"), ""))
         self.vendor.answer("GET", f"{RIGGING}/{TASK}", self.vendor.fixture("rig/task-succeeded", status="FAILED"))
         job, digest = self.rig_job(model)

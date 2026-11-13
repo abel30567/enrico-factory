@@ -323,7 +323,7 @@ class UploadTest(unittest.TestCase):
 
     def assert_down(self, w, scenario):
         code, out, err = w.run(scenario)
-        self.assertEqual((code, out, err), (2, "", f"run: resource {RESOURCE} is down\n"))
+        self.assertEqual((code, out, err), (2, "", f"run: resource {RESOURCE} is down (#5)\n"))
         self.assertEqual(w.runs(), [])
         self.assertFalse(os.path.lexists(w.job_dir()))
         return out, err

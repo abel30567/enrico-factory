@@ -7,7 +7,7 @@ installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with ex
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
 manifest row per output on the pull's branch, and appends the `run` row with the real cost to the ledger
-on the base. It posts nothing on GitHub, except the `resource:down` issue when the tool's resource is down.
+on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down.
 Without `--apply` it makes every check, calls no tool and writes nothing.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
