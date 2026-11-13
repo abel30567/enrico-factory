@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A1
+Changed in: A-1
 
 Lio works the deck and the ropes.
 

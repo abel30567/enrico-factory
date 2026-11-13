@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the rows marsh-light / kind and marsh-light / power",
+    "bible/canon/characters/marsh-light.md": "adds the sheet"
+  },
+  "why": "The marsh-light is a spirit that walks the salt marsh at night and leads travellers astray. Nessa has seen it twice.",
+  "evidence": {
+    "bible/charter.md": "The show follows the salt makers of the Wash marsh"
+  }
+}

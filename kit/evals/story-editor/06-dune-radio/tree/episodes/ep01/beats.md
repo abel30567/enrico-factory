@@ -3,7 +3,7 @@
 ## B1 pickup
 duration: 8
 
-Last time: the radio in the dune hut spoke Tess's name. She has not slept.
+Three nights ago the radio in the dune hut spoke Tess's name. She has not slept since.
 
 ## B2 event
 duration: 40

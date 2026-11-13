@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A2
+Changed in: A-2
 
 The senior lamplighter of Ostry. Born in Velle, she came to Ostry at nine and learned the trade from her aunt.
 

@@ -1,5 +1,5 @@
 subject	attribute	value	tag	source	since
-selm	status	dead	invented	-	A1
-selm	died	year 2	invented	-	A1
-idra	trade	clockmaker	invented	-	A1
-selm	trade	clockmaker	invented	-	A2
+selm	status	dead	invented	-	A-1
+selm	died	year 2	invented	-	A-1
+idra	trade	clockmaker	invented	-	A-1
+selm	trade	clockmaker	invented	-	A-2

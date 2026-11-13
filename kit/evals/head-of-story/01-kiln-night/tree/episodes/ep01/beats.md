@@ -3,7 +3,7 @@
 ## B1 pickup
 duration: 8
 
-Last time: the kiln was warm again at dawn, and Nell had not lit it.
+For a week the kiln has been warm at dawn, and Nell has not lit it.
 
 ## B2 event
 duration: 40

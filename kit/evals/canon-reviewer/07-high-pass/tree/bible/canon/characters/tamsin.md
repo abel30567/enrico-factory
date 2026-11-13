@@ -2,7 +2,7 @@
 
 origin: house A-1
 
-Changed in: A1
+Changed in: A-1
 
 Garret's sister, lost in the avalanche of year 3.
 

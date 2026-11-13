@@ -1,8 +1,8 @@
 # Marsh-light
 
-origin: house A-1
+origin: house A-2
 
-Changed in: A2
+Changed in: A-2
 
 A spirit that walks the marsh at night as a pale flame.
 

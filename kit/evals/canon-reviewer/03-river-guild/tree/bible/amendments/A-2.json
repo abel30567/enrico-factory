@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/ledger.tsv": "adds the row wren / guild",
+    "bible/canon/characters/wren.md": "gets the guild"
+  },
+  "why": "Wren is admitted to the river guild after her first boat floats.",
+  "evidence": {
+    "bible/charter.md": "The show follows the boat people of the river Lune"
+  }
+}

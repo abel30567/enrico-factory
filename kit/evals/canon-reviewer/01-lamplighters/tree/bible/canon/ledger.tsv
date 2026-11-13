@@ -1,6 +1,6 @@
 subject	attribute	value	tag	source	since
-mara	born_in	Ostry	invented	-	A1
-mara	trade	lamplighter	invented	-	A1
-jory	trade	lamplighter	invented	-	A1
-jory	age	15	invented	-	A1
-mara	birthplace	Velle	invented	-	A2
+mara	born_in	Ostry	invented	-	A-1
+mara	trade	lamplighter	invented	-	A-1
+jory	trade	lamplighter	invented	-	A-1
+jory	age	15	invented	-	A-1
+mara	birthplace	Velle	invented	-	A-2

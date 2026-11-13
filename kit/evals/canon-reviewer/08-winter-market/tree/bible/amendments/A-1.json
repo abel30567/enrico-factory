@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/dov.md": "adds the sheet",
+    "bible/canon/characters/pell.md": "adds the sheet",
+    "bible/canon/ledger.tsv": "adds the rows marked A-1"
+  },
+  "why": "The first canon of the show.",
+  "evidence": {
+    "bible/charter.md": "The show follows the stall keepers of the Grey Street winter market"
+  }
+}
