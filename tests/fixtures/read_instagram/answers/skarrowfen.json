@@ -1,0 +1,52 @@
+{
+ "answer": {
+  "business_discovery": {
+   "followers_count": 12000,
+   "id": "17841400000000002",
+   "media": {
+    "data": [
+     {
+      "comments_count": 300,
+      "id": "18000000000000001",
+      "like_count": 2400,
+      "media_product_type": "REELS",
+      "permalink": "https://www.instagram.com/reel/18000000000000001/",
+      "timestamp": "2026-11-11T09:00:00+0000",
+      "view_count": 48000
+     },
+     {
+      "comments_count": 90,
+      "id": "18000000000000002",
+      "media_product_type": "REELS",
+      "permalink": "https://www.instagram.com/reel/18000000000000002/",
+      "timestamp": "2026-11-10T09:00:00+0000",
+      "view_count": 9000
+     },
+     {
+      "comments_count": 7,
+      "id": "18000000000000003",
+      "like_count": 70,
+      "media_product_type": "FEED",
+      "permalink": "https://www.instagram.com/reel/18000000000000003/",
+      "timestamp": "2026-11-09T09:00:00+0000",
+      "view_count": 7000
+     },
+     {
+      "comments_count": 10,
+      "id": "18000000000000004",
+      "like_count": 100,
+      "media_product_type": "REELS",
+      "permalink": "https://www.instagram.com/reel/18000000000000004/",
+      "timestamp": "2026-11-08T09:00:00+0000",
+      "view_count": 500
+     }
+    ]
+   },
+   "username": "skarrowfen"
+  },
+  "id": "17841400000000001"
+ },
+ "read_on": "2026-11-13",
+ "reference": "https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/business_discovery",
+ "status": 200
+}
