@@ -14,7 +14,7 @@ Before the filings, the producer's monitors (``kit.lib.monitors``, system brief 
 whatever ``--room`` says: one ``NEED - monitor <name>: ...`` line per trip, and with ``--apply`` one issue per
 trip labelled ``needs:orchestrator`` unless an open issue has its title. Each step is the one
 ``monitors.instead`` gives: a budget trip stops the run (``WAIT #<n> budget ...``), a canon contradiction and a
-re-break are ``NEED`` lines, and after ``monitors.NO_WIN_ROUNDS`` twice lost blind rounds the step is
+re-break are ``NEED`` lines, and after twice ``monitors.NO_WIN_ROUNDS`` lost blind rounds the step is
 ``STEP #<n> close #<n>``, which with ``--apply`` closes the ticket. A monitor that cannot be read prints
 ``FAIL - monitor <name>: <message>`` and the tick goes on.
 
@@ -44,8 +44,10 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, cmd_run, down, filing, finish, github,  # noqa: E402
-                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, monitors, production,
-                     steps, tickets)
+                     gitstate, harness, launch, ledger, lintpost, lockrules, markers, production, steps,
+                     tickets)
+
+from kit.lib import monitors  # noqa: E402
 
 LABEL = "needs:orchestrator"
 LOCK_DIR = "tick.lock"
