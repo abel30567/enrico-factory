@@ -1,0 +1,28 @@
+{
+ "body": {
+  "columnHeaders": [
+   {
+    "columnType": "METRIC",
+    "dataType": "INTEGER",
+    "name": "views"
+   },
+   {
+    "columnType": "METRIC",
+    "dataType": "INTEGER",
+    "name": "averageViewDuration"
+   },
+   {
+    "columnType": "METRIC",
+    "dataType": "FLOAT",
+    "name": "averageViewPercentage"
+   }
+  ],
+  "kind": "youtubeAnalytics#resultTable"
+ },
+ "headers": {
+  "Content-Type": "application/json; charset=UTF-8"
+ },
+ "read_at": "2026-11-13",
+ "reference": "https://developers.google.com/youtube/analytics/reference/reports/query",
+ "status": 200
+}
