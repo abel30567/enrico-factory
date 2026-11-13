@@ -1,0 +1,12 @@
+{
+ "actors": [
+  {
+   "asset": "asset:pier",
+   "id": "pier",
+   "kind": "set",
+   "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+ ],
+ "shot": "Q1-2",
+ "stage": "layout"
+}
