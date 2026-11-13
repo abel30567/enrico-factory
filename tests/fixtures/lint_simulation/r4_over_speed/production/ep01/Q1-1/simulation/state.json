@@ -1,0 +1,40 @@
+{
+  "shot": "Q1-1",
+  "stage": "simulation",
+  "fps": 24,
+  "frames": {
+    "first": 0,
+    "last": 71
+  },
+  "actors": [],
+  "camera": null,
+  "framing": [],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [
+    {
+      "id": "cape",
+      "sha256": "0ed2fa2539de546945afee750df626e1e54543bf7fd05aad842e28f0969b06f8",
+      "max_speed_m_s": 6.5,
+      "energy_j": {
+        "first": 120.0,
+        "last": 96.0
+      },
+      "gravity_m_s2": null
+    },
+    {
+      "id": "spray",
+      "sha256": "e28b3a396b9c63a34eb310ef2a940587014158d421158fcda40726618aa01ee4",
+      "max_speed_m_s": 31.0,
+      "energy_j": {
+        "first": 40.0,
+        "last": 31.5
+      },
+      "gravity_m_s2": 9.7
+    }
+  ],
+  "lights": [],
+  "sun": null,
+  "render": null
+}
