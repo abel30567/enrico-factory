@@ -22,6 +22,13 @@ less `evals/`, and copies `tree/` over it, so a tree file wins and no answer is 
 A pair case's run directory holds only `A/` and `B/`, each a version plus the init charter and canon
 ledger where the version has none, the same bytes on both sides.
 
+A case whose tree cites `media:<id>` holds the image beside `tree/`, as `media/<id>.png`, and the tree's
+`media/manifest.tsv` row gives that file's `sha256` and `bytes`. The bytes are not in `tree/`: a
+production keeps them in the media store, and the `media` lint fails a tree that holds them.
+`factory eval` copies the case's `media/` into the run directory's `media/` after the tree. A pair case holds
+no `media/`. The images of `evals/look-reviewer/` are drawn by `python3 evals/look-reviewer/draw.py` from
+each case's model sheets, style lock and canon ledger; run it again after changing one of them.
+
 | Role kind | `case.json` | Passes when |
 |---|---|---|
 | checker | `{"kind": "seeded", "catches": [regex, ...]}` | NOTES, every regex in a Blocker |

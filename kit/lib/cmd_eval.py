@@ -91,11 +91,23 @@ def build_run_dir(kit, case, run, run_dir):
     shutil.copytree(case.path / "tree", run_dir, dirs_exist_ok=True)
 
 
+def place_media(case, run_dir):
+    """Copy each file of the case's media/, the bytes a production keeps in the media store, into run_dir/media/."""
+    media, target = case.path / "media", Path(run_dir) / "media"
+    if not media.is_dir():
+        return
+    target.mkdir(parents=True, exist_ok=True)
+    for path in sorted(media.iterdir()):
+        if path.is_file():
+            shutil.copyfile(path, target / path.name)
+
+
 def _run_case(case, run, job):
     """``(harness status, result object or None, graded)`` for one case in one run."""
     base = job["work"] / f"{run}-{case.id}"
     run_dir = base / "run"
     build_run_dir(job["kit"], case, run, run_dir)
+    place_media(case, run_dir)
     (base / "config").mkdir()
     values = {"TASK": case.task, "TICKET": f"eval {case.id}", "WORKTREE": str(run_dir),
               "REPO": "eval", "RULES": job["rules"], "BRANCH": "eval", "PR": "0"}
