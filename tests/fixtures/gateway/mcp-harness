@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""A stand-in for the agent harness that talks to the MCP servers of its config, for tests.
+
+It reads the file after `--mcp-config` and, for each server of type `http`, sends `initialize`,
+`notifications/initialized`, `tools/list` and the `calls` listed in `mcp-harness.json` beside this file
+(`[{"name": ..., "arguments": ...}]`). With `direct` set to a URL there, it also posts `initialize`
+straight to that URL. It writes what it read and every answer to `mcp-harness.answers.json` in the run
+directory (the parent of `CLAUDE_CONFIG_DIR`: the sandbox lets it write nowhere else), never a header.
+Then it runs `sandboxed-harness` beside this file with the same arguments, standard streams and
+descriptors. `--version` runs that alone. It opens connections to 127.0.0.1 only.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def post(url, headers, message):
+    """``{"status", "body"}`` of one POST, or ``{"error"}`` when no answer came."""
+    request = urllib.request.Request(url, data=json.dumps(message).encode("utf-8"), method="POST",
+                                     headers={**headers, "Content-Type": "application/json",
+                                              "Accept": "application/json, text/event-stream"})
+    try:
+        with OPENER.open(request, timeout=30) as response:
+            status, body = response.status, response.read().decode("utf-8")
+    except urllib.error.HTTPError as error:
+        status, body = error.code, error.read().decode("utf-8")
+    except OSError as error:
+        return {"error": type(error).__name__}
+    return {"status": status, "body": json.loads(body) if body else None}
+
+
+def talk(config, plan):
+    record = {"servers": {}, "answers": {}}
+    for name, server in sorted(config["mcpServers"].items()):
+        record["servers"][name] = {"type": server.get("type"), "url": server.get("url")}
+        if server.get("type") != "http":
+            continue
+        url, headers = server["url"], server.get("headers", {})
+        messages = [{"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                     "params": {"protocolVersion": "2025-11-25", "capabilities": {},
+                                "clientInfo": {"name": "mcp-harness", "version": "0"}}},
+                    {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                    {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}]
+        messages += [{"jsonrpc": "2.0", "id": 3 + i, "method": "tools/call", "params": call}
+                     for i, call in enumerate(plan.get("calls", []))]
+        record["answers"][name] = [post(url, headers, message) for message in messages]
+    if plan.get("direct"):
+        record["direct"] = post(plan["direct"], {}, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    return record
+
+
+def main():
+    here = Path(sys.argv[0]).resolve().parent
+    if "--version" not in sys.argv[1:]:
+        config = Path(sys.argv[sys.argv.index("--mcp-config") + 1])
+        plan_path = here / "mcp-harness.json"
+        plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {}
+        record = talk(json.loads(config.read_text(encoding="utf-8")), plan)
+        out = Path(os.environ["CLAUDE_CONFIG_DIR"]).parent / "mcp-harness.answers.json"
+        out.write_text(json.dumps(record, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return subprocess.run([str(here / "sandboxed-harness"), *sys.argv[1:]], close_fds=False).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

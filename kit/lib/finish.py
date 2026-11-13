@@ -24,7 +24,8 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from kit.lib import blind, down, frontmatter, gitstate, harness, launch, markers, production, steps, tickets
+from kit.lib import blind, down, frontmatter, gateway, gitstate, harness, launch, markers, production, steps, tickets
+from kit.lib.gateway import GatewayError
 from kit.lib.github import GitHubError
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError, Outcome
@@ -214,9 +215,11 @@ def _sandbox_deny(settings) -> tuple:
     return tuple(_home_path(entry) for entry in frontmatter.as_list(settings.get("SANDBOX_DENY")))
 
 
-def _endpoints(settings, family) -> tuple:
-    """The model endpoint, and for family ``other`` the local proxy's port."""
+def _endpoints(settings, family, gateway_port=None) -> tuple:
+    """The model endpoint, the knowledge gateway's port if any, and for family ``other`` the local proxy's port."""
     found = ["*:443"]
+    if gateway_port is not None:
+        found.append(f"localhost:{gateway_port}")
     if family == "other":
         url = urllib.parse.urlsplit(settings.get("PROXY_URL", ""))
         try:
@@ -317,35 +320,46 @@ def _outcome(p, gh, root, run) -> Outcome:
         if account is None:
             return _none_left(settings, slot, stopped)
     (run.dir / "tmp").mkdir(mode=0o700)
-    env = harness.environment(os.environ, settings, meta["family"], run.dir / "config", TOKEN_FD,
-                              tmp_dir=run.dir / "tmp")
-    argv = harness.command(settings, role_meta, run.dir / "mcp.json")
-    profile = sandbox.profile(root, run.worktree, run.dir, state_dir, _secrets_dir(p), str(Path.home()),
-                              web=sandbox.web(role_meta), endpoints=_endpoints(settings, meta["family"]),
-                              deny=_sandbox_deny(settings), path=env.get("PATH", ""))
-    sandbox.write(run.dir / "sandbox.sb", profile)
-    argv = sandbox.apply(settings, argv, run.dir / "sandbox.sb")
-    for attempt in range(steps.RUN_ATTEMPTS):
-        if attempt:
-            stopped = down.stopped(p, gh)
-            account = _pick(settings, slot, state_dir, now, stopped)
-            if account is None:
-                return _none_left(settings, slot, stopped)
-        outcome = _run_once(argv, env, run, harness.token_path(settings, slot, account), timeout_min)
-        resource = _resource(slot, outcome.status)
-        if resource is not None:
-            if not _report(p, gh, run, resource, outcome, account) or account is None:
+    knowledge = None
+    if gateway.wanted(settings, role_meta.get("knowledge")):
+        knowledge = gateway.start(settings, role_meta.get("knowledge"), meta["role"], meta["ticket"])
+    try:
+        if knowledge is not None:
+            harness.write_mcp_config(run.dir / "mcp.json", knowledge.servers)
+        env = harness.environment(os.environ, settings, meta["family"], run.dir / "config", TOKEN_FD,
+                                  tmp_dir=run.dir / "tmp")
+        argv = harness.command(settings, role_meta, run.dir / "mcp.json")
+        endpoints = _endpoints(settings, meta["family"], knowledge.port if knowledge else None)
+        profile = sandbox.profile(root, run.worktree, run.dir, state_dir, _secrets_dir(p), str(Path.home()),
+                                  web=sandbox.web(role_meta), endpoints=endpoints,
+                                  deny=_sandbox_deny(settings), path=env.get("PATH", ""))
+        sandbox.write(run.dir / "sandbox.sb", profile)
+        argv = sandbox.apply(settings, argv, run.dir / "sandbox.sb")
+        for attempt in range(steps.RUN_ATTEMPTS):
+            if attempt:
+                stopped = down.stopped(p, gh)
+                account = _pick(settings, slot, state_dir, now, stopped)
+                if account is None:
+                    return _none_left(settings, slot, stopped)
+            outcome = _run_once(argv, env, run, harness.token_path(settings, slot, account), timeout_min)
+            resource = _resource(slot, outcome.status)
+            if resource is not None:
+                if not _report(p, gh, run, resource, outcome, account) or account is None:
+                    return outcome
+            elif outcome.status != "out_of_usage" or account is None:
                 return outcome
-        elif outcome.status != "out_of_usage" or account is None:
-            return outcome
-        else:
-            _exhaust(state_dir, account, now)
-    return outcome
+            else:
+                _exhaust(state_dir, account, now)
+        return outcome
+    finally:
+        if knowledge is not None:
+            knowledge.stop()
 
 
 def describe(error) -> str:
     """An error as fixed words, key names and exit statuses: never a value, a token or a path."""
-    if isinstance(error, (GitHubError, HarnessError, SandboxError, ProductionError, tickets.TicketError)):
+    if isinstance(error, (GatewayError, GitHubError, HarnessError, SandboxError, ProductionError,
+                          tickets.TicketError)):
         return str(error)
     if isinstance(error, GitError):
         return f"git {error.command}: exit {error.status}"
@@ -374,7 +388,7 @@ def supervise(p, gh, root, run) -> int:
     """Run the worker and post its marker: 0 a marker, 3 BLOCKED, 2 nothing could be posted."""
     try:
         outcome = _outcome(p, gh, root, run)
-    except (HarnessError, SandboxError, ProductionError, GitHubError, OSError) as error:
+    except (GatewayError, HarnessError, SandboxError, ProductionError, GitHubError, OSError) as error:
         outcome = Outcome("failed", None, describe(error))
     code = 2
     try:

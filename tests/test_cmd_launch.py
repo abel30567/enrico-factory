@@ -138,8 +138,8 @@ class Refusals(unittest.TestCase):
         self.w.local(GATEWAY="on")
         code, out, err = self.w.launch("writer", "3")
         self.assertEqual((code, out), (1, ""))
-        self.assertTrue(err.startswith("launch: "), err)
-        self.assertIn("GATEWAY", err)
+        self.assertEqual(err, "launch: the knowledge gateway is not usable: setting FERMI_URL is empty; "
+                              "secret knowledge.fermi: missing\n")
         self.assert_nothing()
 
     def test_gateway_off_twin(self):
