@@ -3,7 +3,8 @@
 Each case is copied to a temporary run directory that `build_run_dir` makes a production around it,
 the role runs on it through the harness adapter, and the result is graded. Writes `results.jsonl`
 and `summary.json` to the output directory: no prompt, no model output beyond the marker and the
-graded detail, no setting value. Exit 0 when every run completed, 2 on usage, refusal or a
+graded detail, no setting value. With `--out`, the result object of each run of each case is also
+kept as `runs/<run>/<case>.json`. Exit 0 when every run completed, 2 on usage, refusal or a
 malformed suite, 3 when a run's harness outcome was not `ok`. The suite under `<kit>/evals/` is
 never written.
 """
@@ -35,7 +36,8 @@ def _parser():
     parser.add_argument("--harness", choices=("fake", "real"), default="fake",
                         help=f"fake: the executable in ${FAKE} (default); real: orchestrator-only")
     parser.add_argument("--cases", default="*", help="run only the case ids matching GLOB")
-    parser.add_argument("--out", help="output directory (default: a new temporary directory, printed)")
+    parser.add_argument("--out",
+                        help="output directory; keeps each result under runs/ (default: a new temporary directory, printed)")
     parser.add_argument("--root", default=".", help="production directory (default: .)")
     return parser
 
@@ -90,7 +92,7 @@ def build_run_dir(kit, case, run, run_dir):
 
 
 def _run_case(case, run, job):
-    """``(harness status, graded)`` for one case in one run."""
+    """``(harness status, result object or None, graded)`` for one case in one run."""
     base = job["work"] / f"{run}-{case.id}"
     run_dir = base / "run"
     build_run_dir(job["kit"], case, run, run_dir)
@@ -106,7 +108,7 @@ def _run_case(case, run, job):
     code = process.wait()
     outcome = harness.read((base / "stdout").read_text(encoding="utf-8", errors="replace"), code,
                            (base / "stderr").read_text(encoding="utf-8", errors="replace"))
-    return outcome.status, evals.grade(case, outcome.result, run=run, run_dir=run_dir)
+    return outcome.status, outcome.result, evals.grade(case, outcome.result, run=run, run_dir=run_dir)
 
 
 def _run(args):
@@ -133,6 +135,9 @@ def _run(args):
     out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="factory-eval-"))
     if out.resolve() == suite or suite in out.resolve().parents:
         raise evals.EvalError("--out is inside the kit's evals/: the suite is read-only")
+    kept = out / "runs" if args.out else None
+    if kept is not None and kept.exists():
+        raise evals.EvalError(f"--out {args.out} already holds runs/: give a directory without it")
     out.mkdir(parents=True, exist_ok=True)
 
     lines, per_run, failed = [], [], False
@@ -148,7 +153,12 @@ def _run(args):
         for run in range(1, args.runs + 1):
             graded = []
             for case in cases:
-                status, result = _run_case(case, run, job)
+                status, returned, result = _run_case(case, run, job)
+                if kept is not None and returned is not None:
+                    (kept / str(run)).mkdir(parents=True, exist_ok=True)
+                    (kept / str(run) / f"{case.id}.json").write_text(
+                        json.dumps(returned, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+                        encoding="utf-8")
                 failed = failed or status != "ok"
                 graded.append(result)
                 lines.append(json.dumps({"role": args.role, "run": run, "status": status, **result},
