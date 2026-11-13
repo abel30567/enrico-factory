@@ -50,7 +50,7 @@ every role prompt, and the gates in sections 9 and 11 enforce the ones a program
 
 | Who | Does | May never |
 |---|---|---|
-| Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
+| Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter, the brand kit. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
 | Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
@@ -67,7 +67,7 @@ rules in section 11 to the ledger and the markers. It has no opinion to argue wi
 |---|---|---|---|
 | `story` | `showrunner` | series bible, pivot queue, notes, platform notes | locked story package: reel, edit list with beat IDs, bible version, style lock, story intent packet |
 | `production` | `line-producer` | locked story package, lab KEEPs | locked master, stems, edit list |
-| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook | gated packages: one variant per platform, each with a file hash |
+| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook, brand kit | gated packages: one variant per platform, each with a file hash |
 | `distribution` | `channel-desk` | gated packages, release calendar | live posts, telemetry snapshots, platform notes, symptom notes |
 | `lab` | `lab-director` | results logs, method research, real outcomes, the defect corpus | config pull requests into the other rooms |
 
@@ -141,6 +141,10 @@ away. No role writes `sources/**`.
 a trend is usable; `trend-scout` reads the same data (section 16, "Other people's videos"). Neither
 holds a platform key: a program makes the reads. A trend reaches the show only as a pivot proposal,
 which the showrunner triages like any other.
+
+**Brand.** No role is added for the brand (section 16, "Brand kit"). Every post-room role reads
+`brand/**` and none writes it. `packaging-judge` scores a variant's title, caption and CTA against
+`brand/voice.md`; the `brand` check of the platform gate (#260) does the part a program can check.
 
 Correction is the maker relaunched on the same pull request to address the notes. There is no fixer role.
 
@@ -220,7 +224,7 @@ the orchestrator selects one.
 | production | `render` | shot | render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance; reads `render/render.json`, `shots.json` | dailies-reviewer |
 | production | `conform` | episode | sound-mixer, conform-editor, render-wrangler | loudness, true peak, captions aligned, edit list frame-exact; reads `conform/`, `reel/edit-list.json` | mix-reviewer |
 | production | `cross-shot` | sequence | none | world state at the end of shot N equals the start of shot N+1; reads each shot's `lighting/state.json` in `shots.json` order | continuity-supervisor |
-| post | `variant` | variant | platform-editor, reframe-artist, caption-writer, cta-writer, thumbnail-artist | platform gate: duration, aspect, safe zones, captions, CTA lint, spoiler lint, disclosure flag | charter-judge, packaging-judge |
+| post | `variant` | variant | platform-editor, reframe-artist, caption-writer, cta-writer, thumbnail-artist | platform gate: duration, aspect, safe zones, captions, CTA lint, spoiler lint, disclosure flag, brand | charter-judge, packaging-judge |
 | distribution | `post` | post | channel operator | publish check: exists, processed, hash, captions, disclosure | none |
 | distribution | `window` | post | telemetry-puller | telemetry schema; empty is not zero | theory-judge |
 
@@ -286,6 +290,7 @@ to it on the base branch, and nothing else may write it.
 | Ledger | `ledger/spend.tsv` | `factory gate`, `factory run` | Append-only: every gated job and its caller (the gate's row), and the real cost of its one call (the `run` row) |
 | Media manifest | `media/manifest.tsv` | makers and operators | `id`, `sha256`, `bytes`, `source` per file. The bytes live in the media store, never in git |
 | Rights file | `sources/rights.tsv` | the owner only | One row per work the production may draw on, with its holder and the basis. A row a role wants added is an issue labelled `owner` (section 16, "Rights") |
+| Brand kit | `brand/brand.json`, `brand/voice.md` | the owner only | How every variant is packaged: marks, palette, type, words and each platform's handle. Read by the post room's roles and the platform gate. A change a role wants is an issue labelled `owner` (section 16, "Brand kit") |
 | Not-ours list | `research/not-ours.tsv` | researcher | The names of characters, places, creatures, works and marks that belong to someone else, each with its holder and the link where it was seen |
 | Topics | `research/topics/<topic>.json` | researcher | The words, hashtags and named accounts to read on each platform. The reads start once the file is locked |
 | Trend cards | `research/trends/<topic>.<platform>.tsv` | researcher, from the ranking command | Per video: link, id, rank at read time, read time and the role's note. No count |
@@ -590,6 +595,7 @@ One repository per show. `factory init` creates:
 .factory/                 the installed kit
 production.env            repository, base branch, rooms installed, caps, media store, worker command (no secrets)
 rules/production-rules.md pasted into every role prompt after the rules of power
+brand/                    brand.json, voice.md: the brand kit, set by the owner; created empty
 sources/                  raw inputs as text; rights.tsv, the works the production may draw on
 research/                 researcher output; topics/ and trends/ (other people's videos);
                           not-ours.tsv, the names that belong to someone else
@@ -626,7 +632,8 @@ The lint checks a file only when it exists, and the files a stage needs only fro
 a premise alone passes; a script without `lines.json` fails; a reel without `intent-packet.json` fails.
 
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
-the canon ledger, the episode ledger, the role file, the task.
+the canon ledger, the episode ledger, the role file, the task. For packaging, the platform rulebook,
+the brand kit and the story intent packet come in that order between the episode ledger and the role file.
 
 ### Requests for generated media
 
@@ -786,6 +793,40 @@ it.
 | `render` | `count` as above; `black`, `nan` and `text` empty; every `rerender` score at least 9.9 (ColorVideoVDP, JOD) | 04 section 5: "within 0.1 JOD of an approved golden render (ColorVideoVDP at or above 9.9)"; #130 measures the real spread |
 | `conform` | integrated loudness -14 ± 1 LUFS; true peak at most -1 dBTP; each cue within 2 frames of its line in `mix.json`; the conformed edit list equal to the locked one, event by event | loudness, peak and cues: placeholder, no document gives a number; edit list: section 6 |
 | `cross-shot` | for each actor in both shots: the same `sha256`; `end` of shot N within 10 mm and 1° of `start` of shot N+1 | placeholder until measured on the golden levels (#118) |
+
+### Brand kit
+
+The brand kit is how the show looks and speaks when it is packaged: the titles, captions, CTAs,
+thumbnails, corner mark and end card of every variant.
+
+| File | Written by | Shape |
+|---|---|---|
+| `brand/brand.json` | the owner only; `factory init` creates `brand/` empty | one object with exactly the keys below |
+| `brand/voice.md` | the owner only | `# <name> voice`, then `## How it speaks` (the tone, in plain sentences), `## Titles`, `## Captions` and `## CTAs`. Under each of the last three, at least one list item it would write, `- Yes: <line>`, and one it would not, `- No: <line>`. No section and no line is empty |
+
+| Key of `brand.json` | Type | Holds |
+|---|---|---|
+| `name` | string | the brand's name, spelled as every title, caption and CTA spells it |
+| `marks` | object: mark id to `media:<id>` | every mark image: the logo, the corner mark, the end card. Each id is in `media/manifest.tsv` |
+| `palette` | object: color name to `#rrggbb` | every color a caption, a thumbnail or an end card may use |
+| `type` | object: `caption`, `thumbnail`, each `{family, weight, size, color}` | `family` is a font name, `weight` a number from 100 to 900, `size` a fraction of the frame's height, `color` a name in `palette`. `caption` covers every word burned into the video, a rendered CTA included |
+| `corner` | `{mark, corner, x, y, width}` | `mark` is a mark id; `corner` is `top-left`, `top-right`, `bottom-left` or `bottom-right`; `x` and `y` are the gap from that corner as fractions of the frame's width and height; `width` is the mark's width as a fraction of the frame's width. The same fractions hold for every aspect |
+| `end_card` | `{mark, duration}` | `mark` is a mark id, shown at the end of every variant; `duration` is `[min, max]` in seconds |
+| `words` | `{exact: [...], never: [...]}` | `exact`: names and terms written only this way, case included; `never`: words no title, caption, CTA or hashtag uses |
+| `legal` | list of strings | lines every variant's description carries, word for word |
+| `platforms` | object: platform to `{handle, hashtags: [...], link}` | the account handle, the hashtags every post on that platform carries, and the link its description points to. Platforms are named as in `rulebook/<platform>.json`; one the brand does not post on is left out |
+
+- **One production, one brand.** The kit ships no brand. A brand lives only in its production
+  repository.
+- **The brand kit is the owner's.** No role's `writes` covers `brand/**`. The owner sets the kit once,
+  like the caps and the first charter. A change a role wants is an issue labelled `owner`, and nothing
+  in the loop waits on it. A production with no `brand/brand.json` passes the `brand` check.
+- **Packaging only.** The brand governs titles, captions, CTAs, thumbnails, the corner mark and the
+  end card. It never changes the story or the master. Where the platform rulebook and the brand
+  disagree on a hard limit (a safe zone, a length), the rulebook wins and the brand element is fitted
+  inside it.
+- **No new role.** The `brand` check of the platform gate (#260) reads `brand/brand.json`;
+  `packaging-judge` scores a variant's words against `brand/voice.md` (section 4).
 
 ## 17. Build order
 
