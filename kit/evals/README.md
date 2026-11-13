@@ -48,6 +48,7 @@ calls the two versions `A/` and `B/`.
 | `researcher` | its output is sourced from material it gathers; a replay needs recorded sources from a real run | 3 |
 | `canon-keeper` | an amendment is replayed from real research and canon; the first exist when the sample production runs | 3 |
 | `art-director` | its output is model sheets and media in the media store, which no offline replay produces | 4 |
+| `media-wrangler` | an operator: its outcome is a job the gate passes and a tool runs, which no offline replay produces | 4 |
 | `render-reviewer` | it reviews renders; its seeded cases come from the seeded-defect corpus | 4 |
 | `retro-agent` | its proposals are measured by the lab loops they start, which run offline from wave 6 | 6 |
 | `trend-scout` | an analyst: its outcome is measured against platform data, first available in wave 6 | 6 |
