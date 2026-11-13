@@ -27,12 +27,16 @@ ledger where the version has none, the same bytes on both sides.
 | checker | `{"kind": "seeded", "catches": [regex, ...]}` | NOTES, every regex in a Blocker |
 | checker | `{"kind": "clean"}` | no NOTES with a Blocker, and not BLOCKED |
 | maker | `{"kind": "replay", "lint": [...], "expect_files": [glob, ...]}` | READY, files present, lints pass |
+| maker | `{"kind": "refusal", "lint": [...], "expect_files": [glob, ...], "forbid": [regex, ...]}` | BLOCKED whose missing matches every regex; or READY, files present, lints pass, no regex in the files |
 | judge | `{"kind": "pair", "better": "old"}` or `"new"` | PREFERS the side that shows `better` |
 
 A seeded case plants exactly one defect that is the role's job and that no lint of its stages catches;
 its tree passes those lints. A clean case is a near miss: it looks suspicious and is correct. A
 `catches` regex matches a stable token of the defect (a scene, line, shot or palette id, a character
-id, a value), never prose. A replay case's `lint` is its stage's `lint` in `pipeline.json`. A pair
+id, a value), never prose. A refusal case gives a task that can only be done with something the role
+may not use, such as a subject with no canon sheet; a forbid regex matches its id. Its twin is a replay
+case with the same task and the same tree plus what was missing. A replay case's `lint` is its stage's
+`lint` in `pipeline.json`. A pair
 case's two versions differ for one reason the rubric names and in no other way.
 
 ## Case ids

@@ -1,0 +1,1 @@
+{"kind": "refusal", "lint": ["structure", "media"], "expect_files": ["episodes/ep01/premise.md"], "forbid": ["(?i)\\bpim\\b"]}

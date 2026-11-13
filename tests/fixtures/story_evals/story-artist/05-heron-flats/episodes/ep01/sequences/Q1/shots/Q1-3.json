@@ -1,0 +1,13 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "mira",
+    "pim"
+  ],
+  "set": "tide-flats",
+  "camera": "close",
+  "action": "Pim lands on the bell; the rope crumbles and Mira strikes the bell with a stone."
+}

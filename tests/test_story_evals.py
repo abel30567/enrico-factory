@@ -34,7 +34,7 @@ JUDGES = tuple(role for role in SUITES if KIND[role] == "judge")
 NOTE = ".no-suite.md"
 NO_SUITE = tuple(sorted(p.name[:-len(NOTE)] for p in (KIT / "evals").glob("*" + NOTE)))
 NOTE_TEXT = re.compile(r"# `(?P<role>[a-z0-9-]+)`: no suite yet\n\nWhy not yet: .+\nWave: (?P<wave>[0-9]+|never)\n")
-MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "pair": 4}
+MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "refusal": 0, "pair": 4}
 NEVER = "held-out-judge"
 CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
@@ -42,6 +42,9 @@ SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
 TREES = ("tree", "old", "new")
 READ_FIRST = re.compile(r"(?ms)^## Read first\n(.*?)(?=^## |\Z)")
 INSTALLED = ("bible/", "media/", "registry/", ".factory/")
+# Per role: the refusal case, its twin, and a replay case whose output names no such subject.
+TWINS = {"story-writer": ("04-heron-fog", "05-heron-tide", "01-tide-bell"),
+         "story-artist": ("04-heron-tower", "05-heron-flats", "01-tide-bell")}
 
 
 def declared(role):
@@ -109,8 +112,9 @@ def read_first(kit, role):
 
 
 def checked_lints(kit, case):
-    """The lints a built run directory must pass: a replay case's own, else its checker stages'."""
-    if case.kind == "replay":
+    """The lints a built run directory must pass: a replay or refusal case's own, else its checker
+    stages'."""
+    if case.kind in ("replay", "refusal"):
         return case.spec["lint"]
     pipeline = json.loads((kit / "pipeline.json").read_text(encoding="utf-8"))
     return sorted({check for entry in pipeline if case.role in production.stage_roles(entry, "checker")
@@ -396,6 +400,8 @@ class MakerTest(unittest.TestCase):
             entries = [e for e in PIPELINE if role in production.stage_roles(e, "maker")]
             for case in cases(role):
                 where = f"{role}/{case.id}"
+                if case.kind == "refusal":
+                    continue
                 self.assertEqual(case.kind, "replay", where)
                 entry = next((e for e in entries if e["lint"] == case.spec["lint"]), None)
                 self.assertIsNotNone(entry, where)
@@ -465,6 +471,80 @@ class MakerTest(unittest.TestCase):
         self.assertLessEqual({"outline", "script"}, stages("script-writer"))
 
 
+class RefusalTest(unittest.TestCase):
+    """ISSUE-289: a maker's refusal case and its twin."""
+
+    def suite(self, role):
+        refusal, twin, plain = TWINS[role]
+        found = {c.id: c for c in cases(role)}
+        return found[refusal], found[twin], found[plain]
+
+    def recorded(self, role, case):
+        return json.loads((FIX / role / f"{case.id}.json").read_text(encoding="utf-8"))
+
+    def grade_ready(self, case, output, seed=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            shutil.copytree(case.path / "tree", run_dir)
+            shutil.copytree(output, run_dir, dirs_exist_ok=True)
+            if seed:
+                seed(run_dir)
+            graded = evals.grade(case, READY, run_dir=run_dir)
+        return graded["pass"], graded["detail"]
+
+    def test_blocked_naming_the_subject_passes_the_refusal_and_fails_the_twin(self):
+        for role in TWINS:
+            refusal, twin, _ = self.suite(role)
+            result = self.recorded(role, refusal)
+            self.assertEqual(harness.validate_result(refusal.role_kind, refusal.actor, result), [], role)
+            graded = evals.grade(refusal, result)
+            self.assertEqual((graded["pass"], graded["detail"]), (True, "refused: marker BLOCKED"), role)
+            graded = evals.grade(twin, result)
+            self.assertEqual((graded["pass"], graded["detail"]), (False, "marker BLOCKED, not READY"), role)
+            other = json.loads(json.dumps(result))
+            other["blocked"]["missing"] = re.sub(refusal.spec["forbid"][0], "Z99", other["blocked"]["missing"])
+            graded = evals.grade(refusal, other)
+            self.assertEqual((graded["pass"], graded["detail"]),
+                             (False, r"blocked: missing does not match (?i)\bpim\b"), role)
+
+    def test_ready_that_names_the_subject_fails(self):
+        named = r"names (?i)\bpim\b"
+        expected = {"story-writer": "lint PASS; " + named, "story-artist": "lint FAIL; " + named}
+        for role in TWINS:
+            refusal, twin, plain = self.suite(role)
+            self.assertEqual(self.grade_ready(refusal, FIX / role / twin.id), (False, expected[role]), role)
+            self.assertEqual(self.grade_ready(refusal, FIX / role / plain.id), (True, "lint PASS"), role)
+        refusal, twin, _ = self.suite("story-artist")
+        shot = Path("episodes/ep01/sequences/Q1/shots/Q1-3.json")
+
+        def unlisted(run_dir):
+            data = json.loads((run_dir / shot).read_text(encoding="utf-8"))
+            self.assertIn("Pim", data["action"])
+            (run_dir / shot).write_text(json.dumps(dict(data, characters=["mira"]), indent=2) + "\n",
+                                        encoding="utf-8")
+
+        self.assertEqual(self.grade_ready(refusal, FIX / "story-artist" / twin.id, unlisted),
+                         (False, "lint PASS; " + named))
+
+    def test_twins_are_near_misses(self):
+        added = {"story-writer": ["bible/canon/characters/pim.md"],
+                 "story-artist": ["bible/canon/characters/pim.md", "bible/style/characters/pim.md",
+                                  "media/manifest.tsv"]}
+        for role in TWINS:
+            refusal, twin, _ = self.suite(role)
+            self.assertEqual((refusal.kind, twin.kind), ("refusal", "replay"), role)
+            self.assertEqual(twin.task, refusal.task, role)
+            for key in ("lint", "expect_files"):
+                self.assertEqual(twin.spec[key], refusal.spec[key], f"{role}: {key}")
+            old, new = refusal.path / "tree", twin.path / "tree"
+            changed = sorted(f for f in set(files(old)) | set(files(new))
+                             if not (old / f).is_file() or not (new / f).is_file()
+                             or (old / f).read_bytes() != (new / f).read_bytes())
+            self.assertEqual(changed, added[role], role)
+        refusals = sorted((role, c.id) for role in MAKERS for c in cases(role) if c.kind == "refusal")
+        self.assertEqual(refusals, sorted((role, ids[0]) for role, ids in TWINS.items()))
+
+
 class JudgeTest(unittest.TestCase):
     def test_pair_cases(self):
         for role in JUDGES:
@@ -517,6 +597,33 @@ class EndToEndTest(unittest.TestCase):
             self.assertIn("run 2: score 1.0\n", done.stdout)
             self.assertTrue((out / "summary.json").is_file())
             self.assertEqual(tree_hash(KIT / "evals"), before)
+
+    def test_story_writer_refusal_offline(self):
+        refusal, twin, _ = TWINS["story-writer"]
+        premise = "episodes/ep01/premise.md"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            bin_dir, root, out = tmp / "bin", tmp / "root", tmp / "out"
+            bin_dir.mkdir()
+            root.mkdir()
+            shutil.copy(FAKE, bin_dir / "fake-harness")
+            os.chmod(bin_dir / "fake-harness", 0o755)
+            blocked = json.loads((FIX / "story-writer" / f"{refusal}.json").read_text(encoding="utf-8"))
+            written = (FIX / "story-writer" / twin / premise).read_text(encoding="utf-8")
+            steps = [{"match": f"eval {re.escape(refusal)}(?![\\w-])", "result": blocked},
+                     {"match": f"eval {re.escape(twin)}(?![\\w-])", "files": {premise: written},
+                      "result": READY}]
+            (bin_dir / "fake-harness.json").write_text(json.dumps(steps), encoding="utf-8")
+            env = {k: v for k, v in os.environ.items() if k != "FACTORY_LIVE"}
+            env["FACTORY_FAKE_HARNESS"] = str(bin_dir / "fake-harness")
+            done = subprocess.run([sys.executable, str(FACTORY), "eval", "story-writer", "--cases", "0[45]-*",
+                                   "--root", str(root), "--out", str(out)],
+                                  env=env, cwd=ROOT, capture_output=True, text=True, timeout=300)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            self.assertIn("run 1: score 1.0\nrun 1: 1 blocked\n", done.stdout)
+            summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["per_run"],
+                             [{"blocked": 1, "lint_pass_rate": 1.0, "refusal_rate": 1.0, "score": 1.0}])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 8,
+  "characters": [
+    "mira"
+  ],
+  "set": "tide-flats",
+  "camera": "wide, fog",
+  "action": "Mira alone on the flats."
+}

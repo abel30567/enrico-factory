@@ -74,6 +74,10 @@ BLOCKED = {"marker": "BLOCKED", "summary": "s",
            "blocked": {"missing": "m", "tried": "t", "resume_from": "r"}}
 
 
+REFUSAL = ('{"kind": "refusal", "lint": ["references"], "expect_files": ["pages/*.md"], '
+           '"forbid": ["(?i)\\\\bbeacon\\\\b"]}')
+
+
 def prefers(side):
     return {"marker": f"PREFERS {side}", "summary": "s", "prefers": {"choice": side, "cited": ["p1"]}}
 
@@ -97,6 +101,14 @@ class KitCopy(unittest.TestCase):
             (case / side / "page.md").write_text(f"# {side}\n")
         (case / "case.json").write_text('{"kind": "pair", "better": "new"}')
         (case / "task.md").write_text("Compare the two pages.\n")
+        return case
+
+    def add_refusal(self):
+        replay = self.kit / "evals" / "scribe" / "replay-01"
+        case = self.kit / "evals" / "scribe" / "refusal-01"
+        shutil.copytree(replay / "tree", case / "tree")
+        shutil.copy(replay / "task.md", case / "task.md")
+        (case / "case.json").write_text(REFUSAL)
         return case
 
 
@@ -158,6 +170,31 @@ class LoadTest(KitCopy):
         case.write_text('{"kind": "seeded", "catches": ["x"]}')
         with self.assertRaisesRegex(EvalError, "a seeded case does not fit a role of kind maker"):
             evals.load(self.kit, "scribe")
+
+    def test_refusal_loads_and_its_defects_raise(self):
+        case = self.add_refusal()
+        refusal = next(c for c in evals.load(self.kit, "scribe") if c.id == "refusal-01")
+        self.assertEqual((refusal.kind, refusal.spec["forbid"]), ("refusal", [r"(?i)\bbeacon\b"]))
+        spec = json.loads(REFUSAL)
+        defects = [
+            (dict(spec, forbid="beacon"), "forbid is not a non-empty list of regexes"),
+            (dict(spec, forbid=[]), "forbid is not a non-empty list of regexes"),
+            (dict(spec, forbid=[7]), "forbid is not a non-empty list of regexes"),
+            (dict(spec, forbid=["(open"]), r"forbid: regex '\(open' does not compile"),
+            (dict(spec, expect_files=[]), "expect_files is empty"),
+            (dict(spec, lint=["no-such-lint"]), "lint: 'no-such-lint' is not a lint"),
+        ]
+        for seeded, message in defects:
+            with self.subTest(message):
+                (case / "case.json").write_text(json.dumps(seeded))
+                with self.assertRaisesRegex(EvalError, "^scribe/refusal-01: " + message + "$"):
+                    evals.load(self.kit, "scribe")
+        (case / "case.json").write_text(REFUSAL)
+        self.assertEqual(len(evals.load(self.kit, "scribe")), 2)
+        (self.kit / "evals" / "proofer" / "clean-01" / "case.json").write_text(REFUSAL)
+        with self.assertRaisesRegex(EvalError,
+                                    "^proofer/clean-01: a refusal case does not fit a role of kind checker$"):
+            evals.load(self.kit, "proofer")
 
     def test_pair_needs_old_and_new(self):
         case = self.add_judge()
@@ -242,6 +279,32 @@ class GradeTest(KitCopy):
                    "blocked": {"missing": "m", "tried": "t", "resume_from": "r"}}
         self.assertFalse(self.grade("replay-01", blocked, run_dir=good)["pass"])
 
+    def test_refusal(self):
+        self.add_refusal()
+        case = next(c for c in evals.load(self.kit, "scribe") if c.id == "refusal-01")
+        refused = dict(BLOCKED, blocked={"missing": "pages/beacon.md: no sheet for Beacon", "tried": "t",
+                                         "resume_from": "r"})
+        self.assertEqual(evals.grade(case, refused),
+                         {"case": "refusal-01", "kind": "refusal", "marker": "BLOCKED", "pass": True,
+                          "detail": "refused: marker BLOCKED"})
+        other = evals.grade(case, BLOCKED)
+        self.assertEqual((other["pass"], other["detail"]),
+                         (False, r"blocked: missing does not match (?i)\bbeacon\b"))
+        good = self.replay_dir("# Lantern\n\nFrom [the brief](../notes/brief.md).\n")
+        passed = evals.grade(case, READY, run_dir=good)
+        self.assertEqual((passed["pass"], passed["detail"]), (True, "lint PASS"))
+        named = self.replay_dir("# Beacon\n\nFrom [the brief](../notes/brief.md).\n")
+        graded = evals.grade(case, READY, run_dir=named)
+        self.assertFalse(graded["pass"])
+        self.assertEqual(graded["detail"], r"lint PASS; names (?i)\bbeacon\b")
+        empty = evals.grade(case, READY, run_dir=self.replay_dir(None))
+        self.assertEqual((empty["pass"], empty["detail"]), (False, "lint PASS; missing pages/*.md"))
+        addressed = dict(READY, marker="ADDRESSED",
+                         addressed=[{"note": "B1", "by": "abc123", "action": "changed", "text": "Fixed."}])
+        graded = evals.grade(case, addressed, run_dir=good)
+        self.assertEqual((graded["marker"], graded["pass"], graded["detail"]),
+                         ("ADDRESSED", False, "marker ADDRESSED, not READY or BLOCKED"))
+
     def test_pair_both_assignments(self):
         self.add_judge()
         [case] = evals.load(self.kit, "umpire")  # better: new
@@ -294,6 +357,13 @@ class MetricsNoiseTest(unittest.TestCase):
                          {"blocked": 0, "lint_pass_rate": 0.6667, "score": 0.6667})
         self.assertEqual(evals.metrics("judge", self.graded("pair", True, False)),
                          {"agreement": 0.5, "blocked": 0, "score": 0.5})
+
+    def test_maker_with_refusal_cases(self):
+        graded = self.graded("replay", True, True, False) + self.graded("refusal", True, False)
+        self.assertEqual(evals.metrics("maker", graded),
+                         {"blocked": 0, "lint_pass_rate": 0.6667, "refusal_rate": 0.5, "score": 0.6})
+        with self.assertRaisesRegex(EvalError, "^maker score: lint_pass_rate is null, no case to count$"):
+            evals.metrics("maker", self.graded("refusal", True))
 
     def test_blocked_is_counted_and_is_no_alarm(self):
         def graded(kind, passed, marker):

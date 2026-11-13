@@ -1,0 +1,9 @@
+{
+  "marker": "BLOCKED",
+  "summary": "The premise needs Pim, and Pim has no canon sheet.",
+  "blocked": {
+    "missing": "bible/canon/characters/pim.md: the task names Pim, the grey heron, and the bible has no sheet for pim",
+    "tried": "ls bible/canon/characters bible/canon/places",
+    "resume_from": "an amendment that adds bible/canon/characters/pim.md"
+  }
+}
