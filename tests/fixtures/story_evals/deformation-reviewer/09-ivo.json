@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "neck turns only 5 degrees on y: Ivo cannot look behind him without moving his feet.",
+      "evidence": "production/assets/ivo/rigging/state.json"
+    }
+  ]
+}

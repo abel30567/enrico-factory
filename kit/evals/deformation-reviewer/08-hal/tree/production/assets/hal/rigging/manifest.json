@@ -1,0 +1,8 @@
+{
+  "job": "39bd93fae93507fd30759610cc62dcb09c8cf55783c9208921ffff5005ce1d7c",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "hal_rig.uasset", "sha256": "bc995635ff39b2d212ac6710780754f26ce65c813b7956016e2cff7d82478692", "bytes": 2097152}]
+}

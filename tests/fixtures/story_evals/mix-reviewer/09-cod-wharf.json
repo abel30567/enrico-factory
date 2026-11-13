@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The caption of L1 names Wen; Wen speaks the line to Dax: 'Take the lantern, Dax.'",
+      "evidence": "production/ep01/conform/captions.json"
+    }
+  ]
+}

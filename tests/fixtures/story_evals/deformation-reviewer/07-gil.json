@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "lowerarm_r bends only to 20 degrees on y: Gil cannot throw the rope overhand with his right arm.",
+      "evidence": "production/assets/gil/rigging/state.json"
+    }
+  ]
+}

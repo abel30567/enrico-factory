@@ -69,10 +69,16 @@ def prefers(side):
     return {"marker": f"PREFERS {side}", "summary": "One is better.", "prefers": {"choice": side, "cited": []}}
 
 
+def unnamed_stage_lints(kit, role):
+    """The check named after the role file's `stage`, for a role no pipeline entry names yet."""
+    stage = evals.role_file(kit, role)[0].get("stage", "")
+    return [stage] if (kit / "lib" / "lints" / f"{stage}.py").is_file() else []
+
+
 def stage_lints(key, role):
-    """The union of `lint` over the pipeline entries whose ``key`` is ``role``."""
+    """The union of `lint` of the pipeline entries whose ``key`` is ``role``, else the role's stage check."""
     return sorted({check for entry in PIPELINE if role in production.stage_roles(entry, key)
-                   for check in entry["lint"]})
+                   for check in entry["lint"]}) or unnamed_stage_lints(KIT, role)
 
 
 def lint_exempt(case):
@@ -118,7 +124,7 @@ def checked_lints(kit, case):
         return case.spec["lint"]
     pipeline = json.loads((kit / "pipeline.json").read_text(encoding="utf-8"))
     return sorted({check for entry in pipeline if case.role in production.stage_roles(entry, "checker")
-                   for check in entry["lint"]})
+                   for check in entry["lint"]}) or unnamed_stage_lints(kit, case.role)
 
 
 def completeness(kit, case, run_dir):

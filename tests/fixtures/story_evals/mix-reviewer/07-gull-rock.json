@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The caption of L2 reads 'still in'; the line is 'Two boats are still out.'",
+      "evidence": "production/ep01/conform/captions.json"
+    }
+  ]
+}

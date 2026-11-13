@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The mix has no effects stem: only dialogue and music are delivered.",
+      "evidence": "production/ep01/conform/manifest.json"
+    }
+  ]
+}

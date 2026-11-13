@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "L2 and L3 are swapped: L3, a line of scene S2, is heard in Q1-2 and L2 in Q2-1.",
+      "evidence": "production/ep01/conform/captions.json"
+    }
+  ]
+}

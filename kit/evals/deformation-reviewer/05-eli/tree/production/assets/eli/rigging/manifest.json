@@ -1,0 +1,8 @@
+{
+  "job": "47ba17039cec7e00b3cf8aeef4a5a74a7dc201d84102d95c9fec738ed838ca26",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "eli_rig.uasset", "sha256": "ec1ac475abbf86a1ef8ad8ca09264ca7e650fd242db64d3e1874468ef82a6665", "bytes": 2097152}]
+}

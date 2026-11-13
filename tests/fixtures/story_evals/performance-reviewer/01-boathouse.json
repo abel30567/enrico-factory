@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "wen never moves and the lantern stays where it starts: the step to Dax and the hand-over do not happen.",
+      "evidence": "production/ep01/Q1-2/animation/state.json"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "job": "057599fc8795b03d6d608270b0a590084a6435347e40c640b8056eaf3a8d5464",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "frames/0012.exr", "sha256": "a016e540c4f87e58d5929e55186d4d96a79f58e10390c60b8974f33f7612b0f1", "bytes": 8294400}, {"name": "frames/0013.exr", "sha256": "8c96a2f99e214ce920803d4279dbfc0a6aee0522aa7c7997ec21872d295c1574", "bytes": 8294400}, {"name": "frames/0014.exr", "sha256": "4f65788dffe118a65b0b25a760d041aad06d49061796f5eca5c3a775c6272638", "bytes": 8294400}, {"name": "frames/0015.exr", "sha256": "faf068e4844617836b437c2d47602340fb74cd7f2a7e95d1af9c4886074f9e87", "bytes": 8294400}, {"name": "frames/0016.exr", "sha256": "944bc6aeffd97cca6256e4cd38f8a761b5fe439471bd018a525a947f8980f66d", "bytes": 8294400}, {"name": "frames/0017.exr", "sha256": "d2dbc5b4f7dc2edeec5569a1a6ce0708e9060b0aff989d34c1d3ba2e052e4dc1", "bytes": 8294400}, {"name": "frames/0018.exr", "sha256": "53ca6e01b371d53745a2b2940872551619f98e811183e559cb588940dd219d75", "bytes": 8294400}, {"name": "frames/0019.exr", "sha256": "d000495628d8be72f1ffb92d100f9e1ec079d163e0220e991b1a75154992cdaa", "bytes": 8294400}, {"name": "frames/0020.exr", "sha256": "095d48390dec5f9ea9483683bbbca6783fdd5281d5e3b6916608013b6aec2819", "bytes": 8294400}, {"name": "frames/0021.exr", "sha256": "46fbc5c226d03902f0832ac7025b02755aae922e2cf28f5d38e3c3e739bc605c", "bytes": 8294400}, {"name": "frames/0022.exr", "sha256": "a1e073ff61c9e69e136e925f330a050d6e07bad76988ad64a9749ec6cc92f64b", "bytes": 8294400}, {"name": "frames/0023.exr", "sha256": "b0cc37f3aa8a2c6ecbd3cf207a6a9703d40bc09232f2c8456ff7cd4d3228c6c7", "bytes": 8294400}]
+}

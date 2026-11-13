@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-1",
+  "stage": "layout",
+  "fps": 24,
+  "frames": {"first": 0, "last": 11},
+  "actors": [{"id": "wen", "kind": "character", "asset": "asset:wen", "sha256": "f741046fdac8702d179fc5f2f45fd03b356f925175d8fb2d072c0a93e238b43f", "scale": [1, 1, 1], "height_m": 1.7, "start": {"location": [0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 90]}}, {"id": "dax", "kind": "character", "asset": "asset:dax", "sha256": "4b79be6a5c777ed09b7b10b6601f002f10149444bd37b98b6f3706e0018767d7", "scale": [1, 1, 1], "height_m": 1.8, "start": {"location": [1, 0, 0], "rotation": [0, 0, -90]}, "end": {"location": [1, 0, 0], "rotation": [0, 0, -90]}}, {"id": "gull-rock", "kind": "set", "asset": "asset:gull-rock", "sha256": "3a156aba177ada36384f92263fe718986ebb038a95285c8d5ba163f109a8fef7", "scale": [1, 1, 1], "height_m": 6.0, "start": {"location": [0, 0, 0], "rotation": [0, 0, 0]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 0]}}],
+  "camera": {"focal_mm": {"min": 24, "max": 24}, "sensor_mm": [36, 20.25], "start": {"location": [0.5, -8, 2], "rotation": [0, 0, 0]}, "end": {"location": [0.5, -8, 2], "rotation": [0, 0, 0]}},
+  "framing": [{"frame": 0, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 0, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 1, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 1, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 2, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 2, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 3, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 3, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 4, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 4, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 5, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 5, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 6, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 6, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 7, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 7, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 8, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 8, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 9, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 9, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 10, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 10, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}, {"frame": 11, "actor": "wen", "box": [0.36, 0.2, 0.48, 0.95]}, {"frame": 11, "actor": "dax", "box": [0.52, 0.15, 0.64, 0.95]}],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

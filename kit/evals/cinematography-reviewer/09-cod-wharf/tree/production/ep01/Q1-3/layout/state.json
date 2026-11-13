@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-3",
+  "stage": "layout",
+  "fps": 24,
+  "frames": {"first": 24, "last": 35},
+  "actors": [{"id": "wen", "kind": "character", "asset": "asset:wen", "sha256": "f741046fdac8702d179fc5f2f45fd03b356f925175d8fb2d072c0a93e238b43f", "scale": [1, 1, 1], "height_m": 1.7, "start": {"location": [0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 90]}}, {"id": "cod-wharf", "kind": "set", "asset": "asset:cod-wharf", "sha256": "83f5457c5a9ded6b35e1495e3475c15118e770595d0603fa3b6beadf9bfb150a", "scale": [1, 1, 1], "height_m": 6.0, "start": {"location": [0, 0, 0], "rotation": [0, 0, 0]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 0]}}],
+  "camera": {"focal_mm": {"min": 85, "max": 85}, "sensor_mm": [36, 20.25], "start": {"location": [0, -1.5, 1.5], "rotation": [0, 0, 0]}, "end": {"location": [0, -1.5, 1.5], "rotation": [0, 0, 0]}},
+  "framing": [{"frame": 24, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 25, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 26, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 27, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 28, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 29, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 30, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 31, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 32, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 33, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 34, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}, {"frame": 35, "actor": "wen", "box": [0.38, 0.05, 0.62, 1.0]}],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

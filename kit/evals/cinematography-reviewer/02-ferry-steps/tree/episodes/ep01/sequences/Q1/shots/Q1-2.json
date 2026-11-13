@@ -1,0 +1,10 @@
+{
+  "id": "Q1-2",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": ["wen", "dax"],
+  "set": "ferry-steps",
+  "camera": "medium two-shot, eye level, slow push in",
+  "action": "Wen steps to Dax and hands him the lantern."
+}

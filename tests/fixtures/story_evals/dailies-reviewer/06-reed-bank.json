@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the exact tree.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "wen in the final render is not the asset the locked lighting preview used: its sha256 differs.",
+      "evidence": "production/ep01/Q1-2/render/state.json"
+    }
+  ]
+}
