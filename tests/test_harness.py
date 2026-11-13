@@ -562,12 +562,14 @@ class StartTest(FakeHarnessCase):
     def test_token_moved_to_the_descriptor(self):
         # A write-only descriptor 3 in the parent forces the token onto a higher number there; the
         # child must still read the token, not the parent's descriptor 3, on descriptor 3.
-        write_only = os.open(os.devnull, os.O_WRONLY)
         try:
             saved = (os.dup(3), os.get_inheritable(3))
         except OSError:
             saved = None
-        os.dup2(write_only, 3, inheritable=False)
+        write_only = os.open(os.devnull, os.O_WRONLY)
+        if write_only != 3:  # where 3 is free, os.open returns 3 itself, and dup2 onto itself is EINVAL on Linux
+            os.dup2(write_only, 3, inheritable=False)
+            os.close(write_only)
         try:
             self.steps([{"match": "", "result": {"marker": "RULING", "summary": "x"}}])
             process = self.start()
@@ -578,7 +580,6 @@ class StartTest(FakeHarnessCase):
             else:
                 os.dup2(saved[0], 3, inheritable=saved[1])
                 os.close(saved[0])
-            os.close(write_only)
         self.assertIs(self.calls()[0]["fd3"], True)
 
     def test_killed_by_process_group(self):

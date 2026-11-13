@@ -533,7 +533,8 @@ class Accounts(unittest.TestCase):
         calls = w.calls()
         self.assertEqual(len(calls), 1)
         self.assertIs(calls[0]["fd3"], True)
-        allowed = harness.environment(os.environ, w.p.settings, "any", w.run_dir("writer-3-1") / "config", 3)
+        allowed = harness.environment(os.environ, w.p.settings, "any", w.run_dir("writer-3-1") / "config", 3,
+                                      tmp_dir=w.run_dir("writer-3-1") / "tmp")
         self.assertEqual(self.envs, [set(allowed)])
         # The fake's own interpreter adds a few keys at start-up (locale coercion, and on macOS the text
         # encoding); they are read from the same interpreter started with PATH alone.
