@@ -2,11 +2,12 @@
 # scout.py — draft builder tickets on Fermi fleet boxes, one box per issue. ORCHESTRATOR ONLY.
 #
 #   scout.py launch N [N...] [--note-file F] [--in-flight "text"]   start one ticket drafter per issue number
+#   scout.py brief KEY FILE                                        start one drafter with the brief in FILE; KEY names its draft
 #   scout.py collect                                                fetch finished drafts, print each final message
 #   scout.py status                                                 one line per drafter
 #
 # A drafter is read-only: it researches the repository in its own clone and uploads one file, the draft.
-# `collect` saves it as $STATE/inputs/ISSUE-<N>.draft.md. Nothing reaches GitHub from here: the orchestrator
+# `collect` saves it as $STATE/inputs/ISSUE-<N>.draft.md (or <KEY>.draft.md). Nothing reaches GitHub from here: the orchestrator
 # reviews the draft, rules on what it left open, files it as the issue body and labels the issue status:ready.
 # A note file holds lines `<N>: <the orchestrator's triage note for that issue>`; the drafter gets its own line.
 import json, re, subprocess, sys, time
@@ -118,8 +119,8 @@ def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "status"
     c = fleet.conf()
     rs = rows()
-    if cmd == "launch":
-        nums = [a for a in sys.argv[2:] if a.isdigit()]
+    if cmd in ("launch", "brief"):
+        nums = [a for a in sys.argv[2:] if a.isdigit()] if cmd == "launch" else [sys.argv[2]]
         notes = {}
         if opt("--note-file"):
             for line in Path(opt("--note-file")).read_text().splitlines():
@@ -130,7 +131,7 @@ def main():
         for n in nums:
             if any(r[0] == n and r[3] == "0" for r in rs):
                 print(f"#{n}: a drafter is already recorded; collect it first"); continue
-            prompt = BRIEF.format(repo=GH_REPO, n=n, note=notes.get(n, "none"), in_flight=in_flight, today=time.strftime("%Y-%m-%d"))
+            prompt = Path(sys.argv[3]).read_text() if cmd == "brief" else BRIEF.format(repo=GH_REPO, n=n, note=notes.get(n, "none"), in_flight=in_flight, today=time.strftime("%Y-%m-%d"))
             r = fleet.call(c, "POST", "/admin/fleet/launch", {
                 "prompt": prompt, "proof_contract": json.dumps({"kind": "artifact", "name": "result.md", "min_bytes": 4000}),
                 "route": "claude", "account": c.get("FLEET_ACCOUNT", "tars"), "model": MODEL,
@@ -151,7 +152,7 @@ def main():
         if cmd == "status" or a.get("status") not in ("done", "failed", "destroyed"):
             print(f"#{r[0]} {a.get('status')} {age} min {note} account={a.get('account')}"); continue
         text = str((d.get("tasks") or [{}])[0].get("result") or a.get("exit_reason"))
-        out = STATE / "inputs" / f"ISSUE-{r[0]}.draft.md"
+        out = STATE / "inputs" / (f"ISSUE-{r[0]}.draft.md" if r[0].isdigit() else f"{r[0]}.draft.md")
         got = subprocess.run(["curl", "-sS", "-m", "60", "-K", "-", "-o", str(out),
                               f"{c['FERMI_URL'].rstrip('/')}/admin/fleet/artifact?key=artifacts/{r[1]}/result.md"],
                              input=f'header = "Authorization: Bearer {c["FERMI_BEARER_TOKEN"]}"\n', text=True, capture_output=True)
