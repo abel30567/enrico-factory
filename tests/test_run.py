@@ -637,11 +637,17 @@ class DownTest(unittest.TestCase):
         job = w.script("flaky", down=True, outputs={"shot-1.png": "a frame\n"}, usd=1.5, compute_min=20)
         digest = w.passed(job)
         before = w.snapshot()
-        self.assertEqual(w.run(job), (2, "", "run: resource gen.fake is down\n"))
+        self.assertEqual(w.run(job), (2, "", "run: resource gen.fake is down (#5)\n"))
         self.assertEqual(w.rows("run"), [])
         self.assertFalse(w.job_dir(digest).exists())
         self.assertEqual(w.refs(), before[0])
-        self.assertEqual(w.log(), before[1])
+        [entry] = w.log()[len(before[1]):]
+        self.assertEqual(w.log()[:len(before[1])], before[1])
+        self.assertEqual((entry["op"], entry["number"], entry["title"], entry["labels"]),
+                         ("create_issue", 5, "[DOWN] gen.fake", ["resource:down"]))
+        self.assertEqual(w.run(job), (2, "", "run: resource gen.fake is down (#5)\n"))
+        self.assertEqual(w.fake_calls(), [digest])
+        w.edit("issues", 5, state="closed")
         self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
         self.assertEqual(w.fake_calls(), [digest, digest])
 

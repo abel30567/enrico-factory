@@ -51,7 +51,7 @@ REASONS = ("bad request", "public link does not serve the reel", "platform unrea
            "container failed", "container not ready")
 CHECKS = [{"kind": "secret", "name": "platform.instagram"}, {"kind": "setting", "name": "INSTAGRAM_TEST_ACCOUNT"},
           {"kind": "setting", "name": "MEDIA_PUBLIC_BASE"}]
-DOWN = "run: resource platform.instagram is down\n"
+DOWN = "run: resource platform.instagram is down (#5)\n"
 MEDIA = ("POST", f"/v27.0/{ACCOUNT}/media")
 STATUS = ("GET", f"/v27.0/{CONTAINER}?fields=status_code")
 PUBLISH = ("POST", f"/v27.0/{ACCOUNT}/media_publish")
@@ -388,6 +388,8 @@ class TokenTest(Case):
         self.assert_refused(w.run(job), DOWN, [LINK, MEDIA])
         self.assertFalse(os.path.lexists(w.job_dir(digest)))
         w.platform.clean()
+        issue = w.dir / "issues" / "5.json"
+        issue.write_text(json.dumps({**json.loads(issue.read_text()), "state": "closed"}, indent=1) + "\n")
         self.assertEqual(w.run(job), (0, line(digest, "DONE"), ""))
         self.assertEqual(len(w.rows("job")), 1)
         self.assertEqual([r["verdict"] for r in w.rows("run")], ["DONE"])

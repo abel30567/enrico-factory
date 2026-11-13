@@ -159,8 +159,8 @@ class AudioTest(unittest.TestCase):
         self.assertIsNone(self.w.manifest())
         return digest
 
-    def assert_down(self, job, digest):
-        self.assertEqual(self.factory_run(job), (2, "", "run: resource gen.sfx is down\n"))
+    def assert_down(self, job, digest, number):
+        self.assertEqual(self.factory_run(job), (2, "", f"run: resource gen.sfx is down (#{number})\n"))
         self.assertEqual(self.w.rows("run"), [])
         self.assertFalse(self.w.job_dir(digest).exists())
 
@@ -249,16 +249,19 @@ class AudioTest(unittest.TestCase):
 
     def test_down(self):
         job, digest = self.sfx_job()
-        for answer in ("invalid-key.json", "rate-limited.json"):
+        for number, answer in ((5, "invalid-key.json"), (6, "rate-limited.json")):
             with self.subTest(answer):
                 self.vendor.answers[SFX] = answer
-                self.assert_down(job, digest)
+                self.assert_down(job, digest, number)
+                self.w.edit("issues", number, state="closed")
         self.assertEqual(len(self.vendor.requests), 2)
         with self.subTest("stopped server"), mock.patch.object(audioapi, "BASE", stopped_url()):
-            self.assert_down(job, digest)
+            self.assert_down(job, digest, 7)
+            self.w.edit("issues", 7, state="closed")
         with self.subTest("a key of two words"):
             self.key("gen.sfx", "two words\n")
-            self.assert_down(job, digest)
+            self.assert_down(job, digest, 8)
+            self.w.edit("issues", 8, state="closed")
             self.key("gen.sfx", KEY + "\n")
         self.assertEqual(len(self.vendor.requests), 2)
         self.vendor.answers[SFX] = "sfx-ok.json"
@@ -275,7 +278,9 @@ class AudioTest(unittest.TestCase):
                 self.job("none", "voice", [self.request("tobi-line", "Tobi laughs.")])]
         for job in jobs:
             w.passed(job)
-        self.assertEqual([self.factory_run(job)[0] for job in jobs], [0, 1, 2, 1, 1])
+        self.assertEqual([self.factory_run(job)[0] for job in jobs[:3]], [0, 1, 2])
+        w.edit("issues", 5, state="closed")
+        self.assertEqual([self.factory_run(job)[0] for job in jobs[3:]], [1, 1])
         self.vendor.answers[SFX] = "sfx-ok.json"
         self.assertEqual(self.factory_run(jobs[2])[0], 0)
         self.assertEqual([r["key"] for r in self.vendor.requests], [KEY] * 4)
