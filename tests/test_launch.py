@@ -258,8 +258,24 @@ class Refusals(unittest.TestCase):
     def test_operator(self):
         self.refused("stage beats does not name runner", "runner", 5)
 
-    def test_analyst(self):
-        self.refused("analyst launches are not built in wave 2", "reader", 5)
+    def test_analyst_on_a_pull(self):
+        self.refused("an analyst is launched on a ticket; #7 is a pull request", "reader", 7)
+
+    def test_analyst_not_posting_as_analyst(self):
+        path = self.w.root / ".factory" / "roles" / "reader.md"
+        path.write_text(path.read_text().replace("actor: ANALYST\n", ""))
+        self.w.local()
+        self.refused("reader posts as READER; an analyst posts as ANALYST", "reader", 5)
+
+    def test_analyst_of_another_room(self):
+        path = self.w.root / ".factory" / "roles" / "reader.md"
+        path.write_text(path.read_text().replace("room: story\n", "room: distribution\n"))
+        self.w.local()
+        self.refused("reader is not a role of room story", "reader", 5)
+
+    def test_analyst_already_running(self):
+        self.w.comment(5, 30, "2026-11-10T10:00:00Z", "showlead", "[SHOWLEAD] LAUNCH reader 5-1\n")
+        self.refused("reader is already running on #5", "reader", 5)
 
     def test_not_tracked(self):
         self.refused("#99 is not a tracked ticket or a pull request of one", "drafter", 99)
@@ -355,6 +371,42 @@ class Refusals(unittest.TestCase):
     def test_harness_error(self):
         self.w.local(MODEL_MAKER="")
         self.refused("setting MODEL_MAKER is empty", "drafter", 5)
+
+
+class AnalystLaunch(unittest.TestCase):
+    """Behaviour 1 and 2: an analyst is launched on a ticket, in a detached checkout of the base."""
+
+    def setUp(self):
+        self.w = World(self)
+
+    def test_analyst_launch(self):
+        w = self.w
+        run = w.prepare("reader", 5)
+        meta = run.meta
+        self.assertEqual(meta["id"], "5-1")
+        self.assertEqual(meta["kind"], "analyst")
+        self.assertEqual(meta["actor"], "ANALYST")
+        self.assertIsNone(meta["pull"])
+        self.assertIsNone(meta["branch"])
+        self.assertIsNone(meta["head_sha"])
+        self.assertEqual(json.loads((run.dir / "run.json").read_text()), meta)
+        self.assertEqual(run.worktree, w.state / "worktrees" / "reader-5-1")
+        self.assertEqual(gitstate.head(run.worktree), w.head("trunk"))
+        self.assertEqual(gitstate.git(run.worktree, "rev-parse", "--abbrev-ref", "HEAD").strip(), "HEAD")
+        body = w.gh.comments(5)[-1]["body"]
+        lines = body.split("\n")
+        self.assertEqual(lines[0], "[SHOWLEAD] LAUNCH reader 5-1")
+        self.assertIn("head: none", lines[:8])
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn("Task: Report the symptoms ticket #5 asks for, for unit ep01. Write no file.\n", text)
+        self.assertIsNone(PLACEHOLDER.search(text))
+
+    def test_a_maker_still_has_its_pitch(self):
+        self.w.prepare("reader", 5)
+        self.assertEqual(self.w.prepare("drafter", 5).meta["id"], "5-1")
+
+    def test_a_ticket_with_no_free_pitch(self):
+        self.assertEqual(self.w.prepare("reader", 6).meta["id"], "6-1")
 
 
 class CheckerLaunch(unittest.TestCase):
