@@ -11,10 +11,13 @@ if ls tests/test_*.py >/dev/null 2>&1; then
   trap 'rm -rf "$logs"' EXIT
   : > "$logs/_pass"; : > "$logs/_fail"
   start=$(date +%s)
-  ls tests/test_*.py | LOGS="$logs" xargs -P "$jobs" -n 1 sh -c '
-    m=$(basename "$0")
-    if python3 -m unittest discover -s tests -p "$m" > "$LOGS/$m.log" 2>&1; then echo "$m" >> "$LOGS/_pass"; else echo "$m" >> "$LOGS/_fail"; fi
-  ' || true
+  run='m=$(basename "$0")
+    if python3 -m unittest discover -s tests -p "$m" > "$LOGS/$m.log" 2>&1; then echo "$m" >> "$LOGS/_pass"; else echo "$m" >> "$LOGS/_fail"; fi'
+  # tests/test_lint.py writes a temporary check into kit/lib/lints/, where every other lint test would find
+  # it and then lose it, so that file runs alone first.
+  alone="tests/test_lint.py"
+  if [ -f "$alone" ]; then LOGS="$logs" sh -c "$run" "$alone" || true; fi
+  ls tests/test_*.py | grep -vxF "$alone" | LOGS="$logs" xargs -P "$jobs" -n 1 sh -c "$run" || true
   ran=$(cat "$logs"/test_*.log | awk '/^Ran [0-9]+ tests? in /{s+=$2} END{print s+0}')
   files=$(ls tests/test_*.py | wc -l | tr -d ' ')
   done_files=$(cat "$logs/_pass" "$logs/_fail" | wc -l | tr -d ' ')
