@@ -1,0 +1,24 @@
+# The gates on a neutral machine. The merge gate (`orch merge --apply`) requires every check on a pull
+# request to pass, so this run is the gate evidence that does not depend on the worker that wrote the code.
+# macOS, because the baseline and the sandbox tests are macOS; Python as on the orchestrator's machine.
+name: gates
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions:
+  contents: read
+jobs:
+  gates:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: bash scripts/gates.sh
