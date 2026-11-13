@@ -47,6 +47,35 @@ def maker_mismatches(entries, brief_text):
     return bad
 
 
+def production_rows(brief_text):
+    """{stage: (unit, maker, judged_by)} for every `| production |` row of section 6; a cell starting `none`
+    is "", and a trailing ` (...)` is cut."""
+    section = re.search(r"(?ms)^## 6\. Stages$(.*?)^## ", brief_text).group(1)
+    rows = {}
+    for line in section.splitlines():
+        if not line.startswith("| production |"):
+            continue
+        cells = ["" if c.strip().startswith("none") else re.sub(r" \([^()]*\)$", "", c.strip())
+                 for c in line.strip().strip("|").split("|")]
+        rows[cells[1].strip("`")] = (cells[2], cells[3], cells[5])
+    return rows
+
+
+def production_mismatches(entries, brief_text):
+    """(stage, key, brief, pipeline) for every production entry whose unit, maker or checker differs."""
+    brief = production_rows(brief_text)
+    bad = []
+    for e in entries:
+        if e["room"] != "production":
+            continue
+        unit, maker, checker = brief.get(e["stage"], (None, None, None))
+        for key, want in (("unit", unit), ("maker", maker), ("checker", checker)):
+            value = e[key] if key == "unit" else ", ".join([e[key]] if isinstance(e[key], str) else e[key])
+            if want != value:
+                bad.append((e["stage"], key, want, value))
+    return bad
+
+
 def entry(room, stage, after):
     return {"room": room, "stage": stage, "after": after}
 
@@ -83,6 +112,27 @@ class ShippedPipelineTest(unittest.TestCase):
             ("style", "art-director, media-wrangler", "art-director"),
             ("board", "story-artist, media-wrangler", "story-artist"),
             ("reel", "editorial, media-wrangler", "editorial")])
+
+
+class ProductionPipelineTest(unittest.TestCase):
+    def setUp(self):
+        self.entries = roles.load_pipeline(PIPELINE)
+        self.brief = BRIEF.read_text(encoding="utf-8")
+
+    def test_stage_names_in_order(self):
+        self.assertEqual([e["stage"] for e in self.entries if e["room"] == "production"],
+                         ["intake", "assets", "rigging", "layout", "animation", "simulation", "lighting",
+                          "cross-shot", "render", "conform"])
+
+    def test_shipped_entries_match_the_brief(self):
+        self.assertEqual(sorted(production_rows(self.brief)),
+                         sorted(e["stage"] for e in self.entries if e["room"] == "production"))
+        self.assertEqual(production_mismatches(self.entries, self.brief), [])
+
+    def test_a_checker_the_brief_does_not_name(self):
+        seeded = [{**e, "checker": "dailies-reviewer"} if e["stage"] == "simulation" else e for e in self.entries]
+        self.assertEqual(production_mismatches(seeded, self.brief),
+                         [("simulation", "checker", "", "dailies-reviewer")])
 
 
 class BadAftersTest(unittest.TestCase):
