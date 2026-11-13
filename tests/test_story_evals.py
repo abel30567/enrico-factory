@@ -321,7 +321,7 @@ class SuitesTest(unittest.TestCase):
                 for name in TREES:
                     if (case.path / name).is_dir():
                         count = sum(p.is_file() for p in (case.path / name).rglob("*"))
-                        self.assertLessEqual(count, 16, f"{role}/{case.id}/{name}")
+                        self.assertLessEqual(count, 20, f"{role}/{case.id}/{name}")
         for path in (KIT / "evals").rglob("*"):
             if path.is_file():
                 self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 80, path)

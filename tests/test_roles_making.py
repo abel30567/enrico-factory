@@ -558,8 +558,8 @@ class RequestTreeTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         root = Path(tmp) / "show"
         shutil.copytree(ROOT / "tests" / "fixtures" / "lint_structure" / "clean", root)
-        (root / "media").mkdir()
-        (root / "media" / "manifest.tsv").write_text(MANIFEST, encoding="utf-8")
+        with (root / "media" / "manifest.tsv").open("a", encoding="utf-8") as manifest:
+            manifest.write(MANIFEST.splitlines(keepends=True)[1])
         request = {"for": "Q1-1", "prompt": "The fox at the harbour wall, dusk.", "refs": [f"media:{ref}"]}
         for rel in places:
             (root / rel).parent.mkdir(parents=True, exist_ok=True)

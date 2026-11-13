@@ -392,9 +392,9 @@ BRIEF_FORMATS = {
 SM = ["structure", "media"]
 BRIEF_STAGES = [
     ("research", ["provenance", "references", "media"]),
-    ("bible", ["provenance", "references", "canon", "media"]),
+    ("bible", ["structure", "provenance", "references", "canon", "media"]),
     ("premise", SM), ("beats", SM), ("outline", SM), ("script", SM), ("sequences", SM),
-    ("style", ["references", "media"]),
+    ("style", ["structure", "references", "media"]),
     ("board", ["structure", "provenance", "references", "media"]),
     ("reel", SM),
 ]

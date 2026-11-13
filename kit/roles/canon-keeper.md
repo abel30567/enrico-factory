@@ -55,10 +55,12 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   ```
 - `bible/canon/ledger.tsv`: columns `subject`, `attribute`, `value`, `tag`, `source`; one row per
   permanent fact. State that changes during a story is not canon.
-- `bible/canon/characters/<id>.md` and `bible/canon/places/<id>.md`: one sheet each.
+- `bible/canon/characters/<id>.md` and `bible/canon/places/<id>.md`: one sheet each. It opens with
+  who or what the subject is, and holds one line `origin: source <file or media id>` or
+  `origin: house A-<n>`. A character sheet then has `## Behaviour` and `## Motivation`, with text.
 - `bible/charter.md`: only when the task says the amendment changes it; it then needs a vote.
 
-Lints this stage must pass: `provenance`, `references`, `canon`, `media`. Run `.factory/factory lint`
+Lints this stage must pass: `structure`, `provenance`, `references`, `canon`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.
 
 ## You may not
