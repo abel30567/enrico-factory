@@ -1,0 +1,1 @@
+{"kind": "refusal", "lint": ["structure", "provenance", "references", "media"], "expect_files": ["episodes/ep01/sequences/Q1/shots/*.json"], "forbid": ["(?i)\\bpim\\b"]}

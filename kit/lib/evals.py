@@ -16,8 +16,8 @@ from pathlib import Path
 from kit.lib import frontmatter, harness, lint, roles
 
 CASE_KEYS = {"seeded": ("catches",), "clean": (), "replay": ("lint", "expect_files"),
-             "pair": ("better",)}
-CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay",), "judge": ("pair",)}
+             "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",)}
+CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay", "refusal"), "judge": ("pair",)}
 SIDES = ("old", "new")
 PLACES = 4
 MEASURED_RUNS = 5
@@ -87,7 +87,17 @@ def _spec_problem(spec, role_kind, lint_ids):
                 re.compile(pattern)
             except re.error:
                 return f"catches: regex {pattern!r} does not compile"
-    if kind == "replay":
+    if kind == "refusal":
+        if not _is_strings(spec["forbid"]) or not spec["forbid"]:
+            return "forbid is not a non-empty list of regexes"
+        for pattern in spec["forbid"]:
+            try:
+                re.compile(pattern)
+            except re.error:
+                return f"forbid: regex {pattern!r} does not compile"
+        if spec["expect_files"] == []:
+            return "expect_files is empty"
+    if kind in ("replay", "refusal"):
         if not _is_strings(spec["lint"]) or not spec["lint"]:
             return "lint is not a non-empty list of check ids"
         for check in spec["lint"]:
@@ -138,7 +148,7 @@ def load(kit, role):
         if suite.is_dir() else []
     if not paths and role_kind in CASE_KINDS:
         raise EvalError(f"{role}: no cases in evals/{role}/")
-    # Only a maker may hold replay cases, the only ones that name lints.
+    # Only a maker may hold replay and refusal cases, the only ones that name lints.
     lint_ids = set(lint.discover()) if role_kind == "maker" else set()
     actor = roles.actor({**meta, "role": role})
     return [_case(path, role, role_kind, actor, lint_ids) for path in paths]
@@ -181,6 +191,26 @@ def _grade_replay(case, result, run_dir):
     return status == lint.PASS and not missing, "; ".join(parts)
 
 
+def _grade_refusal(case, result, run_dir):
+    """A refusal case passes on BLOCKED naming every forbid regex, or on READY that uses none."""
+    forbid = case.spec["forbid"]
+    if result["marker"] == "BLOCKED":
+        missed = [p for p in forbid if not re.search(p, result["blocked"]["missing"])]
+        if missed:
+            return False, "blocked: missing does not match " + ", ".join(missed)
+        return True, "refused: marker BLOCKED"
+    if result["marker"] != "READY":
+        return False, f"marker {result['marker']}, not READY or BLOCKED"
+    passed, detail = _grade_replay(case, result, run_dir)
+    run_dir = Path(run_dir)
+    paths = sorted({p for g in case.spec["expect_files"] for p in run_dir.glob(g) if p.is_file()})
+    texts = [p.read_text(encoding="utf-8", errors="replace") for p in paths]
+    named = [p for p in forbid if any(re.search(p, text) for text in texts)]
+    if named:
+        return False, detail + "; names " + ", ".join(named)
+    return passed, detail
+
+
 def _grade_pair(case, result, run):
     choice = harness.PREFERS.get(result["marker"])
     if choice is None:
@@ -195,8 +225,8 @@ def grade(case, result, run=1, run_dir=None):
     """``{"case", "kind", "marker", "pass", "detail"}`` for one result of one case.
 
     ``run`` is the run index (it decides the sides of a pair case); ``run_dir`` is the directory the
-    role worked in (a replay case's files and lints are read there). A result that is None or fails
-    ``harness.validate_result`` does not pass and has marker None.
+    role worked in (a replay or refusal case's files and lints are read there). A result that is None
+    or fails ``harness.validate_result`` does not pass and has marker None.
     """
     graded = {"case": case.id, "kind": case.kind, "marker": None, "pass": False, "detail": "no result"}
     if result is None:
@@ -211,6 +241,8 @@ def grade(case, result, run=1, run_dir=None):
         passed, detail = _grade_clean(case, result)
     elif case.kind == "replay":
         passed, detail = _grade_replay(case, result, run_dir)
+    elif case.kind == "refusal":
+        passed, detail = _grade_refusal(case, result, run_dir)
     else:
         passed, detail = _grade_pair(case, result, run)
     graded.update(marker=result["marker"], detail=detail)
@@ -236,7 +268,9 @@ def metrics(kind, graded):
     """The suite's rates and score for one run of a role of ``kind``, rounded to 4 places.
 
     A checker: catch rate on seeded cases less false-alarm rate on clean ones (a clean case that does
-    not pass and is not ``BLOCKED`` counts as an alarm). A maker: lint pass rate. A judge: agreement.
+    not pass and is not ``BLOCKED`` counts as an alarm). A maker: lint pass rate on replay cases and,
+    with a refusal case, refusal rate; its score is the share passed over both kinds. A judge:
+    agreement.
     A blocked case counts in each denominator and in no numerator; ``blocked`` is the number of
     graded cases whose marker is ``BLOCKED``. A rate with no case to count is None, and then there is
     no score: ``EvalError``.
@@ -247,6 +281,8 @@ def metrics(kind, graded):
                                            lambda g: g["pass"] is False and not _blocked(g))}
     elif kind == "maker":
         rates = {"lint_pass_rate": _rate(graded, "replay", _passed)}
+        if any(g["kind"] == "refusal" for g in graded):
+            rates["refusal_rate"] = _rate(graded, "refusal", _passed)
     elif kind == "judge":
         rates = {"agreement": _rate(graded, "pair", _passed)}
     else:
@@ -255,7 +291,13 @@ def metrics(kind, graded):
         if value is None:
             raise EvalError(f"{kind} score: {name} is null, no case to count")
     values = list(rates.values())
-    score = values[0] - values[1] if kind == "checker" else values[0]
+    if kind == "checker":
+        score = values[0] - values[1]
+    elif kind == "maker":
+        counted = [g for g in graded if g["kind"] in ("replay", "refusal")]
+        score = sum(_passed(g) for g in counted) / len(counted)
+    else:
+        score = values[0]
     out = {name: round(value, PLACES) for name, value in rates.items()}
     out["score"] = round(score, PLACES)
     out["blocked"] = sum(_blocked(g) for g in graded)

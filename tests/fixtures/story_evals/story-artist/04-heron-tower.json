@@ -1,0 +1,9 @@
+{
+  "marker": "BLOCKED",
+  "summary": "Scene S2 needs Pim, and Pim has no sheet.",
+  "blocked": {
+    "missing": "bible/canon/characters/pim.md and bible/style/characters/pim.md: scene S2 shows Pim, the grey heron, and neither sheet exists",
+    "tried": "ls bible/canon/characters bible/style/characters",
+    "resume_from": "an amendment that adds bible/canon/characters/pim.md, and a style pull request that adds bible/style/characters/pim.md"
+  }
+}
