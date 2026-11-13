@@ -14,15 +14,22 @@ from the lowest numbered of those tickets (the lowest numbered locked ticket of 
 has one ``Upstream:`` line per sequence. Any other pair files nothing. A room, stage and unit that some
 ticket already has, open or closed, is never filed again. While a tracked issue does not parse, nothing
 is filed.
+
+``due`` also gives the two packets of brief section 3, as issues that are not tickets: the story intent packet
+when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
+when a ``distribution/window`` ticket locks, labelled ``room:story``. Each is filed once: an issue with its
+title, open or closed, in ``State.others`` is never filed again.
 """
 
 from __future__ import annotations
 
 import re
 
-from kit.lib import production, tickets
+from kit.lib import gitstate, production, tickets
 
 _KEY = re.compile(r"[^A-Za-z0-9]+")
+
+PACKETS = {("story", "reel"): "intent-packet", ("distribution", "window"): "platform-notes"}
 
 
 def key(stage: str, unit: str) -> str:
@@ -82,6 +89,51 @@ def _filing(ticket: dict, pull: dict, upstreams: list, room: str, stage: str, un
             "labels": [tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]}
 
 
+def _intent_packet(p, root, ticket: dict, pull: dict) -> dict:
+    ep = tickets.episode(ticket["unit"])
+    path = f"episodes/{ep}/intent-packet.json"
+    text = gitstate.show(root, production.base(p), path)
+    packet = f"{path} is not on the base." if text is None else "```json\n" + text.rstrip("\n") + "\n```"
+    body = (f"Story intent packet for episode {ep}, locked by PR #{pull['number']} "
+            f"(ticket #{ticket['number']}).\n\n{packet}\n\n"
+            "The story room owns this packet; post and distribution read it and do not edit it.\n"
+            "Filed by factory tick.\n")
+    return {"unit": ep, "title": f"[{key('intent', ep)}] story intent packet for {ep}", "body": body,
+            "labels": ["room:post", "room:distribution"]}
+
+
+def _platform_notes(p, root, ticket: dict, pull: dict) -> dict:
+    unit = ticket["unit"]
+    body = (f"Platform notes for {unit}, after the window locked by PR #{pull['number']} "
+            f"(ticket #{ticket['number']}).\n\n"
+            "Format limits:\nCTA results:\nAudience theories:\n\n"
+            "The distribution room writes these notes; the story room answers here and does not edit them.\n"
+            "Filed by factory tick.\n")
+    return {"unit": unit, "title": f"[{key('notes', unit)}] platform notes for {unit}", "body": body,
+            "labels": ["room:story"]}
+
+
+_PACKET_MAKERS = {"intent-packet": _intent_packet, "platform-notes": _platform_notes}
+
+
+def _packets(p, state: tickets.State, root) -> list:
+    """The packet issues to file, by the locked ticket's number; a title already in ``state.others`` is not."""
+    titles = {issue["title"] for issue in state.others}
+    found = []
+    for number in sorted(state.tickets):
+        ticket = state.tickets[number]
+        kind = PACKETS.get((ticket["room"], ticket["stage"]))
+        pull = tickets.locked_pull(state, number) if kind else None
+        if pull is None:
+            continue
+        made = _PACKET_MAKERS[kind](p, root, ticket, pull)
+        if made["title"] in titles:
+            continue
+        titles.add(made["title"])
+        found.append({"from": number, "pull": pull["number"], "room": ticket["room"], "stage": kind, **made})
+    return found
+
+
 def due(p, state: tickets.State, root) -> list:
     """The tickets to file, in the order they are filed."""
     if state.errors:
@@ -105,4 +157,4 @@ def due(p, state: tickets.State, root) -> list:
                     taken.add((room, entry["stage"], unit))
                     candidates.append(_filing(ticket, pull, upstreams, room, entry["stage"], unit))
         found += sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
-    return found
+    return found + _packets(p, state, root)

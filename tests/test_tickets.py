@@ -231,6 +231,12 @@ class LoadTest(unittest.TestCase):
             ("issues", "all"), ("pulls", "all"),
             ("comments", 2), ("comments", 5)], key=repr))
 
+    def test_others(self):
+        state = self.w.load()
+        self.assertEqual([i["number"] for i in state.others], [7])
+        self.assertEqual(state.others[0]["title"], "Plan the release")
+        self.assertEqual(state.others[0]["labels"], [])
+
     def test_queries(self):
         state = self.w.load()
         self.assertEqual([p["number"] for p in tickets.pulls_of(state, 2)], [5])
