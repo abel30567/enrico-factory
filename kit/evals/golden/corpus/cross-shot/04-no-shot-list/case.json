@@ -1,0 +1,8 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/ep01/Q1-1/lighting/state\\.json:1 shots ",
+    "^production/ep01/Q1-2/lighting/state\\.json:1 shots ",
+    "^production/ep01/Q2-1/lighting/state\\.json:1 shots "
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/ep01/conform/captions\\.json:1 captions "
+  ]
+}

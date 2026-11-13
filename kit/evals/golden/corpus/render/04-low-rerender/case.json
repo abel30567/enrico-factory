@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/ep01/Q1-1/render/render\\.json:1 rerender "
+  ]
+}

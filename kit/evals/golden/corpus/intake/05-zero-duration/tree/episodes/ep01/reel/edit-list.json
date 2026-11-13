@@ -1,0 +1,9 @@
+{
+  "fps": 24,
+  "bible": "A-1",
+  "events": [
+    {"shot": "Q1-1", "beat": "B1", "start": 0, "duration": 0},
+    {"shot": "Q1-2", "beat": "B2", "start": 2.5, "duration": 3},
+    {"shot": "Q1-3", "beat": "B3", "start": 5.5, "duration": 4.25}
+  ]
+}

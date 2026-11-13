@@ -1,0 +1,6 @@
+{
+  "kind": "seeded",
+  "catches": [
+    "^production/ep01/Q1-2/lighting/state\\.json:1 cut "
+  ]
+}
