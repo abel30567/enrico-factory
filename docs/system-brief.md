@@ -50,7 +50,7 @@ every role prompt, and the gates in sections 9 and 11 enforce the ones a program
 
 | Who | Does | May never |
 |---|---|---|
-| Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
+| Owner | One-time setup: accounts, logins, platform approvals, the caps the producer enforces, the first charter, the brand kit. Audits afterwards and may overrule any ruling | be asked to approve a step inside the loop |
 | Producer | State machine, budgets, schedule, kill switch, audit log, the gate on spending and on anything irreversible | make a creative call |
 | Room orchestrator | Launches workers, rules after three rounds of notes, locks in its own room. `factory tick` files each next ticket from the pipeline when the stage before it locks (an episode stage after a sequence stage, such as `reel` after `board`, once that stage is locked for every sequence of the episode on the base branch); a person files the first ticket of a line of work | build, check, score, or lock in another room |
 | Makers | One artifact per ticket on their own branch, built only from locked inputs | lock, merge, touch another ticket's files |
@@ -67,7 +67,7 @@ rules in section 11 to the ledger and the markers. It has no opinion to argue wi
 |---|---|---|---|
 | `story` | `showrunner` | series bible, pivot queue, notes, platform notes | locked story package: reel, edit list with beat IDs, bible version, style lock, story intent packet |
 | `production` | `line-producer` | locked story package, lab KEEPs | locked master, stems, edit list |
-| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook | gated packages: one variant per platform, each with a file hash |
+| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook, brand kit | gated packages: one variant per platform and kind, each with a file hash |
 | `distribution` | `channel-desk` | gated packages, release calendar | live posts, telemetry snapshots, platform notes, symptom notes |
 | `lab` | `lab-director` | results logs, method research, real outcomes, the defect corpus | config pull requests into the other rooms |
 
@@ -142,6 +142,10 @@ a trend is usable; `trend-scout` reads the same data (section 16, "Other people'
 holds a platform key: a program makes the reads. A trend reaches the show only as a pivot proposal,
 which the showrunner triages like any other.
 
+**Brand.** No role is added for the brand (section 16, "Brand kit"). Every post-room role reads
+`brand/**` and none writes it. `packaging-judge` scores a variant's title, caption and CTA against
+`brand/voice.md`; the `brand` check of the platform gate (#260) does the part a program can check.
+
 Correction is the maker relaunched on the same pull request to address the notes. There is no fixer role.
 
 ## 5. Role file format
@@ -210,19 +214,24 @@ the orchestrator selects one.
 | story | `style` | style lock | art-director, media-wrangler | references resolve, palette values present | look-reviewer |
 | story | `board` | sequence | story-artist, media-wrangler | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
 | story | `reel` | episode | editorial, media-wrangler | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge |
-| production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame | none |
-| production | `assets` | asset | asset-builder | naming, references, budgets, scale against the bible, skeleton | look-reviewer |
-| production | `rigging` | asset | rigger | range of motion, limits, interpenetration, rig hash | deformation-reviewer |
-| production | `layout` | shot | layout-artist | focal length, framing, duration, 180° line, 9:16 safe zones | cinematography-reviewer |
-| production | `animation` | shot | animator | foot slide, pops, interpenetration, lip sync within one frame | performance-reviewer (blind against the last take) |
-| production | `simulation` | shot | sim-artist | run twice, cache hashes match; velocity and energy in bounds | none: deterministic only |
-| production | `lighting` | shot | lighter | exposure and color against the sequence key, clipping, time of day | look-reviewer |
-| production | `render` | shot | render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance | dailies-reviewer |
-| production | `conform` | episode | sound-mixer, conform-editor | loudness, true peak, captions aligned, edit list frame-exact | mix-reviewer |
-| production | `cross-shot` | sequence | none | world state at the end of shot N equals the start of shot N+1 | continuity-supervisor |
-| post | `variant` | variant | platform-editor, reframe-artist, caption-writer, cta-writer, thumbnail-artist | platform gate: duration, aspect, safe zones, captions, CTA lint, spoiler lint, disclosure flag | charter-judge, packaging-judge |
+| production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame; reads `production/<ep>/shots.json`, `reel/edit-list.json` | none |
+| production | `assets` | asset | asset-builder, render-wrangler | naming, references, budgets, scale against the bible, skeleton; reads `assets/state.json`, `bible/canon/` | look-reviewer |
+| production | `rigging` | asset | rigger, render-wrangler | range of motion, limits, interpenetration, rig hash; reads `rigging/state.json` | deformation-reviewer |
+| production | `layout` | shot | layout-artist, render-wrangler | focal length, framing, duration, 180° line, 9:16 safe zones; reads `layout/state.json`, the shot file, `shots.json` | cinematography-reviewer |
+| production | `animation` | shot | animator, render-wrangler | foot slide, pops, interpenetration, lip sync within one frame; reads `animation/state.json` | performance-reviewer (blind against the last take) |
+| production | `simulation` | shot | sim-artist, render-wrangler | run twice, cache hashes match; velocity and energy in bounds; reads `simulation/state.json`, `simulation/rerun.json` | none: deterministic only |
+| production | `lighting` | shot | lighter, render-wrangler | exposure and color against the sequence key, clipping, time of day; reads `lighting/state.json`, `lighting/render.json` | look-reviewer |
+| production | `render` | shot | render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance; reads `render/render.json`, `shots.json` | dailies-reviewer |
+| production | `conform` | episode | sound-mixer, conform-editor, render-wrangler | loudness, true peak, captions aligned, edit list frame-exact; reads `conform/`, `reel/edit-list.json` | mix-reviewer |
+| production | `cross-shot` | sequence | none | world state at the end of shot N equals the start of shot N+1; reads each shot's `lighting/state.json` in `shots.json` order | continuity-supervisor |
+| post | `variant` | variant | platform-editor, reframe-artist, caption-writer, cta-writer, thumbnail-artist | platform gate: duration, aspect, safe zones, captions, CTA lint, spoiler lint, disclosure flag, brand | charter-judge, packaging-judge |
 | distribution | `post` | post | channel operator | publish check: exists, processed, hash, captions, disclosure | none |
 | distribution | `window` | post | telemetry-puller | telemetry schema; empty is not zero | theory-judge |
+
+A production lint reads the files of section 16, "Production files". In the rows above, a path that
+starts with a stage name is in the ticket's unit directory, `shots.json` is `production/<ep>/shots.json`,
+and `reel/edit-list.json` is the locked one under `episodes/<ep>/`. The values each check uses are in
+the table there.
 
 Production stages lock cheapest first: no final render until layout, animation, simulation and
 lighting are locked on previews. A simulation is locked as a cache; renders only read caches. A new
@@ -281,6 +290,7 @@ to it on the base branch, and nothing else may write it.
 | Ledger | `ledger/spend.tsv` | `factory gate`, `factory run` | Append-only: every gated job and its caller (the gate's row), and the real cost of its one call (the `run` row) |
 | Media manifest | `media/manifest.tsv` | makers and operators | `id`, `sha256`, `bytes`, `source` per file. The bytes live in the media store, never in git |
 | Rights file | `sources/rights.tsv` | the owner only | One row per work the production may draw on, with its holder and the basis. A row a role wants added is an issue labelled `owner` (section 16, "Rights") |
+| Brand kit | `brand/brand.json`, `brand/voice.md` | the owner only | How every variant is packaged: marks, palette, type, words and each platform's handle. Read by the post room's roles and the platform gate. A change a role wants is an issue labelled `owner` (section 16, "Brand kit") |
 | Not-ours list | `research/not-ours.tsv` | researcher | The names of characters, places, creatures, works and marks that belong to someone else, each with its holder and the link where it was seen |
 | Topics | `research/topics/<topic>.json` | researcher | The words, hashtags and named accounts to read on each platform. The reads start once the file is locked |
 | Trend cards | `research/trends/<topic>.<platform>.tsv` | researcher, from the ranking command | Per video: link, id, rank at read time, read time and the role's note. No count |
@@ -408,9 +418,19 @@ Built first (text and data):
   can name a comparable show or a trend. A generation request whose text contains a listed name is
   refused before any call. This check matches names; a likeness is judged by the checkers (section 4).
 
-Built with their rooms (read from the engine or from media): the production and post checks in the
-table in section 6. Each one is developed against a seeded defect it must fail on and a clean case it
-must pass on.
+Built with their rooms (read from files the engine wrote, or from media): the production and post
+checks in the table in section 6. Each one is developed against a seeded defect it must fail on and a
+clean case it must pass on.
+
+A production lint reads only the files of its ticket's unit (section 16, "Production files"; for a
+sequence, those of its shots) and locked files of earlier stages, such as the shot file or the canon
+ledger. It never calls the engine, a render node or a media tool, so the same input gives the same
+result, and a test runs it on recorded or hand-written files.
+The run that writes those files is a gated job (section 11): the room's operator, `render-wrangler`,
+requests it at every stage from `assets` to `conform`, and `factory run` makes it on `render.node` with
+the pinned `engine.unreal`. The same job measures its
+frames and sound with `local.ffmpeg` and `local.ocr`, stores the bytes with `factory assets`, and
+commits the files on the pull request's branch.
 
 ## 11. Producer gate
 
@@ -575,6 +595,7 @@ One repository per show. `factory init` creates:
 .factory/                 the installed kit
 production.env            repository, base branch, rooms installed, caps, media store, worker command (no secrets)
 rules/production-rules.md pasted into every role prompt after the rules of power
+brand/                    brand.json, voice.md: the brand kit, set by the owner; created empty
 sources/                  raw inputs as text; rights.tsv, the works the production may draw on
 research/                 researcher output; topics/ and trends/ (other people's videos);
                           not-ours.tsv, the names that belong to someone else
@@ -582,7 +603,9 @@ bible/                    charter.md, canon/, amendments/, style/
 playbook/  calibration/  registry/  rulebook/  ledger/  lab/
 episodes/<ep>/            premise.md, beats.md, outline.md, script.md, lines.json, ledger.json,
                           sequences/<seq>/shots/, reel/edit-list.json, intent-packet.json
-production/<ep>/          shot tickets' scene scripts and manifests (engine binaries live in the asset store)
+production/<ep>/          shots.json, conform/ and <shot>/<stage>/: scene scripts, manifests and states
+                          (section 16, "Production files"; engine binaries live in the asset store)
+production/assets/<asset>/ <stage>/: the same for an asset ticket
 post/<ep>/  distribution/<ep>/
 media/manifest.tsv
 ```
@@ -609,7 +632,8 @@ The lint checks a file only when it exists, and the files a stage needs only fro
 a premise alone passes; a script without `lines.json` fails; a reel without `intent-packet.json` fails.
 
 Order of authority when two files disagree: the rules of power, the charter, the production rules,
-the canon ledger, the episode ledger, the role file, the task.
+the canon ledger, the episode ledger, the role file, the task. For packaging, the platform rulebook,
+the brand kit and the story intent packet come in that order between the episode ledger and the role file.
 
 ### Requests for generated media
 
@@ -673,6 +697,69 @@ a time, because a trend on one platform is not a trend on another.
   platforms, because a view is not the same thing on each. A trend reaches the show only as a pivot
   proposal (section 7).
 
+### Rulebook
+
+The platform gate checks a variant against the rulebook of the platform it is cut for: one file per
+platform, `rulebook/<platform>.json`, named by the platform's id (`youtube`, `tiktok`, `instagram`, as
+in the channel operators' role ids). `post-supervisor` writes it by pull request, from the platform
+notes the distribution room files after each release (section 3). The platform gate reads it.
+
+Every value a check reads is an object `{value, source, read_at}`: the value, the link to the
+platform's page it was read from, and the date it was read (`YYYY-MM-DD`). A value changes only
+together with its `source` and `read_at`, so an old reading shows its date. A value no page has given
+yet is `{"value": null, "source": null, "read_at": null}`. `source` is a link, so the `references`
+lint does not look for it as a file.
+
+| Key | Type | Holds |
+|---|---|---|
+| `platform` | string | the file's name without `.json` |
+| `kinds` | object | one entry per kind of post the production makes on the platform, keyed by the platform's own name for it: `shorts` and `long` on YouTube, `video` on TikTok, `reels` on Instagram. A variant is cut for one kind and is checked against that kind only |
+| `disclosure` | value, plus `field` | the upload field that marks generated or altered content, as the platform's API names it, and the value every upload from the production gives it |
+| `policy` | list of values, each plus `field` | the other upload fields the platform's pages say to set, each with the value the upload gives it. The gate checks that the variant's packaging gives `field` that value |
+
+Each kind holds these keys, each a value as above:
+
+| Key | Type | Unit |
+|---|---|---|
+| `container` | string | the file extension, for example `mp4` |
+| `codec` | string | the video codec as `ffprobe` names it (`codec_name`) |
+| `aspects` | list of strings | the aspect ratios accepted, each `<width>:<height>`, for example `9:16` |
+| `resolution` | object | per aspect, `[width, height]` in pixels: the frame size a variant of that aspect is rendered at |
+| `min_fps`, `max_fps` | number | frames per second |
+| `min_seconds`, `max_seconds` | number | seconds of running time |
+| `max_bytes` | integer | bytes of the file |
+| `caption_zone`, `mark_zone` | object | per aspect, `{top, bottom, left, right}`: the fractions of the frame's height (top, bottom) and width (left, right) that on-screen captions, or a mark such as a logo, must keep clear |
+| `title_max_chars`, `caption_max_chars` | integer | characters in the variant's `title` and `caption` text |
+
+```json
+{"platform": "tiktok",
+ "kinds": {"video": {"max_seconds": {"value": null, "source": null, "read_at": null}}},
+ "disclosure": {"field": "post_info.is_aigc", "value": true, "read_at": "2026-11-11",
+                "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post"},
+ "policy": []}
+```
+
+The disclosure field of each platform (`docs/research/06-external-resources.md`, section 1):
+
+| Platform | `field` | `value` |
+|---|---|---|
+| `youtube` | `status.containsSyntheticMedia` | `true` |
+| `tiktok` | `post_info.is_aigc` | `true` |
+| `instagram` | `is_ai_generated` | `true` |
+
+Each is a boolean the upload job sets (`docs/resources.md`, section 2). The production sets it to
+`true` on every upload, because its pictures, voices and music come from generators (section 11).
+
+- **Missing values.** A check that needs a value that is `null`, a kind the file does not list, or a
+  file that does not exist, is ERROR (section 8), never PASS.
+- **Bait.** `rulebook/bait.json` is not a platform. It holds `{"patterns": [...]}`, regular
+  expressions the `spoiler` lint matches without regard to case against the packaging text of every
+  platform; without the file the lint uses its own list. `post-supervisor` writes it too.
+- **Brand.** Where the brand kit sets a length or a placement, the rulebook's limit wins and the brand
+  element is fitted inside it (#259, ruling 3).
+- **First rulebooks.** The kit ships no rulebook. Its test fixtures hold one per platform, read from
+  the research of 2026-11-11 (#165).
+
 ### Rights
 
 A production uses only characters, places, creatures, names and marks that are its own: they come
@@ -703,6 +790,106 @@ lint (#274) adds this to the rules of power as rule 8.
   `packaging-judge` raise a Blocker (section 4). A check on rendered frames waits for the identity
   metrics of wave 4 (#131).
 - No role and no stage is added for rights.
+
+### Production files
+
+A production ticket's files are in its unit's directory (`production/<ep>/<shot>/` for a shot,
+`production/assets/<asset>/` for an asset, `production/<ep>/` for an episode), in a subdirectory named
+after the stage. The paths below that start with a stage are in the unit's directory. The maker writes
+the files the table gives it (the scene script; at `conform`, the edit list and the captions) and
+nothing else. The stage's gated job writes the other files (section 10). The file `sound-mixer` writes
+for the mix job is not ruled here; no check reads it. In every shape below each key named is required.
+A check reads only the keys its row names and ignores any other key; a named key that is missing or of
+another type is a finding. A stage's state is the whole scene after the scene scripts of that stage and of
+every cheaper stage have run, so a check reads one file. Lengths are metres (the engine's centimetres
+divided by 100), angles degrees, and times frames of the episode at the edit list's `fps`: every frame number below is a whole number
+that counts from the episode's first frame, 0. Frames,
+caches, stems, the master and every engine binary go to the asset store under their sha256
+(`factory assets`). Git holds only their hashes, in the files below, never the bytes.
+
+| File | Written by | Shape |
+|---|---|---|
+| `production/<ep>/shots.json` | `factory`, at `intake` | a list of `{shot, first, last}`, one per edit list event, in order: `shot` is the event's shot id, a string; `first` is `start × fps` and `last` is `first + duration × fps - 1`, with the edit list's `start` and `duration` in seconds. Both products are whole numbers |
+| `<stage>/scene.py` | the stage's maker | Python 3 that the engine runs headless (`UnrealEditor-Cmd -run=pythonscript`). It imports only `unreal` and the standard library. It names an asset of the production only as `asset:<id>`, and any other object only by the sha256 the asset store holds it under. It holds no Blueprint, no path outside the job's directory, no network call, no clock read and no random number without a seed. It never writes the state |
+| `<stage>/manifest.json` | the job | `{job, engine, flags, inputs, seeds, outputs}`: `job` the job's hash (section 11); `engine` the pinned version of `engine.unreal`, a string; `flags` the engine's command line, a list of strings; `inputs` a list of `{path, sha256}` (the scene scripts, the shot file, the earlier stage's state, every `asset:<id>` as the asset's binary); `seeds` each seed by name, an integer (every emitter's fixed seed, every seed a script sets); `outputs` a list of `{name, sha256, bytes}` for every file the job made, `name` its path in the job's directory and `bytes` its size, an integer |
+| `<stage>/state.json`, at a shot's stages (`layout` to `render`) | the job | the scene state, below |
+| `simulation/rerun.json` | the job | the scene state of a second run of the same job, from the same inputs |
+| `<stage>/render.json` | the job, at `lighting` (previews) and `render` | `{fps, frames, count, width, height, frames_sha256, sequence_sha256, black, nan, text, samples, rerender}`: `fps`, `width`, `height` (pixels) and `count` integers; `frames` as in the state; `count` the frames written; `frames_sha256` one sha256 per frame, in order; `sequence_sha256` the sha256 of that list joined by newlines; `black` a list of the frames ffmpeg's `blackdetect` finds and `nan` a list of those holding a NaN or infinite value; `text` a list of `{frame, text}` the OCR program read; `samples` a list of `{frame, luma, clipped, color}` (mean luminance 0 to 1, share of clipped pixels 0 to 1, mean linear `[r, g, b]` 0 to 1); `rerender` at `render` only, absent at `lighting`: `{frames, metric, scores}` for the sampled frames rendered again, `frames` a list of frame numbers, `metric` the metric's name, a string, and `scores` one number per frame of `frames`, in order |
+| `assets/state.json` | the job | `{asset, kind, sha256, triangles, materials, textures, height_m, skeleton}`: `asset` the asset id and `sha256` its binary's; `kind` is `character`, `set` or `prop`; `triangles` and `materials` are counts, integers; `textures` a list of `{name, width, height}` in pixels; `height_m` the height of the bounds; `skeleton` null, or `{bones, weights_normalised}` with `bones` a list of `{name, parent}` and `parent` null for the root |
+| `rigging/state.json` | the job | `{asset, rig_sha256, joints, rom}`: `joints` a list of `{name, min, max}`, each `[x, y, z]` degrees; `rom` the range-of-motion test, `{poses, limit_violations, penetration_mm}`: the poses tested and the limit violations found, integers, and the worst penetration, a number |
+| `conform/edit-list.json` | conform-editor | the shape of `reel/edit-list.json`, for the conformed cut |
+| `conform/captions.json` | conform-editor | a list of `{line, text, start, end}`: one cue per `L<n>` of `lines.json`, with its text, `start` and `end` in frames |
+| `conform/mix.json` | the job | `{loudness_lufs, true_peak_dbtp, lines, stems, master}`: integrated loudness and true peak by `ebur128`; `lines` a list of `{line, start, end}`, the frames where each `L<n>` is heard in the mix; `stems` a list of `{name, sha256}`; `master` its sha256 |
+
+The scene state, `state.json`. Every key is present from `layout` on; one that no stage has filled yet
+is an empty list or null.
+
+| Key | Type and unit | Read by |
+|---|---|---|
+| `shot`, `stage` | strings | every check |
+| `fps`, `frames` | an integer; `{first, last}`, equal to the shot's row of `shots.json` | `layout`, `render` |
+| `actors` | a list of `{id, kind, asset, sha256, scale, height_m, start, end}`: `id` the canon id of a character or the set, else the asset id; `kind` is `character`, `set` or `prop`; `asset` as `asset:<id>`; `sha256` its binary's; `scale` `[x, y, z]`, factors with no unit; `height_m` at that scale; `start` and `end` its transform on the first and the last frame | `layout`, `cross-shot` |
+| a transform | `{location, rotation}`: `[x, y, z]` metres and `[roll, pitch, yaw]` degrees, in world space | |
+| `camera` | `{focal_mm, sensor_mm, start, end}`: `focal_mm` `{min, max}` over the shot; `sensor_mm` `[width, height]`; two transforms | `layout` |
+| `framing` | a list of `{frame, actor, box}`, one per actor per frame it is seen on; `box` is `[left, top, right, bottom]` as fractions of the frame from its top left | `layout` |
+| `line_flips` | a list of the frames on which the camera crosses the line through the first two characters of the shot file; empty with fewer than two | `layout` |
+| `motion` | a list of `{actor, foot_slide_mm, penetration_mm, float_mm, limit_violations, max_step_deg}`, each the worst over the shot; `max_step_deg` the largest turn of any joint between two frames | `animation` |
+| `lipsync` | a list of `{line, actor, offset_frames}`: per `L<n>` spoken on screen, the mouth's start minus the sound's start | `animation` |
+| `caches` | a list of `{id, sha256, max_speed_m_s, energy_j, gravity_m_s2}`: `energy_j` `{first, last}`; `gravity_m_s2` the fitted free-fall acceleration, or null where nothing falls | `simulation` |
+| `lights`, `sun` | a list of `{id, kind, intensity, unit, color, temperature_k}` (`unit` `lux` or `cd`, `color` linear `[r, g, b]` 0 to 1); `{elevation_deg, azimuth_deg}`, or null indoors | `lighting` |
+| `render` | `{lumen, tsr, spatial_samples, temporal_samples, warmup_frames, width, height}`: two booleans, then integers | the render reproducibility harness |
+
+Values the production lints use. Each one stays here until the measurement named beside it replaces
+it.
+
+| Check | Value | From |
+|---|---|---|
+| `intake`, `layout`, `render` | `shots.json` equals the edit list at its `fps`; a state's `frames` and a render's `count` match the shot's row exactly | section 6, "frame for frame" |
+| `assets`: naming | an asset id matches `[a-z0-9][a-z0-9-]*`; a character's or the set's is the id of its canon sheet | the ids of the shot file (section 16, "Episode files") |
+| `assets`: budgets | at most 100,000 triangles for a character, 20,000 for a prop and 1,000,000 for a set; textures at most 4096 pixels a side | placeholder until measured on the golden levels (#118) |
+| `assets`: scale, skeleton | `height_m` within 10% of the canon ledger row `height` of its subject, in metres; a character has one root, unique bone names and normalised weights | `docs/research/04-3d-pipeline.md` section 5: "within 10% of its expected value: character height", "bone hierarchy and naming, weight normalisation" |
+| `rigging`, `animation` | no joint-limit violation; penetration and float at most 5 mm | 04 section 5: "penetration and float at or under 5 mm, zero joint-limit violations" |
+| `animation` | foot slide at most 5 mm; `max_step_deg` at most 30; `offset_frames` from -1 to 1 | foot slide and step: placeholder until measured on the golden levels (#118); lip sync: section 6, "within one frame" |
+| `layout` | focal length 18 to 135 mm; every character the shot file names has a `framing` box; every character's box inside the centred 9:16 crop of a 16:9 frame (left 0.342, right 0.658); `line_flips` empty | lens: placeholder until measured on the golden levels (#118); safe zone: placeholder until the platform rulebook holds one (#123); the rest: section 6 |
+| `simulation` | equal cache sha256 in both runs; `max_speed_m_s` at most 30; `energy_j.last` at most 1.1 times `first`; `gravity_m_s2` within 10% of 9.81 | hashes: section 6; 10% and 9.81: 04 section 5, "free-fall acceleration fitted against 9.81 m/s²"; speed: placeholder until measured on the golden levels (#118) |
+| `lighting` | per sample: `luma` within 10% of the key's, delta-E 2000 of `color` at most 1, `clipped` at most 0.001 | delta-E: 04 section 5 ("about 1" is noticeable); the rest: placeholder until #130 measures the spread. The key's shape is #126's |
+| `render` | `count` as above; `black`, `nan` and `text` empty; every `rerender` score at least 9.9 (ColorVideoVDP, JOD) | 04 section 5: "within 0.1 JOD of an approved golden render (ColorVideoVDP at or above 9.9)"; #130 measures the real spread |
+| `conform` | integrated loudness -14 ± 1 LUFS; true peak at most -1 dBTP; each cue within 2 frames of its line in `mix.json`; the conformed edit list equal to the locked one, event by event | loudness, peak and cues: placeholder, no document gives a number; edit list: section 6 |
+| `cross-shot` | for each actor in both shots: the same `sha256`; `end` of shot N within 10 mm and 1° of `start` of shot N+1 | placeholder until measured on the golden levels (#118) |
+
+### Brand kit
+
+The brand kit is how the show looks and speaks when it is packaged: the titles, captions, CTAs,
+thumbnails, corner mark and end card of every variant.
+
+| File | Written by | Shape |
+|---|---|---|
+| `brand/brand.json` | the owner only; `factory init` creates `brand/` empty | one object with exactly the keys below |
+| `brand/voice.md` | the owner only | `# <name> voice`, then `## How it speaks` (the tone, in plain sentences), `## Titles`, `## Captions` and `## CTAs`. Under each of the last three, at least one list item it would write, `- Yes: <line>`, and one it would not, `- No: <line>`. No section and no line is empty |
+
+| Key of `brand.json` | Type | Holds |
+|---|---|---|
+| `name` | string | the brand's name, spelled as every title, caption and CTA spells it |
+| `marks` | object: mark id to `media:<id>` | every mark image: the logo, the corner mark, the end card. Each id is in `media/manifest.tsv` |
+| `palette` | object: color name to `#rrggbb` | every color a caption, a thumbnail or an end card may use |
+| `type` | object: `caption`, `thumbnail`, each `{family, weight, size, color}` | `family` is a font name, `weight` a number from 100 to 900, `size` a fraction of the frame's height, `color` a name in `palette`. `caption` covers every word burned into the video, a rendered CTA included |
+| `corner` | `{mark, corner, x, y, width}` | `mark` is a mark id; `corner` is `top-left`, `top-right`, `bottom-left` or `bottom-right`; `x` and `y` are the gap from that corner as fractions of the frame's width and height; `width` is the mark's width as a fraction of the frame's width. The same fractions hold for every aspect |
+| `end_card` | `{mark, duration}` | `mark` is a mark id, shown at the end of every variant; `duration` is `[min, max]` in seconds |
+| `words` | `{exact: [...], never: [...]}` | `exact`: names and terms written only this way, case included; `never`: words no title, caption, CTA or hashtag uses |
+| `legal` | list of strings | lines every variant's description carries, word for word |
+| `platforms` | object: platform to `{handle, hashtags: [...], link}` | the account handle, the hashtags every post on that platform carries, and the link its description points to. Platforms are named as in `rulebook/<platform>.json`; one the brand does not post on is left out |
+
+- **One production, one brand.** The kit ships no brand. A brand lives only in its production
+  repository.
+- **The brand kit is the owner's.** No role's `writes` covers `brand/**`. The owner sets the kit once,
+  like the caps and the first charter. A change a role wants is an issue labelled `owner`, and nothing
+  in the loop waits on it. A production with no `brand/brand.json` passes the `brand` check.
+- **Packaging only.** The brand governs titles, captions, CTAs, thumbnails, the corner mark and the
+  end card. It never changes the story or the master. Where the platform rulebook and the brand
+  disagree on a hard limit (a safe zone, a length), the rulebook wins and the brand element is fitted
+  inside it.
+- **No new role.** The `brand` check of the platform gate (#260) reads `brand/brand.json`;
+  `packaging-judge` scores a variant's words against `brand/voice.md` (section 4).
 
 ## 17. Build order
 
