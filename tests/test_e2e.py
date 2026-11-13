@@ -11,6 +11,7 @@ tests build a world of their own.
 """
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -28,8 +29,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import (blind, cmd_freeze, cmd_init, cmd_lock, cmd_roles, cmd_tick, cmd_unfreeze,  # noqa: E402
-                     github, gitstate, lint, production)
+from kit.lib import (blind, cmd_freeze, cmd_init, cmd_launch, cmd_lock, cmd_roles, cmd_run, cmd_tick,  # noqa: E402
+                     cmd_unfreeze, github, gitstate, ledger, lint, production, resources)
 
 FIX = ROOT / "tests" / "fixtures" / "e2e"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -1074,6 +1075,112 @@ class Filing(Case):
         self.assertEqual(self.ticked(w, apply=True),
                          [f"STEP #{self.created(w)[0]} file board ep01/Q3",
                           f"WAIT #{r} waiting upstream stage board is not locked for ep01/Q3"])
+
+
+class OperatorJob(Case):
+    """ISSUE-96: one request offline from the maker's READY through its job, the gate, the run and the
+    operator's report. The beats stage is given to editorial and the operator media-wrangler; the request,
+    tests/fixtures/e2e/jobs/request.json, is also the script of the fake tool tests/fixtures/run/tools/fake.py,
+    reached through the shipped register plus the fake tool's entry, written in the world's temporary
+    directory."""
+
+    REQUEST = "episodes/ep01/reel/requests/r1.json"
+    JOB = "jobs/" + REQUEST
+    CAPS = {"CAP_EPISODE_USD": 100, "CAP_SEASON_USD": 500, "CAP_EPISODE_COMPUTE_MIN": 1000,
+            "CAP_SEASON_COMPUTE_MIN": 5000, "CAP_TICKET_ITERATIONS": 10, "CAP_EPISODE_HOURS": 10000,
+            "CAP_SEASON_HOURS": 100000}
+
+    def setUp(self):
+        entries = pipeline()
+        entries[1] = {**entries[1], "maker": ["editorial", "media-wrangler"], "lint": ["media"],
+                      "paths": ["episodes/*/reel/**"]}
+        w = self.w = self.world(entries)
+        env = w.show / "production.env"
+        names = [line.split("=", 1)[0] for line in env.read_text().splitlines()]
+        env.write_text("".join(f"{n}={self.CAPS[n]}\n" if n in self.CAPS else line + "\n"
+                               for n, line in zip(names, env.read_text().splitlines())))
+        w.commit("the caps")
+        register = json.loads((ROOT / "kit" / "resources.json").read_text())
+        fake = json.loads((ROOT / "tests" / "fixtures" / "run" / "resources.json").read_text())
+        register["path_settings"] = sorted(set(register["path_settings"]) | {"FAKE_LOG"})
+        register["resources"] = register["resources"] + fake["resources"]
+        (w.tmp / "resources.json").write_text(json.dumps(register, indent=1) + "\n")
+        for patch in (mock.patch.object(cmd_run, "TOOLS_DIR", ROOT / "tests" / "fixtures" / "run" / "tools"),
+                      mock.patch.object(resources, "REGISTER", w.tmp / "resources.json")):
+            patch.start()
+            self.addCleanup(patch.stop)
+        key = w.secrets / "gen.fake"
+        key.write_text("a-key-for-e2e\n")
+        key.chmod(0o600)
+        self.fake_log = w.tmp / "fake.log"
+        with open(w.show / "production.local.env", "a") as handle:
+            handle.write(f"FAKE_LOG={self.fake_log}\n")
+        self.request = fixture("jobs/request.json")
+        self.job = {"caller": "media-wrangler", "expected": {"compute_min": 2, "usd": 1},
+                    "inputs": [{"path": self.REQUEST, "sha256": hashlib.sha256(self.request.encode()).hexdigest()}],
+                    "ticket": 3, "tool": "fake"}
+        self.digest = hashlib.sha256(json.dumps(self.job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        w.script(step("You are editorial", "READY", {self.REQUEST: self.request}, evidence=EVIDENCE),
+                 step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n"},
+                      evidence=EVIDENCE),
+                 editor_approved(),
+                 step("You are the media wrangler", "READY", evidence=EVIDENCE),
+                 editor_approved())
+
+    def launched(self, role):
+        return [c for c in self.w.comments(4) if first(c).startswith("[SHOWRUNNER] LAUNCH " + role)]
+
+    def ref(self):
+        return self.w.record("pulls", 4)["head_ref"]
+
+    def launch(self, role, number):
+        return self.w.run(cmd_launch.main, role, str(number), "--root", str(self.w.show))
+
+    def test_one_request_through_its_job(self):
+        w = self.w
+        self.tick_line(w, ["STEP #3 launch editorial on #3"], apply=True)
+        self.tick_line(w, ["STEP #3 launch media-wrangler on PR #4"], apply=True)
+        [writing] = self.launched("media-wrangler")
+        self.assertIn(f"Turn each request on pull request #4 into a job file.\n- {self.REQUEST} -> {self.JOB}\n"
+                      "Each job names ticket 3 and caller media-wrangler. "
+                      "The ticket names the tool and the expected cost.\n", writing["body"])
+        self.assertEqual(w.git("show", f"{self.ref()}:{self.JOB}"), json.dumps(self.job, indent=1) + "\n")
+        self.assertEqual(first(w.comments(4)[-1]), "[MEDIA-WRANGLER] READY")
+        self.tick_line(w, ["STEP #3 lint PR #4"], apply=True)
+        self.assertEqual(first(w.comments(4)[-1]), "[LINT] PASS")
+        self.tick_line(w, ["STEP #3 launch story-editor on PR #4"], apply=True)
+        self.assertEqual(first(w.comments(4)[-1]), "[STORY-EDITOR] APPROVED")
+        self.tick_line(w, [f"STEP #3 gate {self.JOB} PR #4"], apply=True)
+        gate = w.comments(3)[-1]
+        self.assertEqual(gate["body"].split("\n")[:2], ["[PRODUCER] GATE PASS", f"covers: job {self.digest}"])
+        self.tick_line(w, [f"STEP #3 run {self.JOB} PR #4"], apply=True)
+        rows = ledger.read(w.git("show", "main:" + ledger.PATH))
+        self.assertEqual([(r["kind"], r["hash"], r["verdict"]) for r in rows],
+                         [("job", self.digest, "PASS"), ("run", self.digest, "DONE")])
+        self.assertEqual(w.git("log", "-1", "--format=%s", self.ref()).strip(), f"manifest: job {self.digest[:12]}")
+        self.assertEqual(self.fake_log.read_text().split(), [self.digest])
+        media_id = f"{self.digest[:16]}-frame.txt"
+        self.assertIn(f"\t{'job ' + self.digest}", w.git("show", f"{self.ref()}:media/manifest.tsv"))
+        self.tick_line(w, ["STEP #3 launch media-wrangler on PR #4"], apply=True)
+        reporting = self.launched("media-wrangler")[-1]
+        self.assertIn(f"Report on the jobs of pull request #4. Write no file.\n- {self.JOB}: job {self.digest} DONE "
+                      f"usd 1 compute_min 2; media: {media_id}\n", reporting["body"])
+        self.assertEqual(first(w.comments(4)[-1]), "[MEDIA-WRANGLER] READY")
+        self.tick_line(w, ["STEP #3 lint PR #4"], apply=True)
+        self.tick_line(w, ["STEP #3 launch story-editor on PR #4"], apply=True)
+        self.assertEqual(len(self.launched("media-wrangler")), 2)
+        self.assertEqual(self.fake_log.read_text().split(), [self.digest])
+
+    def test_the_report_needs_a_counting_pass(self):
+        w = self.w
+        self.tick_line(w, ["STEP #3 launch editorial on #3"], apply=True)
+        self.tick_line(w, ["STEP #3 launch media-wrangler on PR #4"], apply=True)
+        posts = len(w.log())
+        runs = sorted(p.name for p in (w.state / "runs").iterdir())
+        self.assertEqual(self.launch("media-wrangler", 4),
+                         (1, "", f"launch: job {self.digest} has no counting GATE PASS\n"))
+        self.assertEqual(len(w.log()), posts)
+        self.assertEqual(sorted(p.name for p in (w.state / "runs").iterdir()), runs)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-"""factory gate <job-file-or-pr> [--root DIR] [--apply]: the producer's gate on a job or a lock.
+"""factory gate <job-file-or-pr> [--pull N] [--root DIR] [--apply]: the producer's gate on a job or a lock.
 
-With `--apply` it first brings the local base up to GitHub's.
+With `--apply` it first brings the local base up to GitHub's. With `--pull N` the job file, a path from the
+production root, and its inputs are read at the head of pull request N, which must be the job's ticket's
+open pull; without it the job file is read from disk and its inputs on the base.
 Prints one line: `gate <job|lock> <hash>: <PASS|STOP> cap <name or -> reason <reason>`. Without
 `--apply` it writes nothing. With it, it appends the ledger line on the base, pushes it, and posts
 `[PRODUCER] GATE PASS` or `GATE STOP` on the ticket (a job) or the pull (a lock). A decision already
@@ -12,6 +14,7 @@ import hashlib
 import json
 import math
 import os
+import posixpath
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -38,15 +41,10 @@ def _number(value) -> bool:
             and math.isfinite(value) and value >= 0)
 
 
-def _job(p, path_text):
-    """The job file as a dict and its hash; ``Refused`` when it cannot be read or has the wrong shape."""
-    path = Path(path_text).resolve()
-    if p.root not in path.parents:
-        raise Refused(f"job file {path_text} is outside the production")
+def _parsed(text, path_text):
+    """The job file's ``text`` as a dict and its hash; ``Refused`` when it has the wrong shape."""
     try:
-        job = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        raise Refused(f"job file {path_text} cannot be read") from None
+        job = json.loads(text)
     except ValueError:
         raise Refused(f"job file {path_text} is not JSON") from None
     shape = f"job file {path_text} is not {{ticket, tool, inputs, expected, caller}}"
@@ -66,13 +64,38 @@ def _job(p, path_text):
     return job, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _check_inputs(p, job):
-    base = production.base(p)
+def _job(p, path_text):
+    """The job file as a dict and its hash; ``Refused`` when it cannot be read or has the wrong shape."""
+    path = Path(path_text).resolve()
+    if p.root not in path.parents:
+        raise Refused(f"job file {path_text} is outside the production")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        raise Refused(f"job file {path_text} cannot be read") from None
+    return _parsed(text, path_text)
+
+
+def _show(p, ref, path):
+    """The text of ``path``, a plain path from the production root, at ``ref``; None when there is none."""
+    if (not path or path.startswith("/") or posixpath.normpath(path) != path
+            or ".." in path.split("/")):
+        return None
+    return gitstate.show(p.root, ref, path)
+
+
+def sha256(text):
+    """The hash of a file's text as ``factory gate`` checks an input's."""
+    return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def _check_inputs(p, job, ref=None, where="the base"):
+    ref = ref or production.base(p)
     for item in job["inputs"]:
-        text = gitstate.show(p.root, base, item["path"]) if item["path"] else None
-        found = None if text is None else hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
+        text = gitstate.show(p.root, ref, item["path"]) if item["path"] else None
+        found = None if text is None else sha256(text)
         if found != item["sha256"]:
-            raise Refused(f"input {item['path']} does not match its hash on the base")
+            raise Refused(f"input {item['path']} does not match its hash on {where}")
 
 
 def _verdicts(state, number):
@@ -86,9 +109,21 @@ def _verdicts(state, number):
             and all(v is not None for v in s["judges"].values()))
 
 
-def _job_request(p, state, path_text):
-    job, digest = _job(p, path_text)
-    _check_inputs(p, job)
+def _job_request(p, state, path_text, number=None):
+    """The request for a job file; with ``number``, the file and its inputs are read on that pull."""
+    if number is None:
+        job, digest = _job(p, path_text)
+        ref, where, pull = production.base(p), "the base", None
+    else:
+        pull = state.pulls.get(number)
+        text = _show(p, pull["git"]["head"], path_text) if pull is not None and pull["state"] == "open" else None
+        if text is None:
+            raise Refused(f"job file {path_text} cannot be read")
+        job, digest = _parsed(text, path_text)
+        if pull["ticket"] != job["ticket"]:
+            raise Refused(f"pull #{number} is not the open pull of ticket #{job['ticket']}")
+        ref, where = pull["git"]["head"], f"pull #{number}"
+    _check_inputs(p, job, ref, where)
     ticket = state.tickets.get(job["ticket"])
     if ticket is None or ticket["state"] != "open":
         raise Refused(f"ticket #{job['ticket']} is not an open ticket")
@@ -101,7 +136,8 @@ def _job_request(p, state, path_text):
             "comments": state.ticket_comments.get(ticket["number"], []), "tool": job["tool"],
             "usd": Decimal(str(job["expected"]["usd"])),
             "compute_min": Decimal(str(job["expected"]["compute_min"])),
-            "caller": caller, "verdicts": _verdicts(state, ticket["number"])}
+            "caller": caller, "verdicts": _verdicts(state, ticket["number"]),
+            "job": job, "ref": ref, "on": pull}
 
 
 def _lock_request(p, state, number):
@@ -155,15 +191,15 @@ def _covered(request):
     return _printed("lock", digest, "PASS", "-", "within caps") + ALREADY
 
 
-def _gate(p, gh, state, now, rows, target, apply):
-    if target.isdigit():
+def _gate(p, gh, state, now, rows, target, apply, number=None):
+    if target.isdigit() and number is None:
         request = _lock_request(p, state, int(target))
         covered = _covered(request)
         if covered:
             print(covered)
             return 0
     else:
-        request = _job_request(p, state, target)
+        request = _job_request(p, state, target, number)
     ticket = request["ticket"]
     if request["verdicts"]:
         # The request's own earlier rows are left out: its cost is added once, as this request.
@@ -199,6 +235,7 @@ def _gate(p, gh, state, now, rows, target, apply):
 def main(argv):
     parser = argparse.ArgumentParser(prog="factory gate", description=__doc__.split(": ", 1)[1].split("\n")[0])
     parser.add_argument("target", help="a job file, or a pull request number for a lock")
+    parser.add_argument("--pull", type=int, help="read the job file and its inputs at the head of this pull")
     parser.add_argument("--root", default=".", help="a directory inside the production (default: .)")
     parser.add_argument("--apply", action="store_true", help="append the ledger line and post the marker")
     args = parser.parse_args(argv)
@@ -214,7 +251,7 @@ def main(argv):
         now = production.now()
         text = gitstate.show(p.root, production.base(p), ledger.PATH)
         rows = ledger.read(text) if text is not None else []
-        return _gate(p, gh, state, now, rows, args.target, args.apply)
+        return _gate(p, gh, state, now, rows, args.target, args.apply, args.pull)
     except Refused as error:
         print(f"gate: {error}", file=sys.stderr)
         return 2

@@ -698,5 +698,74 @@ class OnePullTest(unittest.TestCase):
         self.assert_refused()
 
 
+
+class RunOnPullTest(unittest.TestCase):
+    """ISSUE-96: `--pull N` reads the job file and its script at the head of pull request N."""
+
+    JOB = "jobs/renders/requests/r1.json"
+    SCRIPT = "renders/requests/r1.json"
+
+    def setUp(self):
+        self.w = World(self)
+        self.script = json.dumps({"outputs": {"r1.png": "from the pull\n"}, "usd": 1, "compute_min": 5}) + "\n"
+        job = json.loads((self.w.root / CLEAN_JOB).read_text())
+        job["inputs"] = [{"path": self.SCRIPT, "sha256": hashlib.sha256(self.script.encode()).hexdigest()}]
+        self.job = job
+        self.digest = hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.on_branch({self.SCRIPT: self.script, self.JOB: json.dumps(job, indent=1)})
+
+    def on_branch(self, files):
+        """Commit ``files`` on the pull's branch and record a fresh lint and checker verdict on it."""
+        w = self.w
+        w.git("checkout", "-q", BRANCH)
+        for rel, text in files.items():
+            w.write(rel, text)
+        w.git("add", "-A")
+        w.git("commit", "-q", "-m", "files on the pull")
+        w.git("checkout", "-q", "trunk")
+        head = w.head(BRANCH)
+        w.record(PULL, {"body": f"[LINT] PASS\nstructure: PASS\nreviewed head {head} manifest none\n",
+                        "created_at": "2026-11-01T12:10:00Z", "id": 100, "role": "program:lint"})
+        w.record(PULL, {"body": f"[INSPECTOR] APPROVED\nfine\nreviewed head {head} manifest none\n",
+                        "created_at": "2026-11-01T12:20:00Z", "id": 101, "role": "inspector"})
+
+    def command(self, main, *argv):
+        return self.w._main(main, [*argv, "--root", str(self.w.root), "--apply"], None)
+
+    def test_gate_then_run_on_the_pull(self):
+        w = self.w
+        self.assertEqual(self.command(cmd_run.main, self.JOB, "--pull", str(PULL)),
+                         (2, "", f"run: job {self.digest} has no counting GATE PASS\n"))
+        code, out, err = self.command(cmd_gate.main, self.JOB, "--pull", str(PULL))
+        self.assertEqual((code, err), (0, ""), out)
+        branch = w.head(BRANCH)
+        code, out, err = self.command(cmd_run.main, self.JOB, "--pull", str(PULL))
+        self.assertEqual((code, out, err), (0, line(self.digest, "DONE", "1", "5") + "\n", ""))
+        self.assertEqual(w.fake_calls(), [self.digest])
+        self.assertEqual((w.job_dir(self.digest) / "out" / "r1.png").read_text(), "from the pull\n")
+        self.assertEqual(w.git("log", "-1", "--format=%an|%s|%P", BRANCH).strip(),
+                         f"factory|manifest: job {self.digest[:12]}|{branch}")
+        self.assertIn(f"\tjob {self.digest}\n", w.manifest())
+        [row] = w.rows("run")
+        self.assertEqual((row["hash"], row["verdict"]), (self.digest, "DONE"))
+        # A second run is already recorded, after the manifest commit moved the head.
+        code, out, err = self.command(cmd_run.main, self.JOB, "--pull", str(PULL))
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(out.endswith(" (already recorded)\n"))
+        self.assertEqual(w.fake_calls(), [self.digest])
+
+    def test_without_pull_cannot_be_read(self):
+        here = os.getcwd()
+        os.chdir(self.w.root)
+        self.addCleanup(os.chdir, here)
+        self.assertEqual(self.command(cmd_run.main, self.JOB), (2, "", f"run: job file {self.JOB} cannot be read\n"))
+
+    def test_script_changed_on_the_pull_after_the_pass(self):
+        self.assertEqual(self.command(cmd_gate.main, self.JOB, "--pull", str(PULL))[0], 0)
+        self.on_branch({self.SCRIPT: "{}\n"})
+        self.assertEqual(self.command(cmd_run.main, self.JOB, "--pull", str(PULL)),
+                         (2, "", f"run: input {self.SCRIPT} does not match its hash on pull #{PULL}\n"))
+        self.assertEqual(self.w.fake_calls(), [])
+
 if __name__ == "__main__":
     unittest.main()

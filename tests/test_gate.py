@@ -522,6 +522,81 @@ class JobGateTest(unittest.TestCase):
             self.assertNotIn(value, text)
 
 
+class JobOnPullTest(unittest.TestCase):
+    """ISSUE-96: `--pull N` reads the job file and its inputs at the head of pull request N."""
+
+    PULL_JOB = "jobs/renders/requests/r1.json"
+
+    def setUp(self):
+        self.w = World(self)
+        self.request = '{"for": "shot-1", "prompt": "a lantern"}\n'
+        job = json.loads((self.w.root / CLEAN_JOB).read_text())
+        job["inputs"] = [{"path": "renders/requests/r1.json",
+                          "sha256": hashlib.sha256(self.request.encode()).hexdigest()}]
+        self.job = job
+        self.on_branch(self.w.pull_record(JOB_PULL)["head_ref"],
+                       {"renders/requests/r1.json": self.request, self.PULL_JOB: json.dumps(job, indent=1)})
+
+    def on_branch(self, ref, files):
+        """Commit ``files`` on ``ref`` and record a fresh lint and checker verdict on its pull."""
+        self.w.git("checkout", "-q", ref)
+        for rel, text in files.items():
+            self.w.write(rel, text)
+        self.w.commit("files on " + ref)
+        self.w.git("checkout", "-q", "trunk")
+        number = next(n for n in (LOCK_PULL, JOB_PULL) if self.w.pull_record(n)["head_ref"] == ref)
+        self.w.record(number, {"body": f"[LINT] PASS\nstructure: PASS\nreviewed head {{head:{number}}} manifest none\n",
+                               "created_at": "2026-11-01T12:10:00Z", "id": 100 + number, "role": "program:lint"})
+        self.w.record(number, {"body": f"[INSPECTOR] APPROVED\nfine\nreviewed head {{head:{number}}} manifest none\n",
+                               "created_at": "2026-11-01T12:20:00Z", "id": 200 + number, "role": "inspector"})
+
+    def gate(self, target, *extra):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cmd_gate.main([target, *extra, "--root", str(self.w.root), "--apply"])
+        return code, out.getvalue(), err.getvalue()
+
+    def assert_refused(self, result, message):
+        self.assertEqual(result, (2, "", f"gate: {message}\n"))
+        self.assertEqual(self.w.ledger_rows(), [])
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+
+    def test_pass_on_the_pull(self):
+        code, out, err = self.gate(self.PULL_JOB, "--pull", str(JOB_PULL))
+        self.assertEqual((code, err), (0, ""))
+        digest = hashlib.sha256(json.dumps(self.job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        self.assertEqual(out, f"gate job {digest}: PASS cap - reason within caps\n")
+        [gate] = self.w.gates(JOB_TICKET)
+        self.assertEqual(gate["body"].split("\n")[:2], ["[PRODUCER] GATE PASS", f"covers: job {digest}"])
+        self.assertNotIn("reviewed head", gate["body"])
+        [row] = self.w.ledger_rows()
+        self.assertEqual((row["hash"], row["verdict"]), (digest, "PASS"))
+
+    def test_without_pull_cannot_be_read(self):
+        self.assertFalse((self.w.root / self.PULL_JOB).exists())
+        here = os.getcwd()
+        os.chdir(self.w.root)
+        self.addCleanup(os.chdir, here)
+        self.assert_refused(self.gate(self.PULL_JOB), f"job file {self.PULL_JOB} cannot be read")
+
+    def test_missing_file_on_the_pull(self):
+        self.assert_refused(self.gate("jobs/none.json", "--pull", str(JOB_PULL)), "job file jobs/none.json cannot be read")
+        self.assert_refused(self.gate("../" + self.PULL_JOB, "--pull", str(JOB_PULL)),
+                            f"job file ../{self.PULL_JOB} cannot be read")
+        self.assert_refused(self.gate(self.PULL_JOB, "--pull", "99"), f"job file {self.PULL_JOB} cannot be read")
+
+    def test_pull_of_another_ticket(self):
+        self.on_branch(self.w.pull_record(LOCK_PULL)["head_ref"],
+                       {"renders/requests/r1.json": self.request, self.PULL_JOB: json.dumps(self.job, indent=1)})
+        self.assert_refused(self.gate(self.PULL_JOB, "--pull", str(LOCK_PULL)),
+                            f"pull #{LOCK_PULL} is not the open pull of ticket #{JOB_TICKET}")
+
+    def test_input_changed_on_the_pull(self):
+        self.on_branch(self.w.pull_record(JOB_PULL)["head_ref"], {"renders/requests/r1.json": "changed\n"})
+        self.assert_refused(self.gate(self.PULL_JOB, "--pull", str(JOB_PULL)),
+                            f"input renders/requests/r1.json does not match its hash on pull #{JOB_PULL}")
+
+
 class LintAcceptsGateCommentsTest(unittest.TestCase):
     def test_markers_lint(self):
         w = World(self)

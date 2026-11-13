@@ -21,6 +21,7 @@ Recorded (ticket -> pull, stage):
 """
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -35,7 +36,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import blind, cmd_tick, gitstate, github, launch, lint, production  # noqa: E402
+from kit.lib import blind, cmd_run, cmd_tick, gitstate, github, launch, ledger, lint, production  # noqa: E402
+from kit.lib import resources  # noqa: E402
 from kit.lib import cmd_lock  # noqa: E402
 from kit.lib import steps  # noqa: E402
 
@@ -1102,3 +1104,126 @@ class Filing(Case):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Jobs(Case):
+    """ISSUE-96: the operator `fetcher` beside the writer at `draft`, and pull #6 holding a request.
+
+    The request is also the script of the fake tool tests/fixtures/run/tools/fake.py; the register is the
+    shipped one plus the fake tool's resource, written in the temporary directory."""
+
+    REQUEST = "episodes/ep02/requests/r1.json"
+    JOB = "jobs/" + REQUEST
+    SCRIPT = {"outputs": {"frame.txt": "a lantern on the pier\n"}, "usd": 1, "compute_min": 2}
+
+    def world(self, request=True, cap_usd=100):
+        text = json.dumps(self.SCRIPT) + "\n"
+        w = super().world((5, 6), {6: {self.REQUEST: text}} if request else None)
+        shutil.copy(ROOT / "tests" / "fixtures" / "jobs" / "fetcher.md", w.root / ".factory" / "roles" / "fetcher.md")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "draft":
+                entry["maker"] = ["writer", "fetcher"]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        caps = {"CAP_EPISODE_USD": cap_usd, "CAP_SEASON_USD": 500, "CAP_EPISODE_COMPUTE_MIN": 1000,
+                "CAP_SEASON_COMPUTE_MIN": 5000, "CAP_TICKET_ITERATIONS": 10, "CAP_EPISODE_HOURS": 10000,
+                "CAP_SEASON_HOURS": 100000}
+        with open(w.root / "production.env", "a") as handle:
+            handle.write("".join(f"{k}={v}\n" for k, v in caps.items()))
+        w.commit("an operator at draft")
+        register = json.loads((ROOT / "kit" / "resources.json").read_text())
+        fake = json.loads((ROOT / "tests" / "fixtures" / "run" / "resources.json").read_text())
+        register["path_settings"] = sorted(set(register["path_settings"]) | {"FAKE_LOG"})
+        register["resources"] = register["resources"] + fake["resources"]
+        (w.tmp / "resources.json").write_text(json.dumps(register, indent=1) + "\n")
+        for patch in (mock.patch.object(cmd_run, "TOOLS_DIR", ROOT / "tests" / "fixtures" / "run" / "tools"),
+                      mock.patch.object(resources, "REGISTER", w.tmp / "resources.json")):
+            patch.start()
+            self.addCleanup(patch.stop)
+        key = w.tmp / "secrets" / "gen.fake"
+        key.write_text("a-key-for-tests\n")
+        key.chmod(0o600)
+        self.fake_log = w.tmp / "fake.log"
+        with open(w.root / "production.local.env", "a") as handle:
+            handle.write(f"FAKE_LOG={self.fake_log}\n")
+        self.job = {"caller": "fetcher", "expected": {"compute_min": 2, "usd": 1},
+                    "inputs": [{"path": self.REQUEST, "sha256": hashlib.sha256(text.encode()).hexdigest()}],
+                    "ticket": 5, "tool": "fake"}
+        self.digest = hashlib.sha256(json.dumps(self.job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return w
+
+    def fetcher(self, files=True):
+        found = {self.JOB: json.dumps(self.job, indent=1) + "\n"} if files else {}
+        return step("You are the fetcher", {"marker": "READY", "summary": "Jobs written.", "evidence": EVIDENCE}, found)
+
+    def tick(self, w, expected):
+        self.assertEqual(lines(self.ticked(w, "--apply")), expected)
+
+    def launches(self, w, role):
+        return [b for _, b in firsts(w.comments(6)) if f"] LAUNCH {role} " in b]
+
+    def rows(self, w):
+        text = gitstate.show(w.root, "trunk", ledger.PATH)
+        return [(r["kind"], r["hash"], r["verdict"]) for r in ledger.read(text)] if text else []
+
+    def verdicts(self, w):
+        for role, verb in (("editor", "APPROVED"), ("weigher", "PREFERS A")):
+            w.add(6, NOW, role, f"[{role.upper()}] {verb}\nfine\nreviewed head {{head:6}} manifest none\n")
+
+    def test_without_a_request_the_lint_runs(self):
+        w = self.world(request=False)
+        self.tick(w, ["STEP #5 lint PR #6"])
+
+    def test_a_request_goes_through_the_job(self):
+        w = self.world()
+        w.steps(self.fetcher(), self.fetcher(files=False))
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        self.assertEqual(gitstate.show(w.root, w.ref(6), self.JOB), json.dumps(self.job, indent=1) + "\n")
+        self.assertEqual(firsts(w.comments(6))[-1], ("fetcher", "[FETCHER] READY"))
+        self.tick(w, ["STEP #5 lint PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("program:lint", "[LINT] PASS"))
+        self.verdicts(w)
+        self.tick(w, [f"STEP #5 gate {self.JOB} PR #6"])
+        self.assertEqual(firsts(w.comments(5))[-1], ("program:gate", "[PRODUCER] GATE PASS"))
+        self.assertIn(f"covers: job {self.digest}", w.comments(5)[-1]["body"].splitlines())
+        self.tick(w, [f"STEP #5 run {self.JOB} PR #6"])
+        self.assertEqual(self.rows(w), [("job", self.digest, "PASS"), ("run", self.digest, "DONE")])
+        self.assertEqual(w.git("log", "-1", "--format=%s", w.ref(6)).strip(), f"manifest: job {self.digest[:12]}")
+        self.assertEqual(self.fake_log.read_text().split(), [self.digest])
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        self.assertEqual(self.launches(w, "fetcher"), ["[KEEPER] LAUNCH fetcher 6-1", "[KEEPER] LAUNCH fetcher 6-2"])
+        self.tick(w, ["STEP #5 lint PR #6"])
+        self.assertEqual(lines(self.ticked(w)), ["STEP #5 launch editor on PR #6"])
+        self.assertEqual(len(self.launches(w, "fetcher")), 2)
+        self.assertEqual(self.fake_log.read_text().split(), [self.digest])
+
+    def test_a_launch_with_no_worker_waits(self):
+        w = self.world()
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "fetcher", 6)
+        for _ in range(2):
+            self.tick(w, [f"WAIT #5 running fetcher launched at {NOW}"])
+
+    def test_ready_without_a_job_wakes_once(self):
+        w = self.world()
+        w.steps(self.fetcher(files=False))
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        for _ in range(2):
+            self.tick(w, ["NEED #5 jobs fetcher left 1 request(s) without a job on #6"])
+        self.assertEqual(len(self.launches(w, "fetcher")), 1)
+
+    def test_a_stop_wakes_and_does_not_loop(self):
+        w = self.world(cap_usd=0)
+        w.steps(self.fetcher())
+        self.tick(w, ["STEP #5 launch fetcher on PR #6"])
+        self.tick(w, ["STEP #5 lint PR #6"])
+        self.verdicts(w)
+        self.tick(w, [f"STEP #5 gate {self.JOB} PR #6"])
+        for _ in range(2):
+            self.tick(w, [f"NEED #5 job-stopped job {self.JOB} stopped at the gate on #6"])
+        gates = [b for r, b in firsts(w.comments(5)) if r == "program:gate"]
+        self.assertEqual(gates, ["[PRODUCER] GATE STOP"])
+        self.assertIn("cap: CAP_EPISODE_USD  reason: over cap", w.comments(5)[-1]["body"].splitlines())
+        self.assertEqual(self.rows(w), [("job", self.digest, "STOP")])
+        self.assertFalse(self.fake_log.exists())

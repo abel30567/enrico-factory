@@ -7,7 +7,9 @@ comment, label or pull record.
 """
 
 import dataclasses
+import hashlib
 import json
+import shutil
 import sys
 import unittest
 from pathlib import Path
@@ -16,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import steps, tickets  # noqa: E402
+from kit.lib import ledger, steps, tickets  # noqa: E402
 from test_tickets import FIX, World, pull_record, ticket_issue  # noqa: E402
 
 NOW = "2026-11-11T11:00:00Z"
@@ -225,6 +227,199 @@ class OperatorMakerTest(ChainCase):
         self.w.set_pull(5, state="closed")
         self.with_makers(["wrangler"])
         self.assertEqual(short(self.next()), ("ready", "launch", "wrangler", None))
+
+
+class OperatorRowsTest(ChainCase):
+    """ISSUE-96, ruling 8: the rows of a pull with a request at a stage with an operator.
+
+    The stage `beats` is made `["writer", "fetcher"]` with the operator tests/fixtures/jobs/fetcher.md, and
+    the writer's branch of pull #5 holds the request episodes/ep01/requests/r1.json."""
+
+    FIXTURE, TICKET = "steps", 3
+    REF = "feat/BT-1-ep01"
+    REQUEST = "episodes/ep01/requests/r1.json"
+    JOB = "jobs/" + REQUEST
+    REQUEST_TEXT = '{"for": "beat 2", "prompt": "the harbour at flood", "refs": []}\n'
+
+    def setUp(self):
+        super().setUp()
+        w = self.w
+        shutil.copy(ROOT / "tests" / "fixtures" / "jobs" / "fetcher.md", w.root / ".factory" / "roles" / "fetcher.md")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "beats":
+                entry["maker"] = ["writer", "fetcher"]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("an operator at beats")
+        w.reload()
+        self.minute = 30
+
+    def on_branch(self, files):
+        w = self.w
+        w.branch(self.REF)
+        w.git("checkout", "-q", self.REF)
+        for rel, text in files.items():
+            w.commit_file(rel, text)
+        w.git("checkout", "-q", "trunk")
+
+    def post(self, role, body, number=5):
+        self.minute += 1
+        self.w.apply(comment(number, 900 + self.minute, self.minute, role, body))
+
+    def job(self, request=None, text=None, usd=1):
+        request, text = request or self.REQUEST, text or self.REQUEST_TEXT
+        return {"caller": "fetcher", "expected": {"compute_min": 5, "usd": usd},
+                "inputs": [{"path": request, "sha256": hashlib.sha256(text.encode()).hexdigest()}],
+                "ticket": 3, "tool": "renderbox"}
+
+    @staticmethod
+    def digest(job):
+        return hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def write_job(self, job=None, path=None):
+        job = job or self.job()
+        self.on_branch({path or self.JOB: json.dumps(job, indent=1) + "\n"})
+        return self.digest(job)
+
+    def verdicts(self):
+        self.post("program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
+        self.post("editor", "[EDITOR] APPROVED\nall criteria met\nreviewed head {head:5} manifest none\n")
+        self.post("critic", "[CRITIC] PREFERS A\npanel 2\nreviewed head {head:5} manifest none\n")
+
+    def gated(self, digest, verdict="PASS"):
+        self.post("program:gate", f"[PRODUCER] GATE {verdict}\ncovers: job {digest}\ncap: -\nledger: -\n", number=3)
+        self.ledger(digest, "job", verdict, "-" if verdict == "PASS" else "CAP_EPISODE_USD")
+
+    def ledger(self, digest, kind, verdict, cap="-"):
+        path = self.w.root / ledger.PATH
+        text = path.read_text() if path.is_file() else ledger.HEADER + "\n"
+        row = {"time": "2026-11-11T10:00:00Z", "kind": kind, "hash": digest, "ticket": 3, "episode": "ep01",
+               "tool": "renderbox", "usd": "1", "compute_min": "5", "caller": "fetcher", "verdict": verdict,
+               "cap": cap}
+        self.w.commit_file(ledger.PATH, text + ledger.line(row) + "\n")
+
+    def requested(self):
+        """Pull #5 open with the writer's READY and the request."""
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        self.until("ready")
+
+    def written(self):
+        """The fetcher wrote the job and reported READY; lint and every verdict count."""
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        digest = self.write_job()
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.verdicts()
+        return digest
+
+    def check(self, expected, reason=None):
+        entry = self.next()
+        self.assertEqual(short(entry), expected)
+        if reason is not None:
+            self.assertEqual(entry["reason"], reason)
+        return entry
+
+    def test_a_request_launches_the_operator_before_the_lint(self):
+        self.requested()
+        self.check(("jobs", "launch", "fetcher", 5), "1 request(s) on #5 have no job")
+
+    def test_a_job_path_is_not_a_request(self):
+        # Seeded: the request only under jobs/, inside the operator's writes.
+        self.on_branch({self.JOB: self.REQUEST_TEXT})
+        self.until("ready")
+        self.check(("lint", "lint", None, 5))
+
+    def test_no_request_is_the_base_chain(self):
+        self.assertEqual(short(self.next()), BEATS["base"])
+        for change in self.chain:
+            self.w.apply(change)
+            with self.subTest(step=change["name"]):
+                self.assertEqual(short(self.next()), BEATS[change["name"]])
+
+    def test_launched_is_running(self):
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.check(("running", "none", "fetcher", 5))
+
+    def test_ready_without_a_job_wakes(self):
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("jobs", "wake", "chief", 5), "fetcher left 1 request(s) without a job on #5")
+
+    def test_maker_newer_than_the_operator_launches_it_again(self):
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.post("writer", "[WRITER] ADDRESSED\nhead {head:5}\n")
+        self.check(("jobs", "launch", "fetcher", 5))
+
+    def test_ready_with_a_job_lints(self):
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.write_job()
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("lint", "lint", None, 5))
+        self.post("program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
+        self.check(("review", "launch", "editor", 5))
+
+    def test_a_request_changed_after_its_job_is_uncovered(self):
+        self.written()
+        self.on_branch({self.REQUEST: '{"for": "beat 2", "prompt": "the harbour at ebb", "refs": []}\n'})
+        self.check(("jobs", "wake", "chief", 5))
+
+    def test_notes_go_to_the_maker(self):
+        self.written()
+        self.post("editor", "[EDITOR] NOTES\nB1 the sting is early\nreviewed head {head:5} manifest none\n")
+        self.check(("notes", "launch", "writer", 5))
+
+    def test_every_verdict_gates_the_job(self):
+        self.written()
+        entry = self.check(("gate", "gate", None, 5), f"job {self.JOB} has no gate decision")
+        self.assertEqual(entry["job"], self.JOB)
+
+    def test_a_stop_wakes(self):
+        self.gated(self.written(), "STOP")
+        self.check(("job-stopped", "wake", "chief", 5), f"job {self.JOB} stopped at the gate on #5")
+
+    def test_a_pass_runs(self):
+        self.gated(self.written())
+        entry = self.check(("run", "run", None, 5), f"job {self.JOB} has a PASS and has not run")
+        self.assertEqual(entry["job"], self.JOB)
+
+    def test_a_pass_without_its_ledger_row_does_not_count(self):
+        digest = self.written()
+        self.post("program:gate", f"[PRODUCER] GATE PASS\ncovers: job {digest}\ncap: -\nledger: -\n", number=3)
+        self.check(("gate", "gate", None, 5))
+
+    def test_every_job_gates_before_any_runs(self):
+        other = "episodes/ep01/requests/r2.json"
+        self.on_branch({other: self.REQUEST_TEXT})
+        digest = self.written()
+        self.write_job(self.job(other), "jobs/" + other)
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.verdicts()
+        self.gated(digest)
+        self.check(("gate", "gate", None, 5), f"job jobs/{other} has no gate decision")
+
+    def test_a_run_reports(self):
+        digest = self.written()
+        self.gated(digest)
+        self.ledger(digest, "run", "DONE")
+        self.check(("report", "launch", "fetcher", 5), "1 job(s) of #5 ran and fetcher has not reported")
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-2\n")
+        self.check(("running", "none", "fetcher", 5))
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("lint", "lint", None, 5))
+        self.verdicts()
+        self.check(("lockable", "lock", None, 5))
+
+    def test_a_failed_run_wakes_before_the_lint(self):
+        digest = self.written()
+        self.gated(digest)
+        self.ledger(digest, "run", "FAILED")
+        self.check(("job-failed", "wake", "chief", 5), f"job {self.JOB} failed on #5")
 
 
 class PitchesChainTest(ChainCase):

@@ -22,7 +22,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import gitstate, github, launch, lint, production  # noqa: E402
+from kit.lib import gitstate, github, launch, ledger, lint, production  # noqa: E402
 from kit.lib.launch import LaunchError  # noqa: E402
 from kit.lib import prompt  # noqa: E402
 
@@ -256,7 +256,7 @@ class Refusals(unittest.TestCase):
         self.refused("no judgment is due on #5", "showlead", 5)
 
     def test_operator(self):
-        self.refused("gated launches are not built in wave 2", "runner", 5)
+        self.refused("stage beats does not name runner", "runner", 5)
 
     def test_analyst(self):
         self.refused("analyst launches are not built in wave 2", "reader", 5)
@@ -462,6 +462,135 @@ class MakerRelaunch(unittest.TestCase):
         self.assertEqual(w.snapshot(), before)
         self.assertEqual(gitstate.git(elsewhere, "symbolic-ref", "HEAD").strip(), "refs/heads/" + self.BRANCH)
         self.assertFalse(w.state.exists())
+
+
+class OperatorLaunch(unittest.TestCase):
+    """ISSUE-96: the operator's two launches on a pull request with a request, told apart by its jobs.
+
+    The stage `beats` is made ``["drafter", "fetcher"]`` with the operator tests/fixtures/jobs/fetcher.md;
+    the pull #7 of ticket #6 gets the request episodes/ep02/requests/r1.json."""
+
+    BRANCH = "beats/BT-2-drafter-1"
+    REQUEST = "episodes/ep02/requests/r1.json"
+    JOB = "jobs/episodes/ep02/requests/r1.json"
+    REQUEST_TEXT = '{"for": "beat 3", "prompt": "the harbour at flood", "refs": []}\n'
+
+    def setUp(self):
+        w = self.w = World(self)
+        shutil.copy(ROOT / "tests" / "fixtures" / "jobs" / "fetcher.md", w.root / ".factory" / "roles" / "fetcher.md")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "beats":
+                entry["maker"] = ["drafter", "fetcher"]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("an operator at beats")
+        w.local()
+
+    def on_branch(self, files):
+        w = self.w
+        w.git("checkout", "-q", self.BRANCH)
+        for rel, text in files.items():
+            (w.root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (w.root / rel).write_text(text)
+        w.commit("files on the pull")
+        w.git("checkout", "-q", "trunk")
+
+    def job(self, **changes):
+        job = {"caller": "fetcher", "expected": {"compute_min": 5, "usd": 1},
+               "inputs": [{"path": self.REQUEST, "sha256": hashlib.sha256(self.REQUEST_TEXT.encode()).hexdigest()}],
+               "ticket": 6, "tool": "renderbox", **changes}
+        self.on_branch({self.JOB: json.dumps(job, indent=1)})
+        return hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def ledger_row(self, kind, digest, verdict, usd="1", compute_min="5"):
+        w = self.w
+        path = w.root / ledger.PATH
+        text = path.read_text() if path.is_file() else ledger.HEADER + "\n"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(text + ledger.line({
+            "time": NOW, "kind": kind, "hash": digest, "ticket": 6, "episode": "ep02", "tool": "renderbox",
+            "usd": usd, "compute_min": compute_min, "caller": "fetcher", "verdict": verdict, "cap": "-"}) + "\n")
+        w.commit(f"ledger: {kind} {digest[:12]}")
+
+    def passed(self, digest, id=50):
+        self.w.comment(6, id, "2026-11-10T10:00:00Z", "program:gate",
+                       f"[PRODUCER] GATE PASS\ncovers: job {digest}\ncap: -  reason: within caps\n")
+        self.ledger_row("job", digest, "PASS")
+
+    def refused(self, message):
+        w = self.w
+        before = w.snapshot()
+        with self.assertRaises(LaunchError) as caught:
+            w.prepare("fetcher", 7)
+        self.assertEqual(str(caught.exception), message)
+        self.assertEqual(w.snapshot(), before)
+        self.assertFalse(w.state.exists())
+
+    def prompt(self, run):
+        return (run.dir / "prompt.md").read_text()
+
+    def test_the_writing_launch(self):
+        w = self.w
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        run = w.prepare("fetcher", 7)
+        self.assertEqual((run.meta["kind"], run.meta["pull"], run.meta["branch"]), ("operator", 7, self.BRANCH))
+        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/" + self.BRANCH)
+        text = self.prompt(run)
+        self.assertIn(f"Branch: {self.BRANCH}\n", text)
+        self.assertIn("Task: Turn each request on pull request #7 into a job file.\n"
+                      f"- {self.REQUEST} -> {self.JOB}\n"
+                      "Each job names ticket 6 and caller fetcher. The ticket names the tool and the expected cost.\n",
+                      text)
+        comment = w.gh.comments(7)[-1]
+        self.assertTrue(comment["body"].startswith("[SHOWLEAD] LAUNCH fetcher 7-1\n"))
+
+    def test_the_ticket_number(self):
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        before = self.w.snapshot()
+        with self.assertRaisesRegex(LaunchError, r"^give the pull request number$"):
+            self.w.prepare("fetcher", 6)
+        self.assertEqual(self.w.snapshot(), before)
+
+    def test_no_request(self):
+        self.refused("#7 has no request for fetcher")
+
+    def test_only_a_job_path(self):
+        self.on_branch({self.JOB: "{}\n"})
+        self.refused("#7 has no request for fetcher")
+
+    def test_a_job_with_no_pass(self):
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        digest = self.job()
+        self.refused(f"job {digest} has no counting GATE PASS")
+
+    def test_a_job_changed_after_its_pass(self):
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        self.passed(self.job())
+        changed = self.job(expected={"compute_min": 5, "usd": 2})
+        self.refused(f"job {changed} has no counting GATE PASS")
+
+    def test_a_pass_and_no_run(self):
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        digest = self.job()
+        self.passed(digest)
+        self.refused(f"job {digest} has not run")
+
+    def test_the_reporting_launch(self):
+        w = self.w
+        self.on_branch({self.REQUEST: self.REQUEST_TEXT})
+        digest = self.job()
+        self.passed(digest)
+        self.ledger_row("run", digest, "DONE", usd="0.75", compute_min="4")
+        media = f"{digest[:16]}-r1.png"
+        self.on_branch({"media/manifest.tsv": "id\tsha256\tbytes\tsource\n"
+                                              f"{media}\t{'a' * 64}\t9\tjob {digest}\n"
+                                              f"other-1\t{'b' * 64}\t9\tjob {'c' * 64}\n"})
+        # One more commit that leaves the job file alone: the PASS still counts, by its hash.
+        self.on_branch({"episodes/ep02/beats.md": "# Beats\n"})
+        run = w.prepare("fetcher", 7)
+        self.assertIn("Task: Report on the jobs of pull request #7. Write no file.\n"
+                      f"- {self.JOB}: job {digest} DONE usd 0.75 compute_min 4; media: {media}\n", self.prompt(run))
 
 
 class Fence(unittest.TestCase):
