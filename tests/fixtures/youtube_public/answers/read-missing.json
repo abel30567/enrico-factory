@@ -1,0 +1,12 @@
+{
+ "body": {
+  "items": [],
+  "kind": "youtube#videoListResponse"
+ },
+ "headers": {
+  "Content-Type": "application/json; charset=UTF-8"
+ },
+ "read_at": "2026-11-13",
+ "reference": "https://developers.google.com/youtube/v3/docs/videos/list",
+ "status": 200
+}
