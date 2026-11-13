@@ -70,12 +70,12 @@ class Render(LintCase):
         self.assertEqual(self.findings(files, drop), [])
 
     # Behaviour 1
-    def test_clean_case_passes_every_check(self):
-        p = cli("--root", str(CLEAN))
-        out = p.stdout.decode()
-        self.assertEqual(p.returncode, 0, out + p.stderr.decode())
-        self.assertIn("render PASS\n", out)
-        self.assertTrue(all(line.endswith(" PASS") for line in out.splitlines()), out)
+    # The fixtures are judged with --only render alone (the ruling on #305): the other
+    # checks need files these fixtures do not hold, such as the edit list or the intent packet.
+    def test_clean_case_passes(self):
+        p = cli("--root", str(CLEAN), "--only", "render")
+        self.assertEqual(p.returncode, 0, p.stdout.decode() + p.stderr.decode())
+        self.assertEqual(p.stdout.decode(), "render PASS\n")
 
     def test_tree_without_production_passes(self):
         root = self.variant({}, base=CLEAN)
@@ -93,13 +93,6 @@ class Render(LintCase):
                 p = cli("--root", str(FIX / case), "--only", "render")
                 self.assertEqual(p.returncode, 1)
                 self.assertEqual(p.stdout.decode(), f"render FAIL 1 finding\nB1 render {R1}:1 {message}\n")
-
-    def test_each_defect_directory_passes_every_other_check(self):
-        for case in DEFECTS:
-            with self.subTest(case=case):
-                for cid, r in lint.run(FIX / case).items():
-                    if cid != "render":
-                        self.assertEqual(r.status, lint.PASS, f"{cid}: {r.findings} {r.reason}")
 
     # Behaviour 3
     def test_shape_findings(self):
