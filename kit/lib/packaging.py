@@ -137,8 +137,12 @@ def results(root, base: str) -> list[dict]:
 
 
 def _number(value) -> bool:
-    return (isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-            and value >= 0)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value) and value >= 0
+    except OverflowError:
+        return False
 
 
 def value(root, base: str, spec: dict, ep: str):

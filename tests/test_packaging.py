@@ -391,8 +391,10 @@ class EmptyTest(PackagingTest):
         self.w.loop_file("hold-early", metric="audienceWatchRatio:5")
         cases = []
         for name, value in (("averageViewDuration", "30"), ("averageViewDuration", True),
-                            ("averageViewDuration", -1),
-                            ("audienceWatchRatio", good["metrics"]["audienceWatchRatio"][:99])):
+                            ("averageViewDuration", -1), ("averageViewDuration", 10 ** 400),
+                            ("audienceWatchRatio", good["metrics"]["audienceWatchRatio"][:99]),
+                            ("audienceWatchRatio", good["metrics"]["audienceWatchRatio"][:4] + [10 ** 400]
+                             + good["metrics"]["audienceWatchRatio"][5:])):
             data = copy.deepcopy(good)
             data["metrics"][name] = value
             cases.append((LOOP if name == "averageViewDuration" else "hold-early", json.dumps(data)))
