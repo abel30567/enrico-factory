@@ -67,7 +67,7 @@ rules in section 11 to the ledger and the markers. It has no opinion to argue wi
 |---|---|---|---|
 | `story` | `showrunner` | series bible, pivot queue, notes, platform notes | locked story package: reel, edit list with beat IDs, bible version, style lock, story intent packet |
 | `production` | `line-producer` | locked story package, lab KEEPs | locked master, stems, edit list |
-| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook, brand kit | gated packages: one variant per platform, each with a file hash |
+| `post` | `post-supervisor` | locked master, story intent packet, platform rulebook, brand kit | gated packages: one variant per platform and kind, each with a file hash |
 | `distribution` | `channel-desk` | gated packages, release calendar | live posts, telemetry snapshots, platform notes, symptom notes |
 | `lab` | `lab-director` | results logs, method research, real outcomes, the defect corpus | config pull requests into the other rooms |
 
@@ -696,6 +696,69 @@ a time, because a trend on one platform is not a trend on another.
 - **One ranking per platform.** Rankings are computed with no model and are never merged across
   platforms, because a view is not the same thing on each. A trend reaches the show only as a pivot
   proposal (section 7).
+
+### Rulebook
+
+The platform gate checks a variant against the rulebook of the platform it is cut for: one file per
+platform, `rulebook/<platform>.json`, named by the platform's id (`youtube`, `tiktok`, `instagram`, as
+in the channel operators' role ids). `post-supervisor` writes it by pull request, from the platform
+notes the distribution room files after each release (section 3). The platform gate reads it.
+
+Every value a check reads is an object `{value, source, read_at}`: the value, the link to the
+platform's page it was read from, and the date it was read (`YYYY-MM-DD`). A value changes only
+together with its `source` and `read_at`, so an old reading shows its date. A value no page has given
+yet is `{"value": null, "source": null, "read_at": null}`. `source` is a link, so the `references`
+lint does not look for it as a file.
+
+| Key | Type | Holds |
+|---|---|---|
+| `platform` | string | the file's name without `.json` |
+| `kinds` | object | one entry per kind of post the production makes on the platform, keyed by the platform's own name for it: `shorts` and `long` on YouTube, `video` on TikTok, `reels` on Instagram. A variant is cut for one kind and is checked against that kind only |
+| `disclosure` | value, plus `field` | the upload field that marks generated or altered content, as the platform's API names it, and the value every upload from the production gives it |
+| `policy` | list of values, each plus `field` | the other upload fields the platform's pages say to set, each with the value the upload gives it. The gate checks that the variant's packaging gives `field` that value |
+
+Each kind holds these keys, each a value as above:
+
+| Key | Type | Unit |
+|---|---|---|
+| `container` | string | the file extension, for example `mp4` |
+| `codec` | string | the video codec as `ffprobe` names it (`codec_name`) |
+| `aspects` | list of strings | the aspect ratios accepted, each `<width>:<height>`, for example `9:16` |
+| `resolution` | object | per aspect, `[width, height]` in pixels: the frame size a variant of that aspect is rendered at |
+| `min_fps`, `max_fps` | number | frames per second |
+| `min_seconds`, `max_seconds` | number | seconds of running time |
+| `max_bytes` | integer | bytes of the file |
+| `caption_zone`, `mark_zone` | object | per aspect, `{top, bottom, left, right}`: the fractions of the frame's height (top, bottom) and width (left, right) that on-screen captions, or a mark such as a logo, must keep clear |
+| `title_max_chars`, `caption_max_chars` | integer | characters in the variant's `title` and `caption` text |
+
+```json
+{"platform": "tiktok",
+ "kinds": {"video": {"max_seconds": {"value": null, "source": null, "read_at": null}}},
+ "disclosure": {"field": "post_info.is_aigc", "value": true, "read_at": "2026-11-11",
+                "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post"},
+ "policy": []}
+```
+
+The disclosure field of each platform (`docs/research/06-external-resources.md`, section 1):
+
+| Platform | `field` | `value` |
+|---|---|---|
+| `youtube` | `status.containsSyntheticMedia` | `true` |
+| `tiktok` | `post_info.is_aigc` | `true` |
+| `instagram` | `is_ai_generated` | `true` |
+
+Each is a boolean the upload job sets (`docs/resources.md`, section 2). The production sets it to
+`true` on every upload, because its pictures, voices and music come from generators (section 11).
+
+- **Missing values.** A check that needs a value that is `null`, a kind the file does not list, or a
+  file that does not exist, is ERROR (section 8), never PASS.
+- **Bait.** `rulebook/bait.json` is not a platform. It holds `{"patterns": [...]}`, regular
+  expressions the `spoiler` lint matches without regard to case against the packaging text of every
+  platform; without the file the lint uses its own list. `post-supervisor` writes it too.
+- **Brand.** Where the brand kit sets a length or a placement, the rulebook's limit wins and the brand
+  element is fitted inside it (#259, ruling 3).
+- **First rulebooks.** The kit ships no rulebook. Its test fixtures hold one per platform, read from
+  the research of 2026-11-11 (#165).
 
 ### Rights
 
