@@ -68,7 +68,7 @@ FILES = {
     "bible/charter.md": "# Charter\n",
     "bible/canon/ledger.tsv": "subject\tattribute\tvalue\ttag\tsource\n",
 }
-DIRECTORIES = ("sources", "research", "bible/canon", "bible/amendments", "bible/style", "playbook",
+DIRECTORIES = ("sources", "research", "bible/canon", "bible/amendments", "bible/style", "brand", "playbook",
                "calibration", "registry", "rulebook", "ledger", "lab", "episodes")
 ROOM_DIRECTORIES = ("production", "post", "distribution")
 
