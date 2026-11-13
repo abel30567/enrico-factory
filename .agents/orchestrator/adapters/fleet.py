@@ -12,11 +12,13 @@
 #   stdout: one JSON object {"type":"result","is_error":…,"result":…,"fleet":{…}}
 #   stderr: progress lines
 #   --dry-run: print the box prompt and the launch fields, launch nothing
-import json, os, re, subprocess, sys, time, urllib.error, urllib.request
+import json, os, re, ssl, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
 TTL = {"builder": 7200, "fixer": 5400, "verifier": 3600, "br": 3600}
 POLL_S = 45
+CA = "/etc/ssl/cert.pem"   # the python.org build on macOS ships no CA bundle; the system one is here
+CTX = ssl.create_default_context(cafile=CA if os.path.exists(CA) else None)
 NARROW = """SCOPE (binding). You are a reviewer with a narrow job. Do exactly the numbered steps of the prompt and nothing
 else: do not fix or edit code, do not push, do not open or edit issues, do not review anything outside this pull
 request's diff and its acceptance criteria, and post exactly ONE comment. Aim to finish within 40 minutes. If you
@@ -44,7 +46,7 @@ def call(c, method, path, body=None, timeout=60):
                                  headers={"Authorization": "Bearer " + c["FERMI_BEARER_TOKEN"],
                                           "content-type": "application/json", "user-agent": "orch-fleet-adapter"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with urllib.request.urlopen(req, timeout=timeout, context=CTX) as r:
             return json.loads(r.read().decode() or "{}")
     except urllib.error.HTTPError as e:   # the launch endpoint answers 409 with a JSON reason
         try:
@@ -144,7 +146,10 @@ def main():
                                                           "cost_usd", "inference_usd", "restart_count")}}))
         return 1 if is_error else 0
 
-    r = call(c, "POST", "/admin/fleet/launch", fields)
+    try:
+        r = call(c, "POST", "/admin/fleet/launch", fields)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        r = {"ok": False, "error": str(e)[:200]}
     if not r.get("ok"):
         return finish(True, f"fleet launch refused: {json.dumps(r)[:400]}")
     aid = r["agent_id"]
