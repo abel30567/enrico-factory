@@ -27,6 +27,7 @@ from kit.lib import gitstate, github, ledger, production, tickets  # noqa: E402
 JOB_KEYS = ("caller", "expected", "inputs", "ticket", "tool")
 EXPECTED_KEYS = ("compute_min", "usd")
 INPUT_KEYS = ("path", "sha256")
+ATTEMPT = "attempt"
 ERRORS = (ledger.LedgerError, production.ProductionError, github.GitHubError, gitstate.GitError,
           tickets.TicketError)
 ALREADY = " (already recorded)"
@@ -48,7 +49,7 @@ def _parsed(text, path_text):
     except ValueError:
         raise Refused(f"job file {path_text} is not JSON") from None
     shape = f"job file {path_text} is not {{ticket, tool, inputs, expected, caller}}"
-    if not isinstance(job, dict) or sorted(job) != list(JOB_KEYS):
+    if not isinstance(job, dict) or sorted(k for k in job if k != ATTEMPT) != list(JOB_KEYS):
         raise Refused(shape)
     expected, inputs = job["expected"], job["inputs"]
     if (not isinstance(job["ticket"], int) or isinstance(job["ticket"], bool)
@@ -60,6 +61,8 @@ def _parsed(text, path_text):
             or not all(isinstance(i, dict) and sorted(i) == list(INPUT_KEYS)
                        and isinstance(i["path"], str) and isinstance(i["sha256"], str) for i in inputs)):
         raise Refused(shape)
+    if ATTEMPT in job and (not isinstance(job[ATTEMPT], int) or isinstance(job[ATTEMPT], bool) or job[ATTEMPT] < 2):
+        raise Refused(f"job file {path_text} has an attempt that is not a whole number of at least 2")
     canonical = json.dumps(job, sort_keys=True, separators=(",", ":"))
     return job, hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
