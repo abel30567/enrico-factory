@@ -1,0 +1,29 @@
+{
+ "job": "{job}",
+ "engine": "5.4.4",
+ "flags": [
+  "-game",
+  "-RenderOffscreen"
+ ],
+ "inputs": [
+  {
+   "path": "scripts/render.json",
+   "sha256": "{input}"
+  }
+ ],
+ "seeds": {
+  "dust": 7
+ },
+ "outputs": [
+  {
+   "name": "frame-0000.bin",
+   "sha256": "b143d321b62910c1303f265ced08a5368212789885d78ded709b6a4ace1f7457",
+   "bytes": 42
+  },
+  {
+   "name": "frame-0001.bin",
+   "sha256": "9d598c3d292d40e6844833d401df5315b562d465fb2ce02ed899756c39bad336",
+   "bytes": 42
+  }
+ ]
+}
