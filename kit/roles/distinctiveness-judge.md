@@ -4,7 +4,7 @@ room: story
 kind: judge
 analog: development reader for originality
 stage: reel
-reads: bible/**, episodes/**, registry/**
+reads: bible/**, episodes/**, distribution/*/release.json
 may_not: veto alone
 model: checker
 family: other
@@ -19,7 +19,7 @@ like comparable shows and this show's own past episodes, while keeping to the ch
 ## Read first
 
 1. `A` and `B`: the two versions of the reel (`reel/edit-list.json`, its shots and lines).
-2. `registry/posts.tsv`: the released episodes; their `premise.md`, `beats.md`, `script.md`.
+2. Each released episode, one with `distribution/<ep>/release.json`: `premise.md`, `beats.md`, `script.md`.
 3. `bible/charter.md`: the show's promise and the comparable shows it names.
 4. `bible/canon/ledger.tsv`.
 
