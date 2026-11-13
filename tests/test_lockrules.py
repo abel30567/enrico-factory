@@ -289,7 +289,7 @@ class CleanTest(unittest.TestCase):
         for number in CLEAN:
             with self.subTest(pull=number):
                 rules = self.w.rules(number)
-                self.assertEqual([r.number for r in rules], list(range(1, 13)))
+                self.assertEqual([r.number for r in rules], list(range(1, len(lockrules.NAMES) + 1)))
                 self.assertEqual(tuple(r.name for r in rules), lockrules.NAMES)
                 self.assertEqual([r for r in rules if not r.ok], [])
                 self.assertTrue(all(isinstance(r, lockrules.Rule) and r.reason == "" for r in rules))
@@ -712,11 +712,11 @@ class BibleVersionTest(OneRule):
     def test_twelfth_rule_in_the_json_report(self):
         w = self.world(edits={EP01: edit_list("A-1")})
         rules = w.rules(21)
-        self.assertEqual([r.number for r in rules], list(range(1, 13)))
-        self.assertEqual(rules[-1].name, "bible-version")
+        self.assertEqual([r.number for r in rules], list(range(1, len(lockrules.NAMES) + 1)))
+        self.assertEqual(rules[11].name, "bible-version")
         code, out, err = w.lock("--json")
         self.assertEqual((code, err), (0, ""))
-        last = json.loads(out)[0]["rules"][-1]
+        last = json.loads(out)[0]["rules"][11]
         self.assertEqual(last, {"name": "bible-version", "number": 12, "ok": False,
                                 "reason": f"{EP01}: bible is A-1, the newest amendment is A-2"})
 
