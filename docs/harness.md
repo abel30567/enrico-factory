@@ -3,10 +3,12 @@
 Companion to `docs/system-brief.md` (section 14). Built: the launch of section 3, logins and the account
 pool of section 4, the result object of section 5 and the sandbox of section 7, in `kit/lib/harness.py`,
 `launch.py`, `finish.py` and `sandbox.py`, and `factory run` of section 8 with its tool interface, in
-`kit/lib/cmd_run.py` and `kit/lib/tools/`, and the knowledge gateway of section 6 for the capabilities
-`skills`, `memory-read` and `memory-write`, in `kit/lib/gateway.py`. Not built: the capabilities `search`
-and `skills-write` (#282), any tool for `factory run` to call (none is installed yet), and forks of
-section 9.
+`kit/lib/cmd_run.py` and `kit/lib/tools/`, an operator's two launches with the gate and the run of its
+jobs between them (sections 3 and 8), in `kit/lib/jobs.py`, `launch.py`, `steps.py` and `cmd_tick.py`,
+and the knowledge gateway of section 6 for the capabilities `skills`, `memory-read` and `memory-write`,
+in `kit/lib/gateway.py`. Not built: the capabilities `search` and `skills-write` (#282), any tool for
+`factory run` to call (none is installed yet, #93), the lock of a pull request that holds a job (#285),
+and forks of section 9.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 
@@ -53,7 +55,11 @@ Any harness that provides these eight things can run a role. They are the adapte
 `factory launch <role> <ticket-or-pr>` does this, in order. A failure at any step launches nothing.
 
 1. Read `kit/roles/<role>.md`. Check the ticket's stage names this role and the upstream stage is locked (for an episode stage after a sequence stage: locked for every sequence of the episode on the base branch).
-2. For an operator: require a counting `[PRODUCER] GATE PASS` on the job's hash.
+2. For an operator: the number is a pull request that holds a request (`docs/system-brief.md`, section
+   11), else `#<n> has no request for <role>`. While a request has no job, this launch writes the job
+   files and needs no PASS. Once every request has one, this launch reports, and every job needs a
+   counting `[PRODUCER] GATE PASS` on its hash and a `run` row in the ledger, else
+   `job <hash> has no counting GATE PASS` or `job <hash> has not run`.
 3. Create the worktree: a branch for a maker or operator, a detached checkout for a checker or judge.
    For a blind judge, `factory blind` has already replaced old and new with `A` and `B`.
 4. Render the prompt from the role body and write it, with its sha256, outside the worktree.
@@ -92,7 +98,7 @@ ticket). It must be the orchestrator of the ticket's room. Steps 3 and 8 differ 
   pushes and opens nothing. A `SELECTED` that names a pull request outside the launch is `BLOCKED`.
 - The newest `RULING` is quoted in the next maker's task and in the next checker's prompt.
 
-A BLOCKED maker, a lint `ERROR` and a pivot are not launched (#242). Operators and analysts are refused.
+A BLOCKED maker, a lint `ERROR` and a pivot are not launched (#242). Analysts are refused.
 
 A worker that dies, times out or returns no valid result gets `[<ROLE>] BLOCKED` posted for it with the
 exit status. A missing result is never read as approval.
@@ -254,9 +260,12 @@ made by the worker still runs; for GitHub the boundary is that the worker cannot
 
 - **Tools a role holds** are the harness's own (read, edit, write, search, shell, web) as its file lists.
 - **Tools that cost money or cannot be undone** (generation, voice, render, upload) are never called
-  by an agent directly. An operator writes a job file; `factory gate` passes or stops it; then
-  `factory run <job>` makes the call with the credential and writes the outputs and the ledger line.
-  The operator reads the outputs and reports. The credential never enters the worker.
+  by an agent directly. An operator writes a job file, and the launcher commits it on the pull request's
+  branch. `factory tick` runs `factory gate <job> --pull <pr>`, which passes or stops it, then
+  `factory run <job> --pull <pr>`, which makes the call with the credential and writes the outputs, the
+  manifest rows and the ledger line. The operator is launched again and reports from its task, which
+  names each job's result, its cost and the ids of its manifest rows. The outputs are in the state
+  directory, which no worker can read. The credential never enters the worker.
 - **Injected credentials** are the exception, for a tool an agent must drive step by step (the render
   node's remote control). The role file names the secret, the launcher injects only that one, only for
   a job with a gate PASS, and prefers a short-lived credential minted for the job.

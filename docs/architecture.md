@@ -633,7 +633,7 @@ sequenceDiagram
     GT->>GH: PRODUCER GATE PASS on the job hash, the cap and the ledger line
     RN->>TL: run the job with the credential, bytes go to the media store
     RN->>LG: actual cost
-    RN->>OP: outputs and manifest rows
+    RN->>OP: manifest rows, result and cost, in the task of its next launch
     OP->>GH: RENDER-WRANGLER READY, posted for it by the launcher
   else a cap tripped
     GT->>GH: PRODUCER GATE STOP with the cap that tripped

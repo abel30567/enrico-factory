@@ -419,11 +419,25 @@ must pass on.
 - **Caps** live in `production.env`: per episode and per season, for money, compute minutes,
   iterations per ticket and wall-clock time. The owner sets them once.
 - **A gated job** (render, generation, voice, upload, public switch) is requested by an operator as a
-  job file: inputs by hash, tool, expected cost. `factory gate` checks the caps, the ledger and the
+  job file: a JSON object with exactly the keys `ticket`, `tool`, `inputs` (each a path and its sha256),
+  `expected` (`usd` and `compute_min`) and `caller`. A request (section 16) is a file
+  `requests/<id>.json`, in any directory, that a pull request adds or changes, outside the operator's
+  `writes`. Its job file is `jobs/` followed by the request's path, committed on the same pull request.
+  It names the pull request's ticket, the operator as `caller`, and the request with its hash as the
+  first input. Until it does, the request has no job. `factory gate` checks the caps, the ledger and the
   verdicts the job depends on, appends the ledger line and posts `GATE PASS` on the job's hash, or
-  `GATE STOP` with the cap that tripped. `factory run` then makes the call with the credential, and
-  refuses a job without a counting PASS. The credential does not enter the operator's session
-  (`docs/harness.md`, section 8).
+  `GATE STOP` with the cap that tripped. The marker goes on the ticket with the line
+  `covers: job <hash>`. The hash is the sha256 of the job as JSON with sorted keys and no spaces, so a
+  job that changes has a new hash and no PASS. A PASS counts when the newest gate comment that covers
+  the hash is `GATE PASS` and the hash's last `job` row in the ledger is `PASS`. It is tied to the hash,
+  not to a head: a later commit that leaves the job file alone keeps it. `factory run` then makes the
+  call with the credential, and refuses a job without a counting PASS:
+  `run: job <hash> has no counting GATE PASS`. With `--pull N` both commands read the job file and its
+  inputs at the head of pull request N, which must be the open pull request of the job's ticket. Without
+  it they read the job file from disk and its inputs on the base. The credential does not enter the
+  operator's session (`docs/harness.md`, section 8). No tool is installed yet (#93), and a pull request
+  that holds a job cannot be locked yet (#285): rule 7 of section 9 refuses its job files and its
+  manifest rows.
 - **Locks that need a gate PASS**: a lock that hands a package to another room (the story package,
   the master, a platform package), and any lock on a ticket that has passed its iteration cap.
 - **Release is staged**: private upload, a check that the platform finished processing and kept
@@ -454,12 +468,29 @@ the outermost loop changes the room's own rules.
 | lab | experiment (minutes): beats the best by twice the noise, twice | program (days): 5 NOISE in a row, or its cap | metric (season): the new metric predicts outcomes better |
 
 Orchestrators do not poll. A timer runs `factory tick`, which dispatches the next mechanical step
-(launch the named checker, relaunch a maker on notes, run the lint, run the gate, lock at most one
-ticket per room) from GitHub state alone. For a ruling after three rounds and for a pitch selection
-it launches the room's orchestrator role itself, once per pull request and once per ticket; from the
-third round on, every round of notes needs its own ruling. It wakes an orchestrator (a `NEED` line and
-the label `needs:orchestrator`) only when that one run did not settle the judgment, and for a pivot
-triage or a BLOCKED worker.
+(launch the named checker, relaunch a maker on notes, run the lint, run the gate, run a job the gate
+passed, lock at most one ticket per room) from GitHub state alone. For a ruling after three rounds and
+for a pitch selection it launches the room's orchestrator role itself, once per pull request and once
+per ticket; from the third round on, every round of notes needs its own ruling. It wakes an
+orchestrator (a `NEED` line and the label `needs:orchestrator`) only when that one run did not settle
+the judgment, and for a pivot triage, a BLOCKED worker, a job that failed or that the gate stopped, or
+a request its operator left without a job.
+
+On a pull request that holds a request, at a stage whose `maker` place names an operator, the tick
+carries the jobs (section 11) in this order, one step per pull request per tick. What is next is read
+from the files at the pull request's head, the gate comments on the ticket and the `job` and `run`
+rows of the ledger on the base.
+
+1. A request has no job: `STEP #<n> launch <role> on PR #<pr>`, before the lint. The operator writes
+   one job file per request.
+2. The lint, the checkers and the judges, as on any pull request. Notes go to the maker, never to the
+   operator.
+3. A job has no gate decision: `STEP #<n> gate <job file> PR #<pr>`. Every job is gated before any runs.
+4. A job has a counting PASS and no `run` row: `STEP #<n> run <job file> PR #<pr>`. The run commits the
+   job's manifest rows on the pull request's branch.
+5. Every job ran `DONE` and a job's PASS is newer than the operator's last `LAUNCH`: the operator is
+   launched again, before the lint, and reports. The head has moved, so the lint and the verdicts are
+   made again.
 
 ## 13. The lab
 
@@ -527,8 +558,8 @@ name, so adding a command edits no shared file. Python 3 standard library, bash,
 | `factory status [--room R]` | every open ticket and pull request: room, unit, stage, state, next step |
 | `factory lint [paths]` | section 10; `--post <pr>` posts the `[LINT]` marker |
 | `factory blind <pr>` | prepare a blinded old-against-new pair for a judge and record the key outside the worktree |
-| `factory gate <job-or-pr>` | section 11 |
-| `factory run <job>` | make one gated call with its credential; write the outputs, the manifest rows and the ledger line |
+| `factory gate <job-or-pr> [--pull N]` | section 11 |
+| `factory run <job> [--pull N]` | make one gated call with its credential; write the outputs, the manifest rows and the ledger line |
 | `factory media put <file>` / `link` / `check` | the media store client: store a file's bytes and add its manifest row, print the public link of a row, check that the links serve the manifest's bytes |
 | `factory assets put <file> [--apply]` / `get <sha256> <path>` / `check <sha256> ...` | the asset store client: store or fetch an engine binary under its sha256. Every request is signed and no object or file is overwritten |
 | `factory lock [--room R] [--apply]` | section 9; without `--apply` it only reports |
