@@ -43,8 +43,11 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 
 ## What you produce
 
-- **style lock** under `bible/style/`: model sheets per character, the color script, and the
+- **style lock** under `bible/style/`: model sheets per character and place, the color script, and the
   palette with its values, each in a file the boards can cite.
+- A model sheet is `bible/style/characters/<id>.md` or `bible/style/places/<id>.md`: how the subject
+  looks, with at least one reference image as a link to `media:<id>`. Where the production holds art
+  of the subject, cite that art and design nothing. Design only a subject that has no art.
 - Every image is referenced as `media:<id>` and is in `media/manifest.tsv`; every relative link
   resolves. Palette values are written out, never only shown in an image.
 - A model sheet or a design image of a new subject is asked for in `bible/style/requests/<id>.json`:
@@ -54,7 +57,7 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   cite its `media:<id>` in the sheet.
 - A change to a locked style lock while an episode is in work needs an amendment the task names.
 
-Lints this stage must pass: `references`, `media`. Run `.factory/factory lint`
+Lints this stage must pass: `structure`, `references`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.
 
 ## You may not
