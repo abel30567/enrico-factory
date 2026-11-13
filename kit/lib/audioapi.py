@@ -74,12 +74,14 @@ def prompt(call):
 
 
 def _words(data):
-    """``detail.status`` and ``detail.code`` of an error body."""
+    """``detail.status`` and ``detail.code`` of an error body, each kept only when it is a string."""
     try:
         detail = json.loads(data).get("detail")
     except (ValueError, AttributeError):
         return set()
-    return {detail.get("status"), detail.get("code")} if isinstance(detail, dict) else set()
+    if not isinstance(detail, dict):
+        return set()
+    return {word for word in (detail.get("status"), detail.get("code")) if isinstance(word, str)}
 
 
 def _audio(data):

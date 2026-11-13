@@ -43,7 +43,8 @@ def body_of(name):
 
 
 class FakeVendor:
-    """The vendor on 127.0.0.1: ``answers[path]`` is the fixture it answers a POST to ``path`` with."""
+    """The vendor on 127.0.0.1: ``answers[path]`` is the fixture it answers a POST to ``path`` with, or a
+    ``(status, body)`` pair for a seeded answer no fixture holds."""
 
     def __init__(self, test):
         self.answers, self.requests = {}, []
@@ -60,7 +61,12 @@ class FakeVendor:
                                         "accept": self.headers.get("Accept"),
                                         "body": self.rfile.read(length).decode()})
                 name = vendor.answers.get(self.path.split("?", 1)[0])
-                status, payload = (404, b"") if name is None else (fixture(name)["status"], body_of(name))
+                if name is None:
+                    status, payload = 404, b""
+                elif isinstance(name, tuple):
+                    status, payload = name
+                else:
+                    status, payload = fixture(name)["status"], body_of(name)
                 self.send_response(status)
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
@@ -212,9 +218,16 @@ class AudioTest(unittest.TestCase):
 
     def test_unknown_voice(self):
         self.vendor.answers[TTS] = "voice-not-found.json"
-        job = self.job("lost", "voice", [self.request("ama-line", "Ama says the tide is late."), self.voice("ama")])
+        ama = self.voice("ama")
+        job = self.job("lost", "voice", [self.request("ama-line", "Ama says the tide is late."), ama])
         self.assert_failed(job, "voice", "the vendor has no such voice", "2.5", "30")
         self.assertEqual(len(self.vendor.requests), 1)
+        # A refusal whose detail.status and detail.code are not strings names no word of the tool.
+        self.vendor.answers[TTS] = (404, json.dumps(
+            {"detail": {"status": ["voice_not_found"], "code": {"voice_not_found": 1}}}).encode())
+        job = self.job("odd", "voice", [self.request("odd-line", "Ama says the sea is late."), ama])
+        self.assert_failed(job, "voice", "the vendor refused the request", "2.5", "30")
+        self.assertEqual(len(self.vendor.requests), 2)
 
     def test_not_a_request(self):
         self.vendor.answers[SFX] = "sfx-ok.json"
