@@ -21,4 +21,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - run: bash scripts/gates.sh
+      # Apple's git, as on the orchestrator's machine: two tests compare the text of a commit date, which
+      # newer git prints as `Z` and Apple's git as `+00:00`.
+      - run: |
+          mkdir -p "$RUNNER_TEMP/bin" && ln -s /usr/bin/git "$RUNNER_TEMP/bin/git" && echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: git --version && python3 --version && bash scripts/gates.sh

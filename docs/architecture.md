@@ -319,7 +319,7 @@ flowchart LR
     PCHK["look, deformation, cinematography,<br/>performance, dailies and mix reviewers"]
     XS["cross-shot<br/>continuity-supervisor"]
   end
-  POUT["Outputs<br/>locked master, stems, edit list<br/>frames and caches in the media store"]
+  POUT["Outputs<br/>locked master, stems, edit list<br/>frames and caches in the asset store"]
   PIN --> LP
   PSR -.-> LP
   LP -->|"tickets, LAUNCH"| PMK
