@@ -1,0 +1,23 @@
+{
+  "asset": "ama",
+  "rig_sha256": "c3188779df68e12489e0dac99845f622acda16def81ab059091af15a1ebad3af",
+  "joints": [
+    {"name": "pelvis", "min": [-30, -30, -45], "max": [30, 30, 45]},
+    {"name": "spine_01", "min": [-30, -20, -40], "max": [45, 20, 40]},
+    {"name": "neck", "min": [-40, -30, -60], "max": [40, 30, 60]},
+    {"name": "head", "min": [-30, -20, -45], "max": [30, 20, 45]},
+    {"name": "upperarm_l", "min": [-90, -45, -90], "max": [90, 135, 90]},
+    {"name": "lowerarm_l", "min": [0, 0, -90], "max": [0, 145, 90]},
+    {"name": "upperarm_r", "min": [-90, -45, -90], "max": [90, 135, 90]},
+    {"name": "lowerarm_r", "min": [0, 0, -90], "max": [0, 145, 90]},
+    {"name": "thigh_l", "min": [-45, -30, -120], "max": [45, 30, 30]},
+    {"name": "calf_l", "min": [0, 0, 0], "max": [0, 0, 150]},
+    {"name": "thigh_r", "min": [-45, -30, -120], "max": [45, 30, 30]},
+    {"name": "calf_r", "min": [0, 0, 0], "max": [0, 0, 150]}
+  ],
+  "rom": {
+    "poses": 24,
+    "limit_violations": 0,
+    "penetration_mm": 5
+  }
+}

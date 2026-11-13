@@ -1,0 +1,26 @@
+{
+  "job": "0c5be5b73fa47421e266aeb6c55560c8a0305969584f4d7825b0079bdef8d6c7",
+  "engine": "5.8.0",
+  "flags": [
+    "-run=pythonscript",
+    "-script=rigging/scene.py"
+  ],
+  "inputs": [
+    {
+      "path": "production/assets/ama/rigging/scene.py",
+      "sha256": "8f0cec9cf17c1321ed26d826d02e2002578477db349d9ae4be5ca895e8fa6329"
+    },
+    {
+      "path": "asset:ama",
+      "sha256": "02a6efa44deef545bc56c1aae1e1d9feb53d505bb269a2abd6efe8d8f4e237f2"
+    }
+  ],
+  "seeds": {},
+  "outputs": [
+    {
+      "name": "ama_rig.uasset",
+      "sha256": "4c38cd80ea7201eafbd6956768ae36543fe77b3f32e09069e73adc45f70bf5e0",
+      "bytes": 1048576
+    }
+  ]
+}
