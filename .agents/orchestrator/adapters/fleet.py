@@ -17,6 +17,7 @@ from pathlib import Path
 
 TTL = {"builder": 7200, "fixer": 5400, "verifier": 3600, "br": 3600}
 POLL_S = 45
+BOOT_S = 600   # a box boots in a minute or two
 CA = "/etc/ssl/cert.pem"   # the python.org build on macOS ships no CA bundle; the system one is here
 CTX = ssl.create_default_context(cafile=CA if os.path.exists(CA) else None)
 NARROW = """SCOPE (binding). You are a reviewer with a narrow job. Do exactly the numbered steps of the prompt and nothing
@@ -155,6 +156,7 @@ def main():
     aid = r["agent_id"]
     print(f"launched {aid} for {role} {wid} (model {fields['model']}, account {account}, ttl {ttl}s)", file=sys.stderr, flush=True)
     seen, turns, agent, misses = None, 0, {}, 0
+    booted_by, relaunches = time.time() + BOOT_S, 0
     while True:
         try:
             d = call(c, "GET", f"/admin/fleet/status?id={aid}", timeout=30)
@@ -176,6 +178,21 @@ def main():
             seen = mark
             print(f"{time.strftime('%H:%M:%S')} {agent.get('status')} {note or 'no progress note yet'} "
                   f"restarts={agent.get('restart_count')}", file=sys.stderr, flush=True)
+        # A box that never leaves "launching" (seen 2026-11-13: 27 min) is replaced, twice at most. The reaper
+        # ends the stuck one at its TTL; it never booted, so it runs nothing.
+        if agent.get("status") == "launching" and time.time() > booted_by:
+            if relaunches == 2:
+                return finish(True, f"fleet box {aid} and two replacements never booted", agent)
+            try:
+                r = call(c, "POST", "/admin/fleet/launch", fields)
+            except (urllib.error.URLError, OSError, ValueError) as e:
+                r = {"ok": False, "error": str(e)[:200]}
+            if not r.get("ok"):
+                return finish(True, f"fleet box {aid} never booted and its replacement was refused: {json.dumps(r)[:300]}", agent)
+            relaunches += 1
+            print(f"{aid} still launching after {BOOT_S}s: replaced by {r['agent_id']} ({relaunches} of 2)", file=sys.stderr, flush=True)
+            aid, seen, agent, booted_by = r["agent_id"], None, {}, time.time() + BOOT_S
+            continue
         if agent.get("status") in ("done", "failed", "destroyed"):
             task = (d.get("tasks") or [{}])[0]
             text = str(task.get("result") or agent.get("exit_reason") or agent.get("status"))
