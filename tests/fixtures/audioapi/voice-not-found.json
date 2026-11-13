@@ -1,0 +1,14 @@
+{
+ "body_json": {
+  "detail": {
+   "code": "voice_not_found",
+   "message": "A voice with the given voice_id was not found.",
+   "request_id": "req-fixture-0002",
+   "status": "not_found",
+   "type": "not_found"
+  }
+ },
+ "read": "2026-11-13",
+ "reference": "https://elevenlabs.io/docs/developers/resources/errors",
+ "status": 404
+}
