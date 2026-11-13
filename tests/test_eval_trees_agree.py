@@ -71,17 +71,28 @@ def tree_messages(evals):
             if (not isinstance(doc, dict) or sorted(doc) != ["changes", "class", "evidence", "why"]
                     or doc["class"] not in lockrules.AMENDMENT_CLASSES):
                 out.append(f"{where}: bible/amendments/{name} lacks a class or a key")
-        if amendments.is_dir():
-            for sheet in sorted((tree / "bible" / "canon").glob("*/*.md")):
-                for n in _HOUSE.findall(sheet.read_text(encoding="utf-8")):
-                    if not (amendments / f"{n}.json").is_file():
-                        out.append(f"{where}: {sheet.relative_to(tree).as_posix()} names {n}, which is not there")
         task = case / "task.md"
         if tree.name == "tree" and task.is_file():
             for path in _TASK_PATH.findall(task.read_text(encoding="utf-8")):
                 path = path.rstrip(".")
                 if not (tree / path).exists():
                     out.append(f"{where}: task.md names {path}, which is not there")
+    return out
+
+
+def house_messages(evals):
+    """Every `origin: house A-<n>` of a sheet whose tree holds no `A-<n>.json`, golden trees included."""
+    out = []
+    for case in sorted(p.parent for p in evals.rglob("case.json")):
+        for name in TREE_NAMES:
+            tree = case / name
+            if not tree.is_dir():
+                continue
+            where = tree.relative_to(evals).as_posix()
+            for sheet in sorted((tree / "bible" / "canon").glob("*/*.md")):
+                for n in _HOUSE.findall(sheet.read_text(encoding="utf-8")):
+                    if not (tree / "bible" / "amendments" / f"{n}.json").is_file():
+                        out.append(f"{where}: {sheet.relative_to(tree).as_posix()} names {n}, which is not there")
     return out
 
 
@@ -156,8 +167,30 @@ class TreesAgreeTest(unittest.TestCase):
             text = sheet.read_text(encoding="utf-8")
             self.assertIn("origin: house A-2\n", text)
             sheet.write_text(text.replace("origin: house A-2\n", "origin: house A-3\n"), encoding="utf-8")
-            self.assertEqual(tree_messages(evals), [
+            self.assertEqual(tree_messages(evals), [])
+            self.assertEqual(house_messages(evals), [
                 "canon-reviewer/05-salt-marsh/tree: bible/canon/characters/marsh-light.md names A-3, which is not there",
+            ])
+
+    def test_clean_every_house_line_names_an_amendment_of_its_tree(self):
+        self.assertEqual(house_messages(EVALS), [])
+
+    def test_seeded_tree_without_its_amendment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evals = _copy_case(tmp, "story-writer", "02-fox-lane")
+            (evals / "story-writer" / "02-fox-lane" / "tree" / "bible" / "amendments" / "A-1.json").unlink()
+            self.assertEqual(house_messages(evals), [
+                f"story-writer/02-fox-lane/tree: bible/canon/{rel} names A-1, which is not there"
+                for rel in ("characters/fox.md", "characters/hilde.md", "characters/tam.md", "places/fox-lane.md")
+            ])
+
+    def test_seeded_golden_tree_without_its_amendment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            evals = _copy_case(tmp, "golden/corpus/assets", "01-clean")
+            shutil.rmtree(evals / "golden" / "corpus" / "assets" / "01-clean" / "tree" / "bible" / "amendments")
+            self.assertEqual(house_messages(evals), [
+                "golden/corpus/assets/01-clean/tree: bible/canon/characters/ama.md names A-1, which is not there",
+                "golden/corpus/assets/01-clean/tree: bible/canon/places/harbour.md names A-1, which is not there",
             ])
 
     def test_clean_every_ep01_is_episode_one(self):

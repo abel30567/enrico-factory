@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/bram.md": "adds the sheet",
+    "bible/canon/characters/tilda.md": "adds the sheet",
+    "bible/canon/places/jetty.md": "adds the sheet",
+    "bible/canon/places/salt-store.md": "adds the sheet"
+  },
+  "why": "The first canon of the show. Every subject it adds was designed in the production, from its own premise and settings, and is cleared by this amendment; none comes from another work.",
+  "evidence": {}
+}
