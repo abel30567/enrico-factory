@@ -1,0 +1,10 @@
+{
+ "source": "https://docs.x.ai/docs/guides/image-generations, read 2026-11-13",
+ "status": 400,
+ "body": {
+  "error": {
+   "message": "prompt rejected",
+   "type": "invalid_request_error"
+  }
+ }
+}

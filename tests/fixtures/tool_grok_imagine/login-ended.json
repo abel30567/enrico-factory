@@ -1,0 +1,10 @@
+{
+ "source": "https://docs.x.ai/docs/guides/image-generations, read 2026-11-13",
+ "status": 401,
+ "body": {
+  "error": {
+   "message": "login expired",
+   "type": "authentication_error"
+  }
+ }
+}

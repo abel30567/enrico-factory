@@ -1,0 +1,13 @@
+{
+ "source": "https://docs.x.ai/docs/guides/image-generations, read 2026-11-13",
+ "status": 200,
+ "body": {
+  "created": 1793000000,
+  "data": [
+   {
+    "b64_json": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+    "revised_prompt": "A lantern on a pier in fog at dawn."
+   }
+  ]
+ }
+}

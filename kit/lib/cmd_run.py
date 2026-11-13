@@ -7,8 +7,8 @@ installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with ex
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
 manifest row per output on the pull's branch, and appends the `run` row with the real cost to the ledger
-on the base. It posts nothing on GitHub. Without `--apply` it makes every check, calls no tool and writes
-nothing.
+on the base. It posts nothing on GitHub, except the `resource:down` issue when the tool's resource is down.
+Without `--apply` it makes every check, calls no tool and writes nothing.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
@@ -33,7 +33,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import cmd_gate, gitstate, github, ledger, production, resources, tickets  # noqa: E402
+from kit.lib import cmd_gate, down, gitstate, github, ledger, production, resources, tickets  # noqa: E402
 from kit.lib.tools import Down, Failed  # noqa: E402
 
 TOOLS_DIR = Path(__file__).resolve().parent / "tools"
@@ -244,6 +244,9 @@ def _run(p, gh, state, rows, target, apply, number=None):
             raise Refused(f"job {digest} has no counting GATE PASS")
         tool = _load_tool(name)
         resource, values, register = _resource(name, tool, p.root)
+        found = down._matching(gh.issues("open"), resource["id"])
+        if found:
+            raise Refused(f"resource {resource['id']} is down (#{found[0]})")
     pull = request["on"] or _open_pull(state, request["ticket"]["number"])
     if not apply:
         print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
@@ -270,7 +273,9 @@ def _run(p, gh, state, rows, target, apply, number=None):
             verdict, usd, compute_min, reason, outputs = _call(tool, call, expected)
         except Down:
             shutil.rmtree(job_dir)
-            raise Refused(f"resource {resource['id']} is down") from None
+            issue = down.report(p, gh, resource["id"], f"tool {name} could not use it; nothing was spent",
+                                f"run job {digest[:12]} on #{request['ticket']['number']}")
+            raise Refused(f"resource {resource['id']} is down (#{issue})") from None
         _write_result(job_dir, verdict, usd, compute_min, reason, outputs)
     if verdict == DONE and outputs:
         _manifest(p, gh, pull["head_ref"], digest, outputs)
