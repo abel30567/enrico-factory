@@ -58,8 +58,9 @@ wave that first needs the resource (`docs/system-brief.md`, section 17).
 ### Story room: other people's videos
 
 Added 2026-11-12 (owner request: trend research and external video ingestion). The evidence is in
-`docs/research/07-external-trends-and-ingestion.md`. These four are not in `kit/resources.json` yet:
-the item that builds each tool adds its row.
+`docs/research/07-external-trends-and-ingestion.md`. The orchestrator adds each row to
+`kit/resources.json` on `main` before the item that builds its tool is launched: `external.youtube` is in (2026-11-13),
+the other three are not yet.
 
 | Id | What | Kind | State | Wave | Note |
 |---|---|---|---|---|---|

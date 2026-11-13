@@ -191,7 +191,12 @@
       "rooms": ["production"],
       "wave": 5,
       "setup": "owner",
-      "checks": [{"kind": "secret", "name": "gen.model3d"}]
+      "checks": [
+        {"kind": "secret", "name": "gen.model3d"},
+        {"kind": "setting", "name": "MEDIA_PUBLIC_BASE"},
+        {"kind": "setting", "name": "ASSET_STORE"},
+        {"kind": "secret", "name": "store.assets"}
+      ]
     },
     {
       "id": "gen.rig",
@@ -202,7 +207,12 @@
       "rooms": ["production"],
       "wave": 5,
       "setup": "owner",
-      "checks": [{"kind": "secret", "name": "gen.rig"}]
+      "checks": [
+        {"kind": "setting", "name": "RIG_VENDOR", "one_of": ["meshy"]},
+        {"kind": "secret", "name": "gen.rig"},
+        {"kind": "setting", "name": "ASSET_STORE"},
+        {"kind": "secret", "name": "store.assets"}
+      ]
     },
     {
       "id": "gen.motion",
@@ -296,7 +306,11 @@
       "wave": 5,
       "setup": "owner",
       "renew": "a program refreshes the 60-day token on a schedule; if it lapses the owner logs in again",
-      "checks": [{"kind": "secret", "name": "platform.instagram"}]
+      "checks": [
+        {"kind": "secret", "name": "platform.instagram"},
+        {"kind": "setting", "name": "INSTAGRAM_TEST_ACCOUNT"},
+        {"kind": "setting", "name": "MEDIA_PUBLIC_BASE"}
+      ]
     },
     {
       "id": "platform.tiktok",
@@ -324,6 +338,18 @@
       "setup": "owner",
       "optional": true,
       "checks": [{"kind": "secret", "name": "platform.tiktok.insights"}]
+    },
+    {
+      "id": "external.youtube",
+      "title": "YouTube: other people's public videos by topic, read only",
+      "class": "platform",
+      "auth": "grant",
+      "holder": "run",
+      "rooms": ["story"],
+      "wave": 6,
+      "setup": "owner",
+      "renew": "an API key needs none; with the OAuth grant, a program refreshes the access token",
+      "checks": [{"kind": "secret", "name": "external.youtube"}]
     },
     {
       "id": "local.ocr",
