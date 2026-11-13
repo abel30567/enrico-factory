@@ -519,7 +519,7 @@ class NoValues(Production):
     def test_no_value_reaches_stdout_or_stderr(self):
         kit = self.tmp / "copy" / "kit"
         (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/cmd_doctor.py"):
+        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
             shutil.copy(ROOT / "kit" / name, kit / name)
         register = fixture_register()
         output = "'-'.join(['zq', 'command', 'output', '6639'])"
@@ -563,7 +563,7 @@ class NoValues(Production):
     def test_no_value_from_accounts_connect_or_directory(self):
         kit = self.tmp / "copy" / "kit"
         (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/cmd_doctor.py"):
+        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
             shutil.copy(ROOT / "kit" / name, kit / name)
         register = fixture_register()
         register["check_kinds"].update(NEW_KINDS)
@@ -1080,7 +1080,7 @@ class NamesInNoValues(Production):
     def test_no_value_reaches_stdout_or_stderr(self):
         kit = self.tmp / "copy" / "kit"
         (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/cmd_doctor.py"):
+        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
             shutil.copy(ROOT / "kit" / name, kit / name)
         register = fixture_register()
         output = "'-'.join(['zq', 'login', 'output', '2295'])"

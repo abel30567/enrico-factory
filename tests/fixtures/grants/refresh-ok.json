@@ -1,0 +1,14 @@
+{
+ "body": {
+  "access_token": "act.seeded-new",
+  "expires_in": 86400,
+  "open_id": "invented-open-id",
+  "refresh_expires_in": 31536000,
+  "refresh_token": "rft.seeded-new",
+  "scope": "video.upload",
+  "token_type": "Bearer"
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/docs/en/oauth-refresh-a-user-access-token",
+ "status": 200
+}

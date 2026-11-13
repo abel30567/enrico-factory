@@ -2,7 +2,9 @@
 
 Prints a name and a state per resource, never a value. A resource held by the knowledge gateway is
 skipped, with the reason `GATEWAY=off` and without running its checks, when the setting GATEWAY is
-`off`. Exit 0 when nothing is missing, 1 when something is, 2 when the register is invalid.
+`off`. A grant whose key file shows it lapses within 14 days gets the reason `secret <id>: lapses within
+14 days`; one that has lapsed is missing, with `secret <id>: lapsed`. Exit 0 when nothing is missing, 1 when
+something is, 2 when the register is invalid.
 """
 
 import argparse
@@ -13,7 +15,7 @@ import sys
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import resources  # noqa: E402
+from kit.lib import grants, resources  # noqa: E402
 
 REGISTER = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources.json")
 STATES = ("ok", "missing", "absent", "skipped")
@@ -46,6 +48,11 @@ def main(argv):
         needed = _rooms(values["ROOMS"])
     else:
         needed = set(ALL_ROOMS)
+    try:
+        now = grants.now()
+    except ValueError as error:
+        print(f"doctor: {error}", file=sys.stderr)
+        return 2
 
     results = []
     for resource in sorted(register["resources"], key=lambda r: r["id"]):
@@ -57,6 +64,14 @@ def main(argv):
                 passed, reasons = resources.check(resource, values, register, args.root)
                 if passed:
                     state = "ok"
+                    if resource["id"] in (grants.TIKTOK, grants.INSTAGRAM):
+                        secrets_dir = resources.expand(values[register["secrets_dir_setting"]])
+                        path = os.path.join(secrets_dir, resource["id"])
+                        lapse = grants.lapse(resource["id"], path, now)
+                        if lapse is not None:
+                            reasons = [*reasons, f"secret {resource['id']}: {lapse}"]
+                        if lapse == "lapsed":
+                            state = "missing"
                 else:
                     state = "absent" if resource.get("optional") else "missing"
         else:
