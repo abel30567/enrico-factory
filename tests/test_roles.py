@@ -414,7 +414,7 @@ class ShippedKitTest(unittest.TestCase):
                 self.assertTrue(3 <= len(sentences) <= 6, (name, len(sentences)))
 
     def test_pipeline_has_the_story_stages(self):
-        entries = roles.load_pipeline(KIT / "pipeline.json")
+        entries = [e for e in roles.load_pipeline(KIT / "pipeline.json") if e["room"] == "story"]
         self.assertEqual([(e["room"], e["stage"], e["lint"]) for e in entries],
                          [("story", stage, lint) for stage, lint in BRIEF_STAGES])
         by_stage = {e["stage"]: e for e in entries}

@@ -25,11 +25,10 @@ from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
 from kit.lib.prompt import PromptError
 
-REFUSED_KINDS = {
-    "analyst": "analyst launches are not built in wave 2",
-}
 # The kinds launched on a branch: a maker's own, or the pull request's for an operator.
 BRANCHED = ("maker", "operator")
+# The one actor an analyst posts as (brief section 8, "Markers").
+ANALYST = "ANALYST"
 
 
 class LaunchError(Exception):
@@ -185,6 +184,8 @@ def _operator_task(root, role, ticket, pull, found):
 def _default_task(p, state, kind, ticket, pull, judged, blocked=None):
     if kind == "orchestrator":
         return _orchestrator_task(p, ticket, pull, judged, blocked)
+    if kind == "analyst":
+        return f"Report the symptoms ticket #{ticket['number']} asks for, for unit {ticket['unit']}. Write no file."
     if kind == "maker" and pull is None:
         parts = [f"Do the stage {ticket['stage']} for unit {ticket['unit']}."]
         ruling = _ticket_ruling(p, state, ticket)
@@ -312,18 +313,23 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     if role not in p.roles:
         raise LaunchError(f"no role {role}")
     kind = p.kinds[role]
-    if kind in REFUSED_KINDS:
-        raise LaunchError(REFUSED_KINDS[kind])
+    if kind == "analyst" and p.actors[role] != ANALYST:
+        raise LaunchError(f"{role} posts as {p.actors[role]}; an analyst posts as {ANALYST}")
     # Check 3
     ticket, pull = _target(state, number)
+    if kind == "analyst" and pull is not None:
+        raise LaunchError(f"an analyst is launched on a ticket; #{number} is a pull request")
     t = ticket["number"]
     _check_open(state, ticket, pull)
-    # Check 4: an orchestrator is its room's; the other kinds are maker, checker and judge, each the
-    # stage key it may fill.
+    # Check 4: an orchestrator is its room's; an analyst is a role of the room or of the studio; the other
+    # kinds are maker, checker and judge, each the stage key it may fill.
     entry = production.stage(p, ticket["room"], ticket["stage"])
     if kind == "orchestrator":
         if role != production.orchestrator(p, ticket["room"]):
             raise LaunchError(f"{role} is not the orchestrator of room {ticket['room']}")
+    elif kind == "analyst":
+        if p.roles[role]["meta"]["room"] not in (ticket["room"], "studio"):
+            raise LaunchError(f"{role} is not a role of room {ticket['room']}")
     elif role not in production.stage_roles(entry, "maker" if kind == "operator" else kind):
         raise LaunchError(f"stage {ticket['stage']} does not name {role}")
     # Check 5
@@ -351,9 +357,9 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         if not due:
             raise LaunchError(f"no judgment is due on #{number}")
     # Check 6
-    elif pull is None and kind != "maker":
+    elif pull is None and kind not in ("maker", "analyst"):
         raise LaunchError("give the pull request number")
-    elif pull is None and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
+    elif pull is None and kind == "maker" and steps.next_step(p, state, ticket, root, now)["state"] != "ready":
         raise LaunchError(f"ticket #{t} has no free pitch; give the pull request number")
     # An operator writes the jobs of the requests that have none; once every request has one, it reports
     # on them, and then every job needs a counting GATE PASS and a run.
@@ -375,6 +381,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         raise LaunchError("the knowledge gateway is not usable: " + "; ".join(reasons))
     # Check 8
     if kind != "orchestrator" and pull is not None and _running(p, pull["comments"], role):
+        raise LaunchError(f"{role} is already running on #{number}")
+    if kind == "analyst" and _running(p, state.ticket_comments.get(t, []), role):
         raise LaunchError(f"{role} is already running on #{number}")
     if pair_dir is not None:
         if kind != "judge":
@@ -431,7 +439,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     }
     if kind in BRANCHED:
         values["BRANCH"] = branch
-    elif kind != "orchestrator":
+    elif kind not in ("orchestrator", "analyst"):
         values["PR"] = str(number)
     try:
         text = prompt.render(p.roles[role]["body"], values)
@@ -501,7 +509,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             if kind in BRANCHED:
                 gitstate.add_worktree(root, workdir, branch if pull is not None else base, branch=branch)
             else:
-                gitstate.add_worktree(root, workdir, head)
+                gitstate.add_worktree(root, workdir, head or base_sha)
         except GitError as error:
             raise LaunchError(f"worktree: {error}") from None
         created = workdir

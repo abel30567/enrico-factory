@@ -3,10 +3,11 @@
 Pure: nothing here writes to GitHub or git, nor posts anything. It reads the state ``kit.lib.tickets``
 loaded, git through ``kit.lib.gitstate`` and the blinding key through ``kit.lib.blind``.
 
-``evaluate`` always returns thirteen rules, in order: the ten of section 9, then (rule 11) that a released
+``evaluate`` always returns fourteen rules, in order: the ten of section 9, then (rule 11) that a released
 episode's files are never changed, (rule 12, ``bible-version``) that every edit list the pull request
-changes names the newest amendment of its head, and (rule 13, ``keep``) that a lab maker's pull carries the
-change of a ``KEEP`` row of ``lab/results.tsv`` on the base. A reason is one line of fixed words, ids and
+changes names the newest amendment of its head, (rule 13, ``keep``) that a lab maker's pull carries the
+change of a ``KEEP`` row of ``lab/results.tsv`` on the base, and (rule 14, ``pivot``) that a pivot ticket
+(section 7) has one class label, its class's approval and test, room in its season limit and no cooldown. A reason is one line of fixed words, ids and
 paths; it never quotes a comment's prose.
 """
 
@@ -14,12 +15,13 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta
 from typing import NamedTuple
 
 from kit.lib import blind, frontmatter, gitstate, lab, ledger, markers, production, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
-         "base", "released", "bible-version", "keep")
+         "base", "released", "bible-version", "keep", "pivot")
 CANON_REVIEWER = "canon-reviewer"
 CHARTER = "bible/charter.md"
 AMENDMENT_CLASSES = ("charter", "arc", "canon")
@@ -29,6 +31,11 @@ VOTE_MIN = 5
 RELEASE = "distribution/{}/release.json"
 LAB_ROOM = "lab"
 AMENDMENTS = "bible/amendments"
+PIVOT = "pivot"
+PIVOT_CLASSES = ("P0", "P1", "P2", "P3")
+PIVOT_LIMITS = {"P2": 3, "P3": 1}
+PIVOT_VOTED = ("P2", "P3")
+COOLDOWN_DAYS = 14
 
 _AMENDMENT = re.compile(r"bible/amendments/A-\d+\.json")
 _CHECKS = re.compile(r"Checks required by stage (\S+): (.*)")
@@ -404,8 +411,120 @@ def _keep(pull, root):
     return f"PR #{pull['number']} differs from KEEP {row['commit']} of loop {row['loop']}: {', '.join(differs)}"
 
 
+def _pivot_labels(ticket):
+    """``(is a pivot, the class or None, the label problem or "")`` of ruling 3."""
+    labels = ticket["labels"]
+    plain = PIVOT in labels
+    classes = sorted(label for label in labels if label.startswith(PIVOT + ":"))
+    if not plain and not classes:
+        return False, None, ""
+    n = ticket["number"]
+    if not plain:
+        return True, None, f"ticket #{n} has the label {classes[0]} and not the label {PIVOT}"
+    if not classes:
+        return True, None, f"ticket #{n} has the label {PIVOT} and no class label {PIVOT}:P0 to {PIVOT}:P3"
+    if len(classes) > 1:
+        return True, None, f"ticket #{n} has {len(classes)} class labels: {', '.join(classes)}"
+    kind = classes[0][len(PIVOT) + 1:]
+    if kind not in PIVOT_CLASSES:
+        return True, None, f"ticket #{n}: {classes[0]} is not a class {PIVOT}:P0 to {PIVOT}:P3"
+    return True, kind, ""
+
+
+def pivot_class(ticket):
+    """``P0`` to ``P3`` when the ticket is a pivot whose labels are sound, else None."""
+    return _pivot_labels(ticket)[1]
+
+
+def _panel_losses(p, entry, pull):
+    """``(created_at, pull number)`` for each head whose full blind panel did not prefer the new version."""
+    judges = production.stage_roles(entry, "judge")
+    if not judges:
+        return []
+    latest = {}
+    for c in _ordered(pull["comments"]):
+        m = markers.parse(c["body"])
+        found = markers.reviewed(c["body"])
+        if m and m.verb in blind.PREFERENCES and m.actor.lower() in judges and found:
+            latest.setdefault(found[0], {})[m.actor.lower()] = (c, m.verb)
+    losses = []
+    for sha, verdicts in sorted(latest.items()):
+        if set(verdicts) != set(judges) or not blind.has_key(p, pull["number"], sha):
+            continue
+        new = sum(1 for _, verb in verdicts.values() if blind.resolve(p, pull["number"], sha, verb) == "new")
+        if new * 2 <= len(judges):
+            losses.append((max(c["created_at"] for c, _ in verdicts.values()), pull["number"]))
+    return losses
+
+
+def pivot_losses(p, state, ticket):
+    """``(created_at, pull number)``, sorted, for each lost ``[BRAINTRUST] VOTE`` and lost blind panel on any
+    pull of the ticket, open, closed or merged."""
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    losses = []
+    for pull in tickets.pulls_of(state, ticket["number"]):
+        for c in pull["comments"]:
+            m = markers.parse(c["body"])
+            if m and m.actor == VOTE_ACTOR and m.verb == "VOTE" and int(m.args[0]) < VOTE_MIN:
+                losses.append((c["created_at"], pull["number"]))
+        losses += _panel_losses(p, entry, pull)
+    return sorted(losses)
+
+
+def _pivot_approval(p, state, ticket, entry, pull, kind):
+    if kind == "P1":
+        why = f"pivot {kind} needs a blind win"
+        if not entry["blind"]:
+            return f"{why}: stage {entry['stage']} is not blind"
+        if not production.stage_roles(entry, "judge"):
+            return f"{why}: stage {entry['stage']} names no judge"
+        if not tickets.is_locked(state, ticket["room"], ticket["stage"], ticket["unit"]):
+            return f"{why}: {ticket['room']}/{ticket['stage']} {ticket['unit']} has no locked version"
+    elif kind in PIVOT_VOTED:
+        enough, reason = _voted(entry, pull)
+        if not enough:
+            return (f"pivot {kind} needs a [{VOTE_ACTOR}] VOTE with {VOTE_MIN} or more for, "
+                    "later than the maker's last READY or ADDRESSED")
+        if reason:
+            return f"pivot {kind}: the [{VOTE_ACTOR}] VOTE does not count: {reason}"
+    return ""
+
+
+def _pivot_limit(state, ticket, kind):
+    limit = PIVOT_LIMITS.get(kind)
+    if limit is None:
+        return ""
+    locked = [n for n, t in sorted(state.tickets.items())
+              if n != ticket["number"] and pivot_class(t) == kind and tickets.locked_pull(state, n) is not None]
+    if len(locked) >= limit:
+        return f"pivot {kind}: {limit} a season, already locked: {', '.join(f'#{n}' for n in locked)}"
+    return ""
+
+
+def _pivot_cooldown(p, state, ticket, kind):
+    losses = pivot_losses(p, state, ticket)
+    if not losses:
+        return ""
+    created_at, number = losses[-1]
+    until = (datetime.strptime(created_at, production.TIME_FORMAT)
+             + timedelta(days=COOLDOWN_DAYS)).strftime(production.TIME_FORMAT)
+    if production.now() < until:
+        return f"pivot {kind} lost on PR #{number} at {created_at}; cooldown until {until}"
+    return ""
+
+
+def _pivot(p, state, ticket, entry, pull):
+    """Rule 14: a pivot ticket's labels, its approval and test, its season limit and its cooldown."""
+    is_pivot, kind, problem = _pivot_labels(ticket)
+    if not is_pivot or problem:
+        return problem
+    reasons = [_pivot_approval(p, state, ticket, entry, pull, kind), _pivot_limit(state, ticket, kind),
+               _pivot_cooldown(p, state, ticket, kind)]
+    return "; ".join(reason for reason in reasons if reason)
+
+
 def evaluate(p, state, ticket, pull, root) -> list[Rule]:
-    """The thirteen rules for locking ``pull`` on ``ticket``, every one evaluated."""
+    """The fourteen rules for locking ``pull`` on ``ticket``, every one evaluated."""
     entry = production.stage(p, ticket["room"], ticket["stage"])
     changed = pull["git"]["changed"]
     maker = maker_role(entry, pull)
@@ -426,6 +545,7 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _released(pull, root),
         _bible_version(pull, root),
         _keep(pull, root) if in_lab else "",
+        _pivot(p, state, ticket, entry, pull),
     ]
     return [Rule(number, name, not reason, reason)
             for number, (name, reason) in enumerate(zip(NAMES, reasons), 1)]

@@ -14,6 +14,7 @@ tools: Read, Grep
 knowledge: skills
 secrets:
 gated: no
+actor: ANALYST
 ---
 You are the reader for {{REPO}}.
 Ticket: {{TICKET}}

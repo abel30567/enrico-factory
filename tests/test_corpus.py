@@ -79,6 +79,8 @@ def shots_check(root):
 class CorpusTest(unittest.TestCase):
     def setUp(self):
         self.assertIsNotNone(cmd_corpus, "kit/lib/cmd_corpus.py is missing")
+        self.story = self.tempdir() / "pipeline.json"
+        write(self.story, json.dumps([e for e in json.loads(PIPELINE.read_text(encoding="utf-8")) if e["room"] == "story"]))
 
     def tempdir(self):
         tmp = tempfile.TemporaryDirectory()
@@ -97,9 +99,9 @@ class CorpusTest(unittest.TestCase):
         return code, out.getvalue(), err.getvalue()
 
     def test_fixture_corpus_passes_by_both_entry_points(self):
-        self.assertEqual(self.corpus("--corpus", FIX, "--pipeline", PIPELINE), (0, ACCEPTANCE_2, ""))
-        by_factory = python(FACTORY, "corpus", "--corpus", FIX)
-        by_script = python(KIT / "lib" / "cmd_corpus.py", "--corpus", FIX)
+        self.assertEqual(self.corpus("--corpus", FIX, "--pipeline", self.story), (0, ACCEPTANCE_2, ""))
+        by_factory = python(FACTORY, "corpus", "--corpus", FIX, "--pipeline", self.story)
+        by_script = python(KIT / "lib" / "cmd_corpus.py", "--corpus", FIX, "--pipeline", self.story)
         self.assertEqual((by_factory.returncode, by_factory.stdout, by_factory.stderr), (0, ACCEPTANCE_2, ""))
         self.assertEqual((by_script.returncode, by_script.stdout, by_script.stderr), (0, ACCEPTANCE_2, ""))
 
@@ -112,7 +114,7 @@ class CorpusTest(unittest.TestCase):
         write(reed / "case.json", '{"kind": "seeded", "catches": ["x"]}')
         shutil.copytree(c / "media/01-quay-manifest/tree", c / "media/04-bell-manifest/tree")
         write(c / "media/04-bell-manifest/case.json", '{"kind": "clean"}')
-        entries = json.loads(PIPELINE.read_text(encoding="utf-8"))
+        entries = json.loads(self.story.read_text(encoding="utf-8"))
         entries.append({"room": "production", "stage": "intake", "lint": ["intake", "media"]})
         pipeline = self.tempdir() / "pipeline.json"
         write(pipeline, json.dumps(entries))
@@ -149,7 +151,7 @@ class CorpusTest(unittest.TestCase):
         c = self.copy()
         (c / ".git" / "objects").mkdir(parents=True)
         (c / "media" / ".cache").mkdir()
-        self.assertEqual(self.corpus("--corpus", c, "--pipeline", PIPELINE), (0, ACCEPTANCE_2, ""))
+        self.assertEqual(self.corpus("--corpus", c, "--pipeline", self.story), (0, ACCEPTANCE_2, ""))
 
     def test_production_check_is_measured(self):
         checks = dict(lint.discover())
@@ -182,7 +184,7 @@ class CorpusTest(unittest.TestCase):
         write(still / "case.json", '{"kind": "seeded", "catches": ["^media/still.png:1 media-bytes "]}')
         write(work / ".gitignore", "still.png\n")
         before = tree_state(work)
-        code, out, err = self.corpus("--corpus", c, "--pipeline", PIPELINE)
+        code, out, err = self.corpus("--corpus", c, "--pipeline", self.story)
         self.assertEqual((code, err), (0, ""))
         self.assertIn("media PASS caught 3/3 clean 1/1\n", out)
         in_place = python(FACTORY, "lint", "--root", still / "tree", "--only", "media")
@@ -190,10 +192,10 @@ class CorpusTest(unittest.TestCase):
         self.assertEqual(tree_state(work), before)
 
     def test_shipped_corpus(self):
-        self.assertEqual(self.corpus(), (0, "corpus PASS caught 0/0 share - clean 0/0\n", ""))
-        self.assertEqual(sorted(p.relative_to(KIT / "evals" / "golden").as_posix()
-                                for p in (KIT / "evals" / "golden").rglob("*") if p.is_file()),
-                         ["corpus/README.md"])
+        code, out, err = self.corpus()
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out.splitlines()[-1], r"^corpus PASS caught (\d+)/\1 share \S+ clean (\d+)/\2$")
+        self.assertEqual(sorted(p.name for p in (KIT / "evals" / "golden").iterdir()), ["corpus"])
         readme = (SHIPPED / "README.md").read_text(encoding="utf-8")
         self.assertLessEqual(len(readme.splitlines()), 40)
         for sentence in (FREEZE, FROM_LEVEL):

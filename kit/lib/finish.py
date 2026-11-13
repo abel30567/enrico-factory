@@ -189,6 +189,8 @@ def post(p, gh, root, run, outcome):
     if meta["kind"] in launch.BRANCHED:
         missing, dropped, head, number = _finish_maker(p, gh, root, run, result, missing)
         manifest = gitstate.manifest(root, meta["base_ref"], meta["branch"])
+    elif meta["kind"] == "analyst":
+        dropped, head, number, manifest = None, meta["base_sha"], meta["ticket"], "none"
     elif meta["kind"] == "orchestrator" and meta["pull"] is None:
         # A judgment on a ticket reads no single head; nothing of the orchestrator's is committed.
         dropped, head, number, manifest = None, "none", meta["number"], "none"

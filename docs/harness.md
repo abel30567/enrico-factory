@@ -96,7 +96,8 @@ ticket). It must be the orchestrator of the ticket's room. Steps 3 and 8 differ 
   report and counting verdicts for a selection.
 - The launcher posts `RULING` on the pull request or `SELECTED #<pr>` on the ticket, and commits,
   pushes and opens nothing. A `SELECTED` that names a pull request outside the launch is `BLOCKED`.
-- The newest `RULING` is quoted in the next maker's task and in the next checker's prompt.
+- The newest `RULING` is quoted in the next maker's task and in the next checker's prompt. A judge and an
+  operator do not get it.
 
 A BLOCKED maker, a lint `ERROR` and a pivot are not launched (#242). Analysts are refused.
 

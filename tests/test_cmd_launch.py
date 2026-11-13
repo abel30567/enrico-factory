@@ -22,6 +22,7 @@ from kit.lib import gitstate, github, launch  # noqa: E402
 from test_finish import CRITIC, WEIGHER, WRITER, World, approved, last_line, notes, ready, result_step  # noqa: E402
 
 FACTORY = ROOT / "kit" / "factory"
+LISTENER = "You are the listener"
 
 
 def prefers(choice="A"):
@@ -174,6 +175,57 @@ class Refusals(unittest.TestCase):
                               capture_output=True, text=True, timeout=60)
         self.assertEqual(done.returncode, 2)
         self.assertIn("give a role and a ticket or pull request number", done.stderr)
+
+
+def symptoms(marker="SYMPTOMS"):
+    return result_step(LISTENER, {"marker": marker, "summary": "Viewers leave at the dam.", "notes": [
+        {"id": "I1", "severity": "Issue", "text": "B2: half the viewers leave in its first second.",
+         "evidence": "distribution/ep02/snapshot.json row 4"}]},
+        {"scratch.txt": "the listener's own scratch\n"})
+
+
+class Analyst(unittest.TestCase):
+    """Behaviour 4 and 5: an analyst's marker goes on the ticket, at the base, and its worktree goes."""
+
+    def setUp(self):
+        self.w = World(self)
+        self.branches = self.w.git("branch", "--list")
+
+    def assert_cleaned_up(self):
+        self.assertFalse((self.w.state / "worktrees" / "listener-3-1").exists())
+        self.assertNotIn("listener-3-1", self.w.git("worktree", "list"))
+        self.assertEqual(self.w.git("branch", "--list"), self.branches)
+
+    def test_symptoms(self):
+        w = self.w
+        w.steps(symptoms())
+        code, out, err = w.launch("listener", "3")
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual(out, "launched listener 3-1\nposted [ANALYST] SYMPTOMS for launch 3-1\n")
+        posted = w.by(3, "listener")
+        self.assertEqual(len(posted), 1)
+        self.assertEqual(posted[0]["body"], "\n".join([
+            "[ANALYST] SYMPTOMS", "", "Viewers leave at the dam.", "",
+            "I1 (Issue): B2: half the viewers leave in its first second. "
+            "Evidence: distribution/ep02/snapshot.json row 4",
+            "Launch: 3-1", f"head {w.head('trunk')} manifest none"]) + "\n")
+        self.assertEqual(w.posted("listener"), posted)
+        self.assert_cleaned_up()
+
+    def test_a_marker_an_analyst_may_not_post(self):
+        w = self.w
+        w.steps(symptoms("NOTES"))
+        code, out, err = w.launch("listener", "3")
+        self.assertEqual(code, 3, out + err)
+        self.assertEqual(out, "launched listener 3-1\nposted [ANALYST] BLOCKED for launch 3-1\n")
+        posted = w.by(3, "listener")
+        self.assertEqual([markers.parse(c["body"]).verb for c in posted], ["BLOCKED"])
+        lines = posted[0]["body"].split("\n")
+        self.assertIn("Missing: a valid result (result.marker: a analyst posting as ANALYST may not post 'NOTES')",
+                      lines)
+        self.assertIn("Resume from: ticket #3", lines)
+        self.assertEqual(w.posted("listener"), posted)
+        self.assert_cleaned_up()
 
 
 class MarkersLint(unittest.TestCase):

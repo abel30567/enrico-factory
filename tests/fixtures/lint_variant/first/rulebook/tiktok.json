@@ -1,0 +1,20 @@
+{"platform": "tiktok",
+ "kinds": {
+  "video": {
+   "container": {"value": null, "source": null, "read_at": null},
+   "codec": {"value": null, "source": null, "read_at": null},
+   "aspects": {"value": null, "source": null, "read_at": null},
+   "resolution": {"value": null, "source": null, "read_at": null},
+   "min_fps": {"value": null, "source": null, "read_at": null},
+   "max_fps": {"value": null, "source": null, "read_at": null},
+   "min_seconds": {"value": null, "source": null, "read_at": null},
+   "max_seconds": {"value": null, "source": null, "read_at": null},
+   "max_bytes": {"value": null, "source": null, "read_at": null},
+   "caption_zone": {"value": null, "source": null, "read_at": null},
+   "mark_zone": {"value": null, "source": null, "read_at": null},
+   "title_max_chars": {"value": null, "source": null, "read_at": null},
+   "caption_max_chars": {"value": null, "source": null, "read_at": null}
+  }
+ },
+ "disclosure": {"field": "post_info.is_aigc", "value": true, "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post", "read_at": "2026-11-11"},
+ "policy": []}

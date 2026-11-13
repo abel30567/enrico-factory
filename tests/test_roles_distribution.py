@@ -254,10 +254,11 @@ class ShippedTest(unittest.TestCase):
         lines = listing.stdout.splitlines()
         self.assertIn("distribution:", lines)
         start = lines.index("distribution:")
-        self.assertEqual(lines[start:start + 5], [
-            "distribution:", "  channel-desk (orchestrator)", "  channel-instagram (operator)",
-            "  channel-tiktok (operator)", "  channel-youtube (operator)"])
-        self.assertTrue(start + 5 == len(lines) or not lines[start + 5].startswith("  "))
+        block = lines[start + 1:]
+        block = block[:next((i for i, line in enumerate(block) if not line.startswith("  ")), len(block))]
+        channel = ["  channel-desk (orchestrator)", "  channel-instagram (operator)",
+                   "  channel-tiktok (operator)", "  channel-youtube (operator)"]
+        self.assertEqual([line for line in block if line in channel], channel)
 
     def test_operators_may_post_and_parse_their_channel_verbs(self):
         loaded = roles.load_roles(KIT / "roles")
