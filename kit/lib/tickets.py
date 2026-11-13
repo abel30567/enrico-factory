@@ -34,6 +34,7 @@ class State:
     ticket_comments: dict[int, list] = field(default_factory=dict)
     frozen: bool = False
     errors: list[str] = field(default_factory=list)
+    others: list[dict] = field(default_factory=list)
 
 
 def parse(issue: dict) -> dict | None:
@@ -87,6 +88,7 @@ def load(p, gh, root) -> State:
             state.errors.append(str(error))
             continue
         if ticket is None:
+            state.others.append(issue)
             continue
         entry = production.stage(p, ticket["room"], ticket["stage"])
         if entry is None:
