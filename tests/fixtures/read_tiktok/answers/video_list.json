@@ -1,0 +1,49 @@
+{
+ "source": "https://business-api.tiktok.com/portal/docs?id=1825119056527362",
+ "read_on": "2026-11-13",
+ "status": 200,
+ "body": {
+  "code": 0,
+  "message": "OK",
+  "request_id": "20261113093000-invented-videos",
+  "data": {
+   "list": [
+    {
+     "hashtag_id": "7001",
+     "top_video_list": [
+      {
+       "video_id": "7311000000000000001",
+       "share_url": "https://www.tiktok.com/video/7311000000000000001",
+       "embed_url": "https://www.tiktok.com/embed/v2/7311000000000000001"
+      },
+      {
+       "video_id": "7311000000000000002",
+       "share_url": "https://www.tiktok.com/video/7311000000000000002",
+       "embed_url": "https://www.tiktok.com/embed/v2/7311000000000000002"
+      },
+      {
+       "video_id": "7311000000000000003",
+       "share_url": "https://www.tiktok.com/video/7311000000000000003",
+       "embed_url": "https://www.tiktok.com/embed/v2/7311000000000000003"
+      }
+     ]
+    },
+    {
+     "hashtag_id": "7002",
+     "top_video_list": [
+      {
+       "video_id": "7311000000000000004",
+       "share_url": "https://www.tiktok.com/video/7311000000000000004",
+       "embed_url": "https://www.tiktok.com/embed/v2/7311000000000000004"
+      },
+      {
+       "video_id": "7311000000000000001",
+       "share_url": "https://www.tiktok.com/video/7311000000000000001",
+       "embed_url": "https://www.tiktok.com/embed/v2/7311000000000000001"
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

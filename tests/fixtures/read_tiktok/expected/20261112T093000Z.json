@@ -1,0 +1,44 @@
+{
+ "hashtags": [
+  {
+   "hashtag_id": "7001",
+   "name": "harbourtales",
+   "rank_position": 3
+  },
+  {
+   "hashtag_id": "7002",
+   "name": "lighthousekeeper",
+   "rank_position": 40
+  },
+  {
+   "hashtag_id": null,
+   "name": "fogbell",
+   "rank_position": null
+  }
+ ],
+ "platform": "tiktok",
+ "read_at": "2026-11-12T09:30:00Z",
+ "topic": "harbour-tales",
+ "videos": [
+  {
+   "id": "7311000000000000001",
+   "link": "https://www.tiktok.com/video/7311000000000000001",
+   "order": 1
+  },
+  {
+   "id": "7311000000000000004",
+   "link": "https://www.tiktok.com/video/7311000000000000004",
+   "order": 2
+  },
+  {
+   "id": "7311000000000000002",
+   "link": "https://www.tiktok.com/video/7311000000000000002",
+   "order": 3
+  },
+  {
+   "id": "7311000000000000003",
+   "link": "https://www.tiktok.com/video/7311000000000000003",
+   "order": 4
+  }
+ ]
+}
