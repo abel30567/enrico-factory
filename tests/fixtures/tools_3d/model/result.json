@@ -1,0 +1,18 @@
+{
+ "source": "https://fal.ai/models/tripo3d/tripo/v2.5/image-to-3d/api",
+ "read": "2026-11-13",
+ "status": 200,
+ "body": {
+  "task_id": "b3e0c5d1-6a2f-4f7e-8c19-5d4a2e7b0c63",
+  "model_mesh": {
+   "url": "{base}/files/model.glb",
+   "file_size": 2154636,
+   "content_type": "model/gltf-binary"
+  },
+  "rendered_image": {
+   "url": "{base}/files/preview.webp",
+   "file_size": 18532,
+   "content_type": "image/webp"
+  }
+ }
+}

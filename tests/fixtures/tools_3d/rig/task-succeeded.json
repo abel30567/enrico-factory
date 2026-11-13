@@ -1,0 +1,23 @@
+{
+ "source": "https://docs.meshy.ai/en/api/rigging-and-animation",
+ "read": "2026-11-13",
+ "status": 200,
+ "body": {
+  "id": "018b314a-a1b5-716d-c222-2f1776f7f579",
+  "type": "rig",
+  "status": "SUCCEEDED",
+  "created_at": 1747032400453,
+  "progress": 100,
+  "started_at": 1747032401314,
+  "finished_at": 1747032418417,
+  "expires_at": 1747291618417,
+  "task_error": {
+   "message": ""
+  },
+  "result": {
+   "rigged_character_fbx_url": "{base}/files/rig.fbx?Expires=1747291618",
+   "rigged_character_glb_url": "{base}/files/rig.glb?Expires=1747291618"
+  },
+  "preceding_tasks": 0
+ }
+}
