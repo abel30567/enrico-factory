@@ -89,6 +89,15 @@ def _filing(ticket: dict, pull: dict, upstreams: list, room: str, stage: str, un
             "labels": [tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]}
 
 
+def _intent_title(ticket: dict) -> str:
+    ep = tickets.episode(ticket["unit"])
+    return f"[{key('intent', ep)}] story intent packet for {ep}"
+
+
+def _notes_title(ticket: dict) -> str:
+    return f"[{key('notes', ticket['unit'])}] platform notes for {ticket['unit']}"
+
+
 def _intent_packet(p, root, ticket: dict, pull: dict) -> dict:
     ep = tickets.episode(ticket["unit"])
     path = f"episodes/{ep}/intent-packet.json"
@@ -98,8 +107,7 @@ def _intent_packet(p, root, ticket: dict, pull: dict) -> dict:
             f"(ticket #{ticket['number']}).\n\n{packet}\n\n"
             "The story room owns this packet; post and distribution read it and do not edit it.\n"
             "Filed by factory tick.\n")
-    return {"unit": ep, "title": f"[{key('intent', ep)}] story intent packet for {ep}", "body": body,
-            "labels": ["room:post", "room:distribution"]}
+    return {"unit": ep, "title": _intent_title(ticket), "body": body, "labels": ["room:post", "room:distribution"]}
 
 
 def _platform_notes(p, root, ticket: dict, pull: dict) -> dict:
@@ -109,15 +117,15 @@ def _platform_notes(p, root, ticket: dict, pull: dict) -> dict:
             "Format limits:\nCTA results:\nAudience theories:\n\n"
             "The distribution room writes these notes; the story room answers here and does not edit them.\n"
             "Filed by factory tick.\n")
-    return {"unit": unit, "title": f"[{key('notes', unit)}] platform notes for {unit}", "body": body,
-            "labels": ["room:story"]}
+    return {"unit": unit, "title": _notes_title(ticket), "body": body, "labels": ["room:story"]}
 
 
-_PACKET_MAKERS = {"intent-packet": _intent_packet, "platform-notes": _platform_notes}
+_PACKET_MAKERS = {"intent-packet": (_intent_title, _intent_packet), "platform-notes": (_notes_title, _platform_notes)}
 
 
 def _packets(p, state: tickets.State, root) -> list:
-    """The packet issues to file, by the locked ticket's number; a title already in ``state.others`` is not."""
+    """The packet issues to file, by the locked ticket's number; a title already in ``state.others`` is not,
+    and is checked before the packet's file is read."""
     titles = {issue["title"] for issue in state.others}
     found = []
     for number in sorted(state.tickets):
@@ -126,9 +134,10 @@ def _packets(p, state: tickets.State, root) -> list:
         pull = tickets.locked_pull(state, number) if kind else None
         if pull is None:
             continue
-        made = _PACKET_MAKERS[kind](p, root, ticket, pull)
-        if made["title"] in titles:
+        title, make = _PACKET_MAKERS[kind]
+        if title(ticket) in titles:
             continue
+        made = make(p, root, ticket, pull)
         titles.add(made["title"])
         found.append({"from": number, "pull": pull["number"], "room": ticket["room"], "stage": kind, **made})
     return found

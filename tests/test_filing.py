@@ -522,6 +522,18 @@ class PacketsOnce(PacketCase):
                 found.others = [other(40, "[INTENT-EP02] story intent packet for ep02", state)]
                 self.assertEqual(self.kinds(found), [(11, 12, "story", "intent-packet", "ep01")])
 
+    def test_a_packet_already_filed_reads_no_file(self):
+        state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep02")], [pull(12, 11), pull(32, 31)])
+        state.others = [other(40, INTENT_TITLE, "closed"),
+                        other(41, "[INTENT-EP02] story intent packet for ep02", "open")]
+        with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
+            self.assertEqual(self.due(state), [])
+        show.assert_not_called()
+        state.others = state.others[:1]
+        with mock.patch.object(gitstate, "show", wraps=gitstate.show) as show:
+            self.assertEqual(self.kinds(state), [(31, 32, "story", "intent-packet", "ep02")])
+        self.assertEqual(show.call_count, 1)
+
     def test_two_locked_reels_of_one_episode_file_one_packet(self):
         state = make_state([ticket(11, "reel", "ep01"), ticket(31, "reel", "ep01")], [pull(12, 11), pull(32, 31)])
         self.assertEqual(self.kinds(state), [(11, 12, "story", "intent-packet", "ep01")])

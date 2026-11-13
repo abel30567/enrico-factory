@@ -56,6 +56,8 @@ def recorded():
                     ["tracked", "room:story", "stage:reel", f"unit:ep{n:04d}"], "closed") for n in range(1, 1001)]
     issues += [issue(n, f"[K-{n}] research for topic{n}",
                      ["tracked", "room:story", "stage:research", f"unit:topic{n}"], "open") for n in (2001, 2002)]
+    issues += [issue(3000 + n, f"[INTENT-EP{n:04d}] story intent packet for ep{n:04d}",
+                     ["room:post", "room:distribution"], "closed") for n in range(1, 1001)]
     pulls = [pull(1000 + n, n, f"feat/reel-{n}", "closed", MERGED) for n in range(1, 1001)]
     pulls += [pull(2003, 2001, "feat/2001", "open"), pull(2004, 2002, "feat/topic2002", "closed"),
               pull(2005, 1000, "feat/1000", "open")]
