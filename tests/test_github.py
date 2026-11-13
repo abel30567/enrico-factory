@@ -281,9 +281,9 @@ class RecordedMergeTest(TmpCase):
         sha = self.r.merge(self.repo, 3, self.tip)
         self.assertEqual(sha, self.git("rev-parse", "HEAD"))
         self.assertEqual(self.git("rev-parse", "HEAD^1", "HEAD^2").split(), [self.base, self.tip])
-        self.assertEqual(self.git("log", "-1", "--format=%s|%an|%ae|%aI|%cI"),
+        self.assertEqual(self.git("log", "-1", "--format=%s|%an|%ae|%at|%ct"),
                          "Merge pull request #3|factory|factory@factory.invalid|"
-                         "2026-11-11T12:00:00Z|2026-11-11T12:00:00Z".replace("Z", "+00:00"))
+                         "1794398400|1794398400")
         pull = self.r.pull(3)
         self.assertEqual((pull["state"], pull["merged_at"]), ("merged", NOW))
         self.assertEqual(log_lines(self.d), [{"op": "merge", "number": 3, "head_sha": self.tip}])
