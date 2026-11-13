@@ -1,0 +1,10 @@
+{
+  "title": "Wick lights the last lamp in the Low Lanes",
+  "caption": "The lamps go out one street at a time. @lanternfall #Lanternfall #Wick",
+  "cta": ["Follow Lanternfall for the next street."],
+  "description": "Lanternfall is an original animated series. Made with AI-assisted tools.",
+  "aspect": "9:16",
+  "end_card": {"mark": "end-card", "seconds": 3},
+  "corner": {"mark": "corner", "box": [0.04, 0.04, 0.16, 0.1075]},
+  "caption_colors": ["#F7F1E3"]
+}
