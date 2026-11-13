@@ -13,6 +13,8 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 | `merge-gate.py` | Merges at most one PR per run, and only when every rule holds. |
 | `risk.py` | Decides whether a PR needs a blast-radius review (`risk-patterns.txt`). |
 | `heartbeat.py` | `orch status`: workers, each PR's markers and next step, disk. |
+| `tick.py` | `orch tick`: the state machine. Launches the next worker for each PR and each `status:ready` issue, runs the merge gate, syncs the board. No model. |
+| `tick.sh`, `install-tick.sh` | `orch heartbeat`: a LaunchAgent that runs `tick.py --apply` every 10 minutes. Log: `logs/tick.log`. |
 | `board.py` | Kanban derived from markers: secret gist (`gist`) or GitHub Project (`setup` / `sync`). |
 | `baseline.sh` | Runs GATES on a clean base and records `baseline.txt`. |
 | `task.sh` | Creates a tracked issue (`ISSUE-<n>` key, or your own key). |
@@ -26,7 +28,7 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 Run state lives in `~/.agent-orch/<repo>/` and is never committed:
 - `runs/`: worker JSON results and rendered prompts.
 - `logs/`: worker logs.
-- `state/`: pids and ports.
+- `state/`: pids and ports, `transitions.log` (every state change the tick saw), `attempts.json`.
 - `inputs/<KEY>/`: files you hand to workers.
 - `baseline.txt`, `launches.tsv` and `FREEZE`.
 

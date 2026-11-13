@@ -51,6 +51,10 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   must not give away, as a short phrase. `cta`: the prompts a post may end on. `tone`: the tone in a
   few words. Each is a string that is not blank; `spoilers` and `cta` may be empty lists.
 - Scratch voice and temp score are media files in `media/manifest.tsv`, referenced by id.
+- A missing one is asked for in `episodes/<ep>/reel/requests/<id>.json`: `{for, prompt, refs}`, `for`
+  what it is for, `prompt` the whole prompt text, `refs` reference images, each `media:<id>`. The
+  media wrangler turns it into a job. No tool makes voice or music yet: until the task names one,
+  write no request and cut the reel from panels, timing and the line text.
 - A beat you shorten to nothing or cut is named in `summary` with the reason: never silently.
 
 Lints this stage must pass: `structure`, `media`. Run `.factory/factory lint`

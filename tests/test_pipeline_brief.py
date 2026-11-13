@@ -1,4 +1,5 @@
 """The shipped `kit/pipeline.json` matches docs/system-brief.md sections 6 and 16."""
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 from kit.lib import roles  # noqa: E402
 
 PIPELINE = ROOT / "kit" / "pipeline.json"
+BRIEF = ROOT / "docs" / "system-brief.md"
 BRIEF_STAGES = ["research", "bible", "premise", "beats", "outline", "script", "sequences", "style",
                 "board", "reel"]
 
@@ -21,6 +23,27 @@ def bad_afters(entries):
         if after and (room, after) not in seen:
             bad.append((room, entry["stage"], after))
         seen.add((room, entry["stage"]))
+    return bad
+
+
+def story_makers(brief_text):
+    """{stage: Maker cell} for every `| story |` row of section 6, without a trailing `, <n> pitches`."""
+    section = re.search(r"(?ms)^## 6\. Stages$(.*?)^## ", brief_text).group(1)
+    cells = [[c.strip() for c in line.strip("|").split("|")]
+             for line in section.splitlines() if line.startswith("| story |")]
+    return {row[1].strip("`"): re.sub(r", \d+ pitches$", "", row[3]) for row in cells}
+
+
+def maker_mismatches(entries, brief_text):
+    """(stage, brief cell, pipeline names) for every story stage whose two makers differ."""
+    brief = story_makers(brief_text)
+    bad = []
+    for e in entries:
+        if e["room"] != "story":
+            continue
+        makers = [e["maker"]] if isinstance(e["maker"], str) else e["maker"]
+        if brief.get(e["stage"]) != ", ".join(makers):
+            bad.append((e["stage"], brief.get(e["stage"]), ", ".join(makers)))
     return bad
 
 
@@ -47,6 +70,19 @@ class ShippedPipelineTest(unittest.TestCase):
 
     def test_every_after_names_an_earlier_entry_of_the_same_room(self):
         self.assertEqual(bad_afters(self.entries), [])
+
+    def test_maker_place_equals_the_brief_maker_column(self):
+        brief = BRIEF.read_text(encoding="utf-8")
+        self.assertEqual(sorted(story_makers(brief)), sorted(BRIEF_STAGES))
+        self.assertEqual(maker_mismatches(self.entries, brief), [])
+
+    def test_a_single_maker_where_the_brief_names_the_wrangler(self):
+        brief = BRIEF.read_text(encoding="utf-8")
+        single = [{**e, "maker": e["maker"][0]} if isinstance(e["maker"], list) else e for e in self.entries]
+        self.assertEqual(maker_mismatches(single, brief), [
+            ("style", "art-director, media-wrangler", "art-director"),
+            ("board", "story-artist, media-wrangler", "story-artist"),
+            ("reel", "editorial, media-wrangler", "editorial")])
 
 
 class BadAftersTest(unittest.TestCase):

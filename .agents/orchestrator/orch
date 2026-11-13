@@ -21,6 +21,8 @@ L
   task)     exec "$D/task.sh" "$@" ;;
   launch)   exec "$D/launch.sh" "$@" ;;
   status)   py heartbeat.py ;;
+  tick)     py tick.py "$@" ;;
+  heartbeat) exec "$D/install-tick.sh" "$@" ;;
   merge)    py merge-gate.py "$@" ;;
   board)    py board.py "$@" ;;
   risk)     py risk.py "$@" ;;
@@ -51,6 +53,11 @@ one task, start to finish
   orch launch fixer PR "focus"        addresses F1..Fn, posts [BUILDER] ADDRESSED
   orch launch br PR "focus"           blast-radius review, only when `orch risk PR --reasons` is non-empty
   orch merge [--apply]                merge gate: at most ONE PR per run, only when every rule holds
+
+the mechanical heartbeat (no model)
+  orch tick [--apply]                 one pass of the state machine: launches each PR's and each status:ready
+                                      issue's next worker, runs the merge gate, syncs the board; prints NEED lines
+  orch heartbeat [--uninstall]        run `orch tick --apply` every 10 min from a LaunchAgent (macOS)
 
 watching
   orch status                         workers, every open PR's state and next step, disk

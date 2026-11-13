@@ -204,6 +204,29 @@ class BlindTest(ChainCase):
         self.assertEqual(short(self.next(has_key=self.no_key)), ("judging", "launch", "critic", 5))
 
 
+class OperatorMakerTest(ChainCase):
+    """A `maker` list with an operator after the maker: a free pitch launches the maker (#95)."""
+
+    FIXTURE, TICKET = "steps", 3
+
+    def with_makers(self, makers):
+        pipeline = [{**e, "maker": makers} if e["stage"] == "beats" else e for e in self.w.p.pipeline]
+        self.w.p = dataclasses.replace(self.w.p, pipeline=pipeline,
+                                       kinds={**self.w.p.kinds, "wrangler": "operator"})
+
+    def test_operator_is_never_the_launch_of_a_free_pitch(self):
+        self.until("open-pull")
+        self.w.set_pull(5, state="closed")
+        self.with_makers(["writer", "wrangler"])
+        self.assertEqual(short(self.next()), ("ready", "launch", "writer", None))
+
+    def test_an_operator_alone_is_launched(self):
+        self.until("open-pull")
+        self.w.set_pull(5, state="closed")
+        self.with_makers(["wrangler"])
+        self.assertEqual(short(self.next()), ("ready", "launch", "wrangler", None))
+
+
 class PitchesChainTest(ChainCase):
     FIXTURE, TICKET = "pitches", 1
 

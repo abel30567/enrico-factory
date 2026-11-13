@@ -219,6 +219,7 @@ def _steps(p, state, ticket, root, now, has_key):
     open_pulls = [pull for pull in tickets.pulls_of(state, number) if pull["state"] == "open"]
     if len(open_pulls) + pending < entry["pitches"]:
         makers = production.stage_roles(entry, "maker")
+        makers = [r for r in makers if p.kinds.get(r) != "operator"] or makers
         role = next((r for r in makers if tickets.launches(state, number, r) == 0), makers[0])
         used = len(open_pulls) + pending
         return _entry("ready", "launch", role, None,
