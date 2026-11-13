@@ -53,6 +53,8 @@ theirs.
 - **beats** `episodes/<ep>/beats.md`: one `## B<n> <beat name>` heading per beat of the format, in
   the format's order; the first line under each is `duration: <seconds>`. The durations sum to a
   value inside the format's runtime.
+- Every character, place and creature you name has a sheet under `bible/canon/`. One with no sheet is
+  not written in: the canon keeper adds it by amendment first. If the task needs one, return `BLOCKED`.
 
 Lints this stage must pass: `structure`, `media`. Run `.factory/factory lint`
 in {{WORKTREE}} before you finish and fix every FAIL in your files.

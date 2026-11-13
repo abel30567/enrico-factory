@@ -308,6 +308,10 @@ def _issue(raw: dict) -> dict:
             "created_at": raw["createdAt"]}
 
 
+def _rest_issue(raw: dict) -> dict:
+    return _issue({**raw, "body": raw["body"] or "", "createdAt": raw["created_at"]})
+
+
 def _pull(raw: dict) -> dict:
     return {**_issue(raw), "head_ref": raw["headRefName"], "base_ref": raw["baseRefName"],
             "ticket": ticket_of(raw["body"]), "merged_at": raw["mergedAt"]}
@@ -383,10 +387,11 @@ class Gh:
     # -- reads
 
     def issues(self, state="open") -> list:
+        """Every issue in ``state``, read page by page from the REST API, which also lists pulls."""
         _check_state("issues", state, ISSUE_STATES)
-        out = self._call("issues", None, ["gh", "issue", "list", "-R", self.repo, "--state", state,
-                                          "--limit", "1000", "--json", ISSUE_FIELDS])
-        found = [_issue(raw) for raw in json.loads(out)]
+        out = self._call("issues", None, ["gh", "api", "--paginate", "--slurp",
+                                          f"repos/{self.repo}/issues?state={state}&per_page=100"])
+        found = [_rest_issue(raw) for page in json.loads(out) for raw in page if "pull_request" not in raw]
         return sorted((i for i in found if state == "all" or i["state"] == state), key=lambda i: i["number"])
 
     def pulls(self, state="open") -> list:

@@ -212,6 +212,9 @@ class Tick:
                 return f"FAIL #{n} read: {_message(error)}"
             if found is not None:
                 return f"WAIT #{n} {entry['state']} resource {found[0]} is down (#{found[1]})"
+            found = down.waiting(self.p, self.open_issues, role, self.now)
+            if found is not None:
+                return f"WAIT #{n} {entry['state']} slot {found[0]} is out of usage until {found[1]}"
             target, on = (m, f"PR #{m}") if m is not None else (n, f"#{n}")
             argv = [role, str(target), "--root", str(self.p.root)]
             return self.take(n, "launch", f"STEP #{n} launch {role} on {on}",

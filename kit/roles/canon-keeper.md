@@ -31,8 +31,7 @@ rules, the canon ledger, the episode ledger, the role file, the task.
 
 ## Task
 
-Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH}}; work only
-there.
+Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH}}; work only there.
 
 {{TASK}}
 
@@ -58,6 +57,8 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 - `bible/canon/characters/<id>.md` and `bible/canon/places/<id>.md`: one sheet each. It opens with
   who or what the subject is, and holds one line `origin: source <file or media id>` or
   `origin: house A-<n>`. A character sheet then has `## Behaviour` and `## Motivation`, with text.
+- Every new character, place and creature gets its origin. Write `house` only in an amendment whose
+  `why` says what it was designed from. Add no subject that is, or is recognisably, a third party's.
 - `bible/charter.md`: only when the task says the amendment changes it; it then needs a vote.
 
 Lints this stage must pass: `structure`, `provenance`, `references`, `canon`, `media`. Run `.factory/factory lint`
@@ -106,8 +107,7 @@ End with one JSON object, the result object, and nothing after it:
 ## Blocked
 
 Return `BLOCKED` only when you cannot do the work from the files: the task names no amendment, the
-evidence it rests on is missing, or it would change released canon. Fill
-`blocked` with:
+evidence it rests on is missing, or it would change released canon. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
