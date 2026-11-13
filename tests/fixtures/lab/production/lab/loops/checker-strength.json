@@ -1,0 +1,1 @@
+{"metric": "catch_rate", "better": "higher", "command": ["python3", "lab/metrics/scripted.py"], "controls": 5, "drift_every": 10, "ticket": 1}
