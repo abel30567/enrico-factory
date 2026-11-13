@@ -606,7 +606,7 @@ class ReadTest(unittest.TestCase):
     def test_ok_structured(self):
         outcome = harness.read(envelope("ok-structured.stdout"), 0)
         self.assertEqual(outcome.status, "ok")
-        self.assertEqual(outcome.result["marker"], "READY")
+        self.assertEqual(outcome.result["marker"], "APPROVED")
         self.assertEqual(outcome.reason, "result read (exit 0)")
 
     def test_ok_result_string_is_json(self):
@@ -639,6 +639,33 @@ class ReadTest(unittest.TestCase):
     def test_proxy_down(self):
         self.assertEqual(harness.read("", 1, envelope("proxy-down.stderr")),
                          harness.Outcome("proxy_down", None, "model proxy unreachable (exit 1)"))
+
+    def test_proxy_down_recorded(self):
+        self.assertEqual(harness.read(envelope("proxy-down.stdout"), 1, ""),
+                         harness.Outcome("proxy_down", None, "model proxy unreachable (exit 1)"))
+
+    def test_proxy_down_stderr_without_a_space(self):
+        outcome = harness.read("", 1, "API Error: Unable to connect to API (ConnectionRefused)")
+        self.assertEqual(outcome.status, "proxy_down")
+
+    def test_proxy_down_needs_an_error_without_a_status(self):
+        recorded = json.loads(envelope("proxy-down.stdout"))
+        rows = [
+            ({"api_error_status": 500}, 1, "failed"),
+            ({"api_error_status": 404}, 1, "failed"),
+            ({"api_error_status": 429}, 1, "out_of_usage"),
+            ({"api_error_status": 401}, 1, "login_ended"),
+            ({"result": "Usage limit reached (ConnectionRefused)"}, 1, "out_of_usage"),
+            ({"result": "OAuth token has expired (ConnectionRefused)"}, 1, "login_ended"),
+            ({"result": "API Error: Unable to connect to API (ConnectionReset)"}, 1, "failed"),
+            ({"is_error": False}, 0, "failed"),
+            ({"result": "connect ECONNREFUSED 127.0.0.1:9999"}, 1, "proxy_down"),
+            ({"result": "Connection refused"}, 1, "proxy_down"),
+        ]
+        for change, exit_code, status in rows:
+            with self.subTest(change=change):
+                text = json.dumps(dict(recorded, **change))
+                self.assertEqual(harness.read(text, exit_code, "").status, status)
 
     def test_failed(self):
         for name in ("failed-subtype.stdout", "failed-error.stdout"):
@@ -676,6 +703,16 @@ RECORDED = {
         "db759bdb9b231419b4f4dd82c5489ef2254cc5f1f4c359510aba250f6bb9c81f",
     "recorded-background-turn.stdout":
         "5fd1f1c6ca24d23fe5b868da4a86345dca9ba18eda2a064469bb8fab67740e97",
+    "ok-structured.stdout":
+        "83bfe3ab8d8284f97116f89b05c7f63c09f01cf4396b00c591c4189b92cbdf4a",
+    "failed-subtype.stdout":
+        "7211adab06a939de9981efadc594c510092d305655132cc5d18e5a20d38a0952",
+    "failed-error.stdout":
+        "707ed760a96747fccc3bbd6c85907be2b00f674c937cca6266f7e2ed038955fe",
+    "login-ended-status.stdout":
+        "ad982fb5fa7c16444cc4f9c35e3854eaf061183da418f8cb74f52493b92c3d65",
+    "proxy-down.stdout":
+        "9190651d382144e3b8c9c16db13ba937b512094a66a00dc807debb27681cfe59",
 }
 
 
@@ -716,11 +753,22 @@ class RecordedEnvelopeTest(unittest.TestCase):
                 self.assertIsInstance(envelope_object, dict)
                 self.assertEqual(envelope_object["type"], "result")
 
-    def test_readme_names_the_recorded_files(self):
+    def test_readme_says_recorded_or_synthetic(self):
         readme = (ENVELOPES / "README.md").read_text()
-        sentences = re.split(r"(?<=\.)\s+", readme)
-        self.assertTrue(any("recorded" in s and all(f"`{n}`" in s for n in RECORDED)
-                            for s in sentences))
+        sources = {}
+        for line in readme.splitlines():
+            match = re.match(r"\| `([^`]+)` \| ([^|]+) \|", line)
+            if match:
+                sources[match.group(1)] = match.group(2).strip()
+        names = sorted(p.name for p in ENVELOPES.iterdir() if p.name != "README.md")
+        self.assertEqual(sorted(sources), names)
+        recorded = ("recorded, `2.1.290 (hbar)`, 2026-11-12", "recorded, `2.1.290 (hbar)`, 2026-11-13")
+        for name in names:
+            with self.subTest(name=name):
+                if name in RECORDED:
+                    self.assertIn(sources[name], recorded)
+                else:
+                    self.assertEqual(sources[name], "synthetic")
 
 
 class OnlyTheAdapterNamesHarnessFlags(unittest.TestCase):

@@ -20,8 +20,9 @@ read every ticket whatever ``--room`` says: one ``NEED - monitor <name>: ...`` l
 ``monitors.instead`` gives: a budget trip stops the run (``WAIT #<n> budget ...``), a canon contradiction and a
 re-break are ``NEED`` lines, charter drift holds the lock of the summary stage (``NEED #<n> charter-drift ...``),
 and after twice ``monitors.NO_WIN_ROUNDS`` lost blind rounds the step is ``STEP #<n> close #<n>``, which with
-``--apply`` closes the ticket. A monitor that cannot be read prints
-``FAIL - monitor <name>: <message>`` and the tick goes on.
+``--apply`` closes the ticket. A monitor file ``kit/lib/monitor_<name>.py`` runs after them; its trip's ``labels``
+go on its issue, and each of its ``tickets`` is filed once by title (``STEP - monitor <name> file <title>``). A
+monitor that cannot be read prints ``FAIL - monitor <name>: <message>`` and the tick goes on.
 
 With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
 while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls that no marker answers
@@ -227,7 +228,8 @@ class Tick:
             return
         if first["state"] == "no-convergence":
             entries = [first]
-        entries = [e for i, e in enumerate(entries) if e["state"] != "charter-drift" or e not in entries[:i]]
+        held = monitors.holds(self.trips)
+        entries = [e for i, e in enumerate(entries) if e["state"] not in held or e not in entries[:i]]
         state = self.state
         lines = [self.say(self.entry(state, ticket, entry, first)) for entry in entries]
         if first not in entries:
@@ -315,9 +317,34 @@ class Tick:
                 if self.open_issues is None:
                     self.open_issues = self.gh.issues("open")
                 if not any(issue["title"] == trip["title"] for issue in self.open_issues):
-                    self.gh.create_issue(trip["title"], trip["body"], [LABEL])
+                    self.gh.create_issue(trip["title"], trip["body"], [LABEL, *trip.get("labels", [])])
             except ERRORS as error:
                 self.say(f"FAIL - monitor {name}: {_message(error)}")
+        self.file_tickets()
+
+    def file_tickets(self):
+        """One ``STEP - monitor <name> file <title>`` line per ticket of a trip whose title no issue has; with
+        ``--apply``, the issue with the ticket's labels. Nothing while a tracked issue does not parse."""
+        if self.state.errors:
+            return
+        taken = {f"[{t['key']}] {t['summary']}" for t in self.state.tickets.values()}
+        taken |= {issue["title"] for issue in self.state.others}
+        for trip in self.trips:
+            if "error" in trip:
+                continue
+            name = trip["monitor"]
+            for found in trip.get("tickets", []):
+                if found["title"] in taken:
+                    continue
+                line = f"STEP - monitor {name} file {found['title']}"
+                if self.apply:
+                    try:
+                        self.gh.create_issue(found["title"], found["body"], found["labels"])
+                    except ERRORS as error:
+                        self.say(f"FAIL - monitor {name}: {_message(error)}")
+                        continue
+                taken.add(found["title"])
+                self.say(line)
 
     def down(self, role):
         """``down.blocking`` for ``role``; the open issues are read once per tick, at the first launch."""

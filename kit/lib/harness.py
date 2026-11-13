@@ -314,7 +314,7 @@ PHRASES = {
 }
 _USAGE = re.compile(r"(?i)usage limit|out of usage")
 _LOGIN = re.compile(r"(?i)token (has )?(expired|been revoked)|not logged in")
-_REFUSED = re.compile(r"(?i)ECONNREFUSED|connection refused")
+_REFUSED = re.compile(r"(?i)ECONNREFUSED|connection ?refused")
 
 
 def _envelope(text):
@@ -351,6 +351,8 @@ def _status(envelope, exit_code, stderr_text):
         return "out_of_usage"
     if code in (401, 403) or (is_error and _LOGIN.search(text)):
         return "login_ended"
+    if is_error and code is None and _REFUSED.search(text):
+        return "proxy_down"
     if is_error or envelope.get("subtype") != "success" or exit_code != 0:
         return "failed"
     return "ok"
