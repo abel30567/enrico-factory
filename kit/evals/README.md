@@ -11,7 +11,8 @@ written by the author of the prompt it measures measures nothing. No role's `wri
 ## Case format
 
 A case is the directory `evals/<role>/<case-id>/` holding `case.json`, `task.md` and `tree/`, the
-case's own files (a `pair` case holds `old/` and `new/` in place of `tree/`).
+case's own files (a `pair` case holds `old/` and `new/` in place of `tree/`). Beside its cases a suite
+holds `suite.json`, `{"cases": N}`: the number of case directories it holds.
 
 `factory eval` builds the production around them: it writes what `factory init` writes, with the kit
 less `evals/`, and copies `tree/` over it, so a tree file wins and no answer is in the run directory.
@@ -41,19 +42,7 @@ calls the two versions `A/` and `B/`.
 
 ## Roles with no suite yet
 
-| Role | Why not yet | Wave |
-|---|---|---|
-| `showrunner` | an orchestrator: its outcome is a locked package over many tickets, which needs the story room running end to end | 3 |
-| `devils-advocate` | its notes argue against a direction across every stage; a gradable case needs real tickets to replay | 3 |
-| `researcher` | its output is sourced from material it gathers; a replay needs recorded sources from a real run | 3 |
-| `canon-keeper` | an amendment is replayed from real research and canon; the first exist when the sample production runs | 3 |
-| `art-director` | its output is model sheets and media in the media store, which no offline replay produces | 4 |
-| `media-wrangler` | an operator: its outcome is a job the gate passes and a tool runs, which no offline replay produces | 4 |
-| `render-reviewer` | it reviews renders; its seeded cases come from the seeded-defect corpus | 4 |
-| `retro-agent` | its proposals are measured by the lab loops they start, which run offline from wave 6 | 6 |
-| `trend-scout` | an analyst: its outcome is measured against platform data, first available in wave 6 | 6 |
-| `audience-analyst` | an analyst: its outcome is measured against platform data, first available in wave 6 | 6 |
-| `braintrust` | a judge calibrated against real retention (judge calibration), first available in wave 6 | 6 |
-| `audience-sim` | a judge calibrated against real retention (judge calibration), first available in wave 6 | 6 |
-| `distinctiveness-judge` | a judge calibrated against real retention (judge calibration), first available in wave 6 | 6 |
-| `held-out-judge` | its cases are held out: it never has a suite in this kit, in any wave | never |
+Every file `roles/<role>.md` has exactly one of a suite `evals/<role>/` or a note `evals/<role>.no-suite.md`.
+The note is four lines: `` # `<role>`: no suite yet ``, an empty line, `Why not yet: <reason>` and
+`Wave: <n>`, the wave that adds the suite (`never` for `held-out-judge`: its cases are held out, and it never
+has a suite in this kit, in any wave). A ticket that adds a suite deletes the role's note.
