@@ -10,6 +10,11 @@ one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked 
 a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
 step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
 
+With the setting ``MAX_WORKERS`` (a whole number >= 1; empty or absent: no cap), a launch step is taken only
+while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls that no marker answers
+(``steps.running``), counted when the tick starts, plus one per launch step this tick takes. Over the cap the
+step is ``WAIT #<n> <state> <k> running, MAX_WORKERS is <cap>``.
+
 With ``--apply`` it first brings the local base up to GitHub's (``sync_base``), so its gate, lock rules
 and launches read the base GitHub has. A lock whose merge succeeded but whose sync failed ends the tick:
 one ``FAIL -`` line, no step for any further ticket. Without ``--apply`` it prints the lines, writes
@@ -119,13 +124,27 @@ def _take_lock(state_dir):
     return None
 
 
+def _max_workers(p):
+    """The setting ``MAX_WORKERS`` as a number, or None when it is empty or absent."""
+    value = p.settings.get("MAX_WORKERS", "")
+    if not value:
+        return None
+    if not (value.isascii() and value.isdigit() and value[0] != "0"):  # [1-9][0-9]*
+        raise production.ProductionError("setting MAX_WORKERS is not a whole number >= 1")
+    return int(value)
+
+
 class Tick:
-    def __init__(self, p, gh, apply, now):
-        self.p, self.gh, self.apply, self.now = p, gh, apply, now
+    def __init__(self, p, gh, apply, now, cap=None):
+        self.p, self.gh, self.apply, self.now, self.cap = p, gh, apply, now, cap
         self.counts = {"STEP": 0, "NEED": 0, "WAIT": 0, "FAIL": 0}
         self.locked_rooms = set()
         self.open_issues = None
         self.state = tickets.load(p, gh, p.root)
+        self.running = 0
+        if cap is not None:
+            self.running = sum(steps.running(p, self.state, ticket)
+                               for ticket in self.state.tickets.values() if ticket["state"] == "open")
 
     def say(self, line):
         self.counts[line.split(" ", 1)[0]] += 1
@@ -215,10 +234,15 @@ class Tick:
             found = down.waiting(self.p, self.open_issues, role, self.now)
             if found is not None:
                 return f"WAIT #{n} {entry['state']} slot {found[0]} is out of usage until {found[1]}"
+            if self.cap is not None and self.running >= self.cap:
+                return f"WAIT #{n} {entry['state']} {self.running} running, MAX_WORKERS is {self.cap}"
             target, on = (m, f"PR #{m}") if m is not None else (n, f"#{n}")
             argv = [role, str(target), "--root", str(self.p.root)]
-            return self.take(n, "launch", f"STEP #{n} launch {role} on {on}",
+            line = self.take(n, "launch", f"STEP #{n} launch {role} on {on}",
                              lambda: _main("launch", cmd_launch.main, argv, (0, 3)))
+            if line.startswith("STEP "):
+                self.running += 1
+            return line
         if step == "lint":
             return self.take(n, "lint", f"STEP #{n} lint PR #{m}", lambda: self.lint(m))
         if step == "blind":
@@ -341,13 +365,14 @@ def _merging(tree) -> bool:
 
 
 def _tick(p, gh, rooms, apply) -> int:
+    cap = _max_workers(p)
     if tickets.frozen(gh):
         print("FROZEN")
         return 0
     if apply:
         gh.sync_base(p.root, production.base(p))
     now = production.now()
-    tick = Tick(p, gh, apply, now)
+    tick = Tick(p, gh, apply, now, cap)
     for error in tick.state.errors:
         tick.say(f"NEED - {error}")
     tick.file(rooms)

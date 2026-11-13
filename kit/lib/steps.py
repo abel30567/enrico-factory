@@ -337,3 +337,39 @@ def next_step(p, state, ticket, root, now, has_key=_always) -> dict:
             return _selection(p, state, ticket, now)
         return found
     return per_pull[0]
+
+
+def _running_unanswered(p, comments, skip=()):
+    """The roles not in ``skip`` whose newest ``LAUNCH`` in ``comments`` no later marker answers."""
+    marked = _marked(comments)
+    latest = {}
+    for i, (_, m) in enumerate(marked):
+        if m.verb == "LAUNCH" and m.args[0] not in skip:
+            latest[m.args[0]] = i
+    return sum(1 for role, i in latest.items() if not any(_answers(p, role, m) for _, m in marked[i + 1:]))
+
+
+def _running_makers(p, state, ticket, makers):
+    """The maker launches on the ticket that have no pull yet, less one when the newest is ``BLOCKED``."""
+    number = ticket["number"]
+    marked = _marked(state.ticket_comments.get(number, []))
+    launched = [(c, m) for c, m in marked if m.verb == "LAUNCH" and m.args[0] in makers]
+    pending = max(0, len(launched) - len(tickets.pulls_of(state, number)))
+    if not pending:
+        return 0
+    comment, m = launched[-1]
+    role = m.args[0]
+    later = [x for c, x in marked if _order(c) > _order(comment) and x.actor == _actor(p, role)]
+    if later and later[-1].verb == "BLOCKED":
+        return pending - 1
+    return pending
+
+
+def running(p, state, ticket) -> int:
+    """The workers running for an open ticket: one per ``LAUNCH`` on its open pulls or on the ticket that no
+    marker answers. A pure reading: no setting, no clock."""
+    makers = production.stage_roles(production.stage(p, ticket["room"], ticket["stage"]), "maker")
+    count = sum(_running_unanswered(p, pull["comments"])
+                for pull in tickets.pulls_of(state, ticket["number"]) if pull["state"] == "open")
+    count += _running_makers(p, state, ticket, makers)
+    return count + _running_unanswered(p, state.ticket_comments.get(ticket["number"], []), makers)
