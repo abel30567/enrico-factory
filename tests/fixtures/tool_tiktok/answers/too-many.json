@@ -1,0 +1,13 @@
+{
+ "body": {
+  "data": {},
+  "error": {
+   "code": "spam_risk_too_many_posts",
+   "log_id": "20261113090000000000000000003182",
+   "message": "The daily post cap from the API is reached for the current user."
+  }
+ },
+ "read_at": "2026-11-13",
+ "source": "https://developers.tiktok.com/doc/content-posting-api-reference-direct-post",
+ "status": 403
+}
