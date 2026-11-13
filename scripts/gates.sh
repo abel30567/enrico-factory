@@ -4,7 +4,8 @@
 # process, as with `unittest discover` on that one file. A failing file prints its whole output.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ -d kit ]; then python3 -m compileall -q kit; fi
+# kit/evals holds fixture trees: a compiled scene.py would leave a .pyc that the size test of the suites reads.
+if [ -d kit ]; then python3 -m compileall -q -x 'kit/evals/' kit; fi
 if ls tests/test_*.py >/dev/null 2>&1; then
   jobs="${GATES_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
   logs="$(mktemp -d)"
