@@ -26,7 +26,7 @@ FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
 FACTORY = ROOT / "kit" / "factory"
 PIPELINE = json.loads((KIT / "pipeline.json").read_text(encoding="utf-8"))
 
-SUITES = tuple(sorted(p.name for p in (KIT / "evals").iterdir() if p.is_dir()))
+SUITES = tuple(sorted(p.name for p in (KIT / "evals").iterdir() if p.is_dir() and p.name != "golden"))
 KIND = {role: evals.role_file(KIT, role)[0]["kind"] for role in SUITES}
 CHECKERS = tuple(role for role in SUITES if KIND[role] == "checker")
 MAKERS = tuple(role for role in SUITES if KIND[role] == "maker")
