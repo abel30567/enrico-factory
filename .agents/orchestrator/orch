@@ -6,7 +6,7 @@ py() { python3 -I "$D/$1" "${@:2}"; }
 cmd=${1:-help}; shift || true
 case "$cmd" in
   doctor)   exec "$D/doctor.sh" ;;
-  selftest) node --test "$D/hooks/worker-guard.test.mjs" "$D/check-rules.test.mjs" && for f in "$D"/*.sh "$D/orch"; do bash -n "$f"; done \
+  selftest) node --test "$D/hooks/worker-guard.test.mjs" "$D/check-rules.test.mjs" && python3 -I "$D/wakekick.test.py" && for f in "$D"/*.sh "$D/orch"; do bash -n "$f"; done \
               && python3 -I -m py_compile "$D"/*.py "$D"/tracker/*.py && echo "selftest ok" ;;
   labels)   . "$D/config.sh"
             while IFS='|' read -r n c d; do gh label create "$n" -R "$GH_REPO" --color "$c" --description "$d" --force >/dev/null && echo "label $n"; done <<'L'
@@ -62,7 +62,8 @@ the mechanical heartbeat (no model)
 
 the judgement heartbeat (a model)
   orch wake [--uninstall]             run a fresh headless orchestrator session (prompts/wake.md) every 15 min
-                                      from a LaunchAgent (macOS); it acts on the tick's NEED lines
+                                      from a LaunchAgent (macOS); it acts on the tick's NEED lines, and the
+                                      tick starts it at once when a new NEED line appears
   orch wake --once                    one such session now; the answer is appended to logs/wake.log
 
 watching

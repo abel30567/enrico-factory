@@ -20,14 +20,16 @@
 #      disjoint from work in flight); the launch itself is mechanical. At most MAX_ATTEMPTS launches per issue.
 #   3. orch merge --apply (one merge, or one train of up to TRAIN_MAX); a CONFLICT gets a fixer.
 #   4. orch board sync --apply (after a launch, a hold or a merge, else every 30 min).
+#   5. A NEED line the previous tick did not print starts the judgement wake now (wakekick.py), when
+#      `orch wake` is installed.
 # Output: ACTION lines (what it did), NEED lines (judgement for the orchestrator's wake), WAIT, STATE.
 import datetime as dt, fcntl, json, os, re, subprocess, sys
 from pathlib import Path
 
 ORCH = Path(__file__).resolve().parent
 sys.path.insert(0, str(ORCH))
-import risk  # noqa: E402
-from conf import BASE, R, REPO, STATE, TITLE_RE, WTROOT, alive, first_line  # noqa: E402
+import risk, wakekick  # noqa: E402
+from conf import BASE, C, R, REPO, STATE, TITLE_RE, WTROOT, alive, first_line  # noqa: E402
 
 APPLY = "--apply" in sys.argv
 MAX_FIX_ROUNDS = 3
@@ -47,6 +49,8 @@ TRANSCRIPTS = (Path.home() / ".hbar/projects", Path.home() / ".claude/projects")
 TLOG = STATE / "state" / "transitions.log"
 ATTEMPTS = STATE / "state" / "attempts.json"   # {"<wid>@<head7>": launches}: caps relaunches of a step that keeps dying
 BOARD_STAMP = STATE / "state" / "board-sync.stamp"
+WAKE_LABEL = f"com.{C['REPO_NAME']}.orch-wake"   # the LaunchAgent install-wake.sh installs
+NEEDS = []                   # every NEED line of this tick, for wakekick
 
 
 def sh(*a):
@@ -61,6 +65,8 @@ def gh_json(*a):
 
 def say(kind, msg):
     print(f"{kind:7} {msg}")
+    if kind == "NEED":
+        NEEDS.append(msg)
 
 
 def act(desc, *cmd):
@@ -484,3 +490,10 @@ main_sha = sh("git", "rev-parse", "--short", f"origin/{BASE}")[0]
 say("STATE", f"{BASE}@{main_sha} open_prs={open_prs} building={building} live={','.join(live) or '-'}")
 if listed and ready is not None and open_prs + building < 2:
     say("NEED", f"{open_prs + building} work stream(s) in flight, fewer than two: write the next ticket and label it status:ready")
+
+# 5. something new needs judgement: start the wake now
+if APPLY and (Path.home() / "Library/LaunchAgents" / f"{WAKE_LABEL}.plist").exists():
+    n = wakekick.note(NEEDS, STATE / "state", bool(os.environ.get("ORCH_WAKE")), alive("wake"),
+                      lambda: sh("launchctl", "kickstart", f"gui/{os.getuid()}/{WAKE_LABEL}")[1] == 0)
+    if n:
+        say("ACTION", f"wake started for {n} new NEED line(s)")

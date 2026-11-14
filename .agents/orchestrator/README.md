@@ -15,7 +15,9 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 | `heartbeat.py` | `orch status`: workers, each PR's markers and next step, disk. |
 | `tick.py` | `orch tick`: the state machine. Launches the next worker for each PR and each `status:ready` issue, runs the merge gate, syncs the board. No model. |
 | `tick.sh`, `install-tick.sh` | `orch heartbeat`: a LaunchAgent that runs `tick.py --apply` every 10 minutes. Log: `logs/tick.log`. |
-| `wake.sh`, `install-wake.sh`, `prompts/wake.md` | `orch wake`: a LaunchAgent that runs a fresh headless orchestrator session every 15 minutes, for what needs judgement. No chat app is involved, so a busy or stuck chat thread cannot stop it. Log: `logs/wake.log`. |
+| `wake.sh`, `install-wake.sh`, `prompts/wake.md` | `orch wake`: a LaunchAgent that runs a fresh headless orchestrator session every 15 minutes, for what needs judgement. No chat app is involved, so a busy or stuck chat thread cannot stop it. Log: `logs/wake.log`. A failed run shows a notification and runs `WAKE_ALERT_CMD`. |
+| `prompts/wake-project.md` | Optional, yours: this project's standing orders for the wake (where the spec and the plan are, what the orchestrator may write). Appended to `prompts/wake.md`. |
+| `wakekick.py` | Lets the tick start the wake at once when it prints a NEED line the previous tick did not, instead of waiting for the timer (tests alongside). |
 | `board.py` | Kanban derived from markers: secret gist (`gist`) or GitHub Project (`setup` / `sync`). |
 | `baseline.sh` | Runs GATES on a clean base and records `baseline.txt`. |
 | `task.sh` | Creates a tracked issue (`ISSUE-<n>` key, or your own key). |
@@ -29,7 +31,9 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 Run state lives in `~/.agent-orch/<repo>/` and is never committed:
 - `runs/`: worker JSON results and rendered prompts.
 - `logs/`: worker logs.
-- `state/`: pids and ports, `transitions.log` (every state change the tick saw), `attempts.json`.
+- `state/`: pids and ports, `transitions.log` (every state change the tick saw), `attempts.json`,
+  `wake.pending` (new NEED lines the next wake starts with).
+- `wake-notes.md`: what each wake did, read by the next. `wake-extra.md`: optional orders for this machine only.
 - `inputs/<KEY>/`: files you hand to workers.
 - `baseline.txt`, `launches.tsv` and `FREEZE`.
 
