@@ -1,0 +1,28 @@
+{
+  "loudness_lufs": -14.2,
+  "true_peak_dbtp": -1.6,
+  "lines": [
+    {
+      "line": "L1",
+      "start": 12,
+      "end": 60
+    },
+    {
+      "line": "L2",
+      "start": 72,
+      "end": 110
+    },
+    {
+      "line": "L3",
+      "start": 150,
+      "end": 210
+    }
+  ],
+  "stems": [
+    {
+      "name": "dialogue",
+      "sha256": "137b8a099e53c10de118d21b228d1262840df6ef2c135ea140e1aaf7a053081d"
+    }
+  ],
+  "master": "fc613b4dfd6736a7bd268c8a0e74ed0d1c04a959f59dd74ef2874983fd443fc9"
+}
