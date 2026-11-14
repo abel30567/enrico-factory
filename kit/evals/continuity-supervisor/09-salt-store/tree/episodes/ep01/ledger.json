@@ -1,0 +1,5 @@
+[
+ {"subject": "bram", "attribute": "goes to", "value": "the mainland", "tag": "invented", "source": "", "scene": "S1"},
+ {"subject": "tilda", "attribute": "alone at", "value": "the salt store", "tag": "invented", "source": "", "scene": "S2"},
+ {"subject": "bram", "attribute": "returns", "value": "at dawn", "tag": "invented", "source": "", "scene": "S3"}
+]

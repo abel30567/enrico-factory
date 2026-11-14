@@ -1,0 +1,5 @@
+[
+ {"subject": "saba", "attribute": "travels by", "value": "punt", "tag": "invented", "source": "", "scene": "S1"},
+ {"subject": "punt", "attribute": "state", "value": "drifted away", "tag": "invented", "source": "", "scene": "S2"},
+ {"subject": "saba", "attribute": "goes home", "value": "wading", "tag": "invented", "source": "", "scene": "S3"}
+]
