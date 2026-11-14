@@ -29,7 +29,7 @@ VISIBILITIES = ("private", "unlisted", "public")
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _PLATFORM = re.compile(r"[a-z][a-z0-9-]*")
-_POST_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_POST_ID = re.compile(r"[A-Za-z0-9_.~-]{1,64}")
 _TIME = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z")
 _FIELD = re.compile(r"[A-Za-z0-9_.]{1,64}")
 _SHORT = re.compile(r"[A-Za-z0-9_.:-]{0,64}")

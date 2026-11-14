@@ -1,39 +1,42 @@
 """youtube-upload: upload one video to YouTube as a private video with the synthetic-media disclosure set.
 
-The job's first input is the upload request, one JSON object with exactly the keys ``link`` (the video's
-public link in the media store), ``sha256``, ``bytes``, ``title`` and ``description``. The key file of
-``platform.youtube`` holds three lines: client id, client secret, refresh token.
+The job has two inputs, in this order: the upload request and ``media/manifest.tsv``. The request is one JSON
+object with exactly the keys ``captions``, ``description``, ``link``, ``title`` and ``video``: ``video`` and
+``captions`` are each ``media:<id>``, an id with exactly one row in the manifest, and ``link`` is the video's
+public link in the media store, ending with ``/`` and the sha256 of the ``video`` row, whose bytes are those
+of the row.
+``captions`` is true because the captions are burned into the uploaded file; no caption track is uploaded.
+The key file of ``platform.youtube`` holds three lines: client id, client secret, refresh token.
 
 The requests, in this order, all through one opener that reads no proxy from the environment and follows
 no redirect: a ``GET`` of the public link into a temporary file, the token refresh, the resumable upload's
 ``POST``, the ``PUT`` of the file, and one read of the video's status. Every upload is
 ``"privacyStatus": "private"`` and ``"containsSyntheticMedia": true``; the request cannot change that.
 
-The one output is ``post.json``: the video's id, its visibility and disclosure as the platform answered,
-its upload and processing status, and the file's sha256 and bytes. It is written before the visibility and
-disclosure are checked, so a failed check keeps the id. Nothing of the key file or the access token is in
-an output or a reason.
+The tool writes no output. It records the platform's answer as ``post.json`` in ``call["record"]``, with the
+keys of ``kit.lib.posts.KEYS``: the video id, its visibility and disclosure as the upload answered, whether
+the read gave processing ``succeeded``, the sha256 of the ``video`` row, the job's hash and the time of the
+read. A post that is not private or not disclosed is still done: the publish check judges it. Nothing of the
+key file or the access token is in the record or a reason.
 """
 
 import hashlib
 import json
 import os
+import re
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from kit.lib import media
+from kit.lib import media, production
 from kit.lib.tools import Down, Failed
 
 RESOURCE = "platform.youtube"
 NOT_A_REQUEST = "request is not an upload request"
 UPLOAD_REFUSED = "upload refused"
 UPLOAD_FAILED = "upload failed"
-NOT_PRIVATE = "video is not private"
-NO_DISCLOSURE = "disclosure not set"
-REASONS = (NOT_A_REQUEST, media.LINK_UNREACHABLE, media.OTHER_BYTES_AT_LINK, UPLOAD_REFUSED, UPLOAD_FAILED,
-           NOT_PRIVATE, NO_DISCLOSURE)
+REASONS = (NOT_A_REQUEST, media.LINK_UNREACHABLE, media.OTHER_BYTES_AT_LINK, UPLOAD_REFUSED, UPLOAD_FAILED)
 
 TIMEOUT = 600
 CHUNK = 1024 * 1024
@@ -41,9 +44,14 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status"
 READ_URL = "https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails&id="
 VIDEO_TYPE = "video/*"
-OUTPUT = "post.json"
-KEYS = ["bytes", "description", "link", "sha256", "title"]
-HEX = set("0123456789abcdef")
+RECORD = "post.json"
+KEYS = ["captions", "description", "link", "title", "video"]
+MANIFEST = "media/manifest.tsv"
+MANIFEST_HEADER = "id\tsha256\tbytes\tsource"
+VISIBILITIES = ("private", "unlisted", "public")
+DISCLOSURE = "status.containsSyntheticMedia"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_SIZE = re.compile(r"[1-9][0-9]*")
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -55,23 +63,40 @@ def _failed(reason):
     return Failed(reason, usd=0, compute_min=0)
 
 
+def _row(lines, value):
+    """``(sha256, bytes)`` of the one manifest row of ``value``, ``media:<id>``; ``Failed`` otherwise."""
+    if not isinstance(value, str) or not value.startswith("media:") or value == "media:":
+        raise _failed(NOT_A_REQUEST)
+    rows = [line.split("\t") for line in lines[1:] if line.split("\t", 1)[0] == value[len("media:"):]]
+    if len(rows) != 1 or len(rows[0]) != 4 or not _SHA256.fullmatch(rows[0][1]) or not _SIZE.fullmatch(rows[0][2]):
+        raise _failed(NOT_A_REQUEST)
+    return rows[0][1], int(rows[0][2])
+
+
 def _request(call):
-    """The upload request of the job's first input, or ``Failed`` before any request."""
+    """The upload request of the job's two inputs, with the ``sha256`` and ``bytes`` of its ``video`` row, or
+    ``Failed`` before any request."""
     inputs = call["inputs"]
+    if len(inputs) != 2 or inputs[1]["path"] != MANIFEST:
+        raise _failed(NOT_A_REQUEST)
     try:
         request = json.loads(inputs[0]["text"])
-    except (IndexError, KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError):
         raise _failed(NOT_A_REQUEST) from None
     if not isinstance(request, dict) or sorted(request) != KEYS:
         raise _failed(NOT_A_REQUEST)
-    sha256, size, link = request["sha256"], request["bytes"], request["link"]
-    if (not isinstance(sha256, str) or len(sha256) != 64 or not set(sha256) <= HEX
-            or not isinstance(size, int) or isinstance(size, bool) or size < 1
-            or not isinstance(link, str) or media.base(link) is None or not link.endswith("/" + sha256)
+    lines = (inputs[1]["text"] or "").splitlines()
+    if not lines or lines[0] != MANIFEST_HEADER:
+        raise _failed(NOT_A_REQUEST)
+    sha256, size = _row(lines, request["video"])
+    _row(lines, request["captions"])
+    link = request["link"]
+    if (not isinstance(link, str) or media.base(link) is None or not link.endswith("/" + sha256)
             or not isinstance(request["title"], str) or not request["title"].strip()
             or not isinstance(request["description"], str)):
         raise _failed(NOT_A_REQUEST)
-    return request
+    return {"bytes": size, "description": request["description"], "link": link, "sha256": sha256,
+            "title": request["title"]}
 
 
 def _key(path):
@@ -185,24 +210,24 @@ def _put(opener, auth, location, request, path):
     except (OSError, ValueError):
         raise _failed(UPLOAD_FAILED) from None
     if (status not in (200, 201) or not isinstance(body, dict) or not isinstance(body.get("id"), str)
-            or not isinstance(body.get("status"), dict)):
+            or not isinstance(body.get("status"), dict)
+            or body["status"].get("privacyStatus") not in VISIBILITIES):
         raise _failed(UPLOAD_FAILED)
     return body
 
 
 def _read(opener, auth, video_id):
-    """``(upload_status, processing_status)`` of one read, each None where the read does not give it."""
+    """The ``processingStatus`` of one read, None where the read does not give it."""
     request = urllib.request.Request(READ_URL + urllib.parse.quote(video_id, safe=""), method="GET",
                                      headers={"Authorization": auth})
     try:
         status, _, body = _json(opener, request)
     except (OSError, ValueError):
-        return None, None
+        return None
     items = body.get("items") if status == 200 and isinstance(body, dict) else None
     item = items[0] if isinstance(items, list) and items and isinstance(items[0], dict) else {}
-    video_status = item.get("status") if isinstance(item.get("status"), dict) else {}
     details = item.get("processingDetails") if isinstance(item.get("processingDetails"), dict) else {}
-    return video_status.get("uploadStatus"), details.get("processingStatus")
+    return details.get("processingStatus")
 
 
 def run(call):
@@ -215,16 +240,11 @@ def run(call):
         auth = "Bearer " + _token(opener, key)
         location = _start(opener, auth, request)
         video = _put(opener, auth, location, request, path)
-    upload_status, processing = _read(opener, auth, video["id"])
-    if upload_status is None:
-        upload_status = video["status"].get("uploadStatus")
-    post = {"bytes": request["bytes"], "disclosure": video["status"].get("containsSyntheticMedia"),
-            "platform": "youtube", "post_id": video["id"], "processing": processing, "sha256": request["sha256"],
-            "upload_status": upload_status, "visibility": video["status"].get("privacyStatus")}
-    with open(os.path.join(call["out"], OUTPUT), "w", encoding="utf-8") as handle:
+    processing = _read(opener, auth, video["id"])
+    disclosure = video["status"].get("containsSyntheticMedia")
+    post = {"captions": True, "fields": {DISCLOSURE: disclosure} if isinstance(disclosure, bool) else {},
+            "job": call["hash"], "platform": "youtube", "post_id": video["id"], "processed": processing == "succeeded",
+            "read_at": production.now(), "sha256": request["sha256"], "visibility": video["status"]["privacyStatus"]}
+    with open(os.path.join(call["record"], RECORD), "w", encoding="utf-8") as handle:
         handle.write(json.dumps(post, indent=1, sort_keys=True) + "\n")
-    if post["visibility"] != "private":
-        raise _failed(NOT_PRIVATE)
-    if post["disclosure"] is not True:
-        raise _failed(NO_DISCLOSURE)
     return {"usd": 0, "compute_min": 0}

@@ -1,13 +1,19 @@
 """The tool `instagram-upload`: publish one Reel from the media store to the Instagram test account.
 
-The job has two inputs, in this order: the request, a JSON object with exactly the keys ``video``
-(``media:<id>``) and ``caption`` (a string), and ``media/manifest.tsv``, which holds the one row of ``<id>``.
+The job has two inputs, in this order: the request, a JSON object with exactly the keys ``caption`` (a
+string), ``captions`` and ``video``, and ``media/manifest.tsv``. ``video`` and ``captions`` are each
+``media:<id>``, an id with exactly one row in the manifest.
+``captions`` is true because the captions are burned into the uploaded file; no caption track is uploaded.
 The Reel's bytes are in the media store already; the platform fetches them from their public link.
 
 The tool checks the account, the token file, the public base and the API, then the request, then makes
 its calls: it gets the public link, creates a Reels container with ``is_ai_generated=true``, polls the
-container's status at most ``POLLS`` times, ``WAIT`` seconds apart, and publishes it. It writes
-``post.json``. It posts to ``INSTAGRAM_TEST_ACCOUNT`` and to no other account.
+container's status at most ``POLLS`` times, ``WAIT`` seconds apart, and publishes it. It posts to
+``INSTAGRAM_TEST_ACCOUNT`` and to no other account. It writes no output: it records ``post.json`` in
+``call["record"]``, with the keys of ``kit.lib.posts.KEYS``: the published media id as the post id,
+visibility ``public`` (Instagram has no private upload), processed (the container was ``FINISHED`` and
+published), the field ``is_ai_generated`` true, the sha256 of the ``video`` row, the job's hash and the time
+of the publish answer.
 
 The token file holds one line, the access token, sent only as ``Authorization: Bearer <token>``. An
 answer with ``error.code`` 190 (the token is not valid) is ``Down``. The environment variable
@@ -23,7 +29,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from kit.lib import media
+from kit.lib import media, production
 from kit.lib.tools import Down, Failed
 
 RESOURCE = "platform.instagram"
@@ -45,6 +51,8 @@ ACCOUNT = "INSTAGRAM_TEST_ACCOUNT"
 SEAM = "FACTORY_INSTAGRAM_API"
 MANIFEST = "media/manifest.tsv"
 MANIFEST_HEADER = "id\tsha256\tbytes\tsource"
+KEYS = ["caption", "captions", "video"]
+RECORD = "post.json"
 INVALID_TOKEN = 190
 _DIGITS = re.compile(r"[0-9]+")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -98,26 +106,33 @@ def _usable(call):
     return account, token, _api()
 
 
+def _row(lines, value):
+    """``(sha256, size)`` of the one manifest row of ``value``, ``media:<id>``; ``Failed(BAD_REQUEST)`` otherwise."""
+    if not isinstance(value, str) or not value.startswith("media:") or value == "media:":
+        raise Failed(BAD_REQUEST)
+    rows = [line.split("\t") for line in lines[1:] if line.split("\t", 1)[0] == value[len("media:"):]]
+    if len(rows) != 1 or len(rows[0]) != 4 or not _SHA256.fullmatch(rows[0][1]) or not _SIZE.fullmatch(rows[0][2]):
+        raise Failed(BAD_REQUEST)
+    return rows[0][1], int(rows[0][2])
+
+
 def _request(inputs):
-    """``(video, sha256, size)`` from the job's two inputs; ``Failed(BAD_REQUEST)`` otherwise."""
+    """``(caption, sha256, size)`` from the job's two inputs, of the ``video`` row; ``Failed(BAD_REQUEST)``
+    otherwise."""
     if len(inputs) != 2 or inputs[1]["path"] != MANIFEST:
         raise Failed(BAD_REQUEST)
     try:
         request = json.loads(inputs[0]["text"])
     except (TypeError, ValueError):
         raise Failed(BAD_REQUEST) from None
-    if (not isinstance(request, dict) or sorted(request) != ["caption", "video"]
-            or not isinstance(request["caption"], str) or not isinstance(request["video"], str)
-            or not request["video"].startswith("media:") or request["video"] == "media:"):
+    if not isinstance(request, dict) or sorted(request) != KEYS or not isinstance(request["caption"], str):
         raise Failed(BAD_REQUEST)
-    video = request["video"]
     lines = (inputs[1]["text"] or "").splitlines()
     if not lines or lines[0] != MANIFEST_HEADER:
         raise Failed(BAD_REQUEST)
-    rows = [line.split("\t") for line in lines[1:] if line.split("\t", 1)[0] == video[len("media:"):]]
-    if len(rows) != 1 or len(rows[0]) != 4 or not _SHA256.fullmatch(rows[0][1]) or not _SIZE.fullmatch(rows[0][2]):
-        raise Failed(BAD_REQUEST)
-    return video, request["caption"], rows[0][1], int(rows[0][2])
+    sha256, size = _row(lines, request["video"])
+    _row(lines, request["captions"])
+    return request["caption"], sha256, size
 
 
 def _answer(url, token, form=None):
@@ -177,7 +192,7 @@ def _wait_for(api, container, token):
 
 def run(call):
     account, token, api = _usable(call)
-    video, caption, sha256, size = _request(call["inputs"])
+    caption, sha256, size = _request(call["inputs"])
     settings = call["settings"]
     try:
         media.check(settings, sha256, size)
@@ -188,8 +203,9 @@ def run(call):
         "video_url": media.link(settings, sha256)}))
     _wait_for(api, container, token)
     post = _id(_answer(f"{api}/{account}/media_publish", token, {"creation_id": container}))
-    text = json.dumps({"account": account, "container": container, "post": post, "video": video},
-                      indent=1, sort_keys=True) + "\n"
-    with open(os.path.join(call["out"], "post.json"), "w", encoding="utf-8") as handle:
-        handle.write(text)
+    record = {"captions": True, "fields": {"is_ai_generated": True}, "job": call["hash"], "platform": "instagram",
+              "post_id": post, "processed": True, "read_at": production.now(), "sha256": sha256,
+              "visibility": "public"}
+    with open(os.path.join(call["record"], RECORD), "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, indent=1, sort_keys=True) + "\n")
     return {"usd": 0, "compute_min": 0}

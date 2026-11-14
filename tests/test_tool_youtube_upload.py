@@ -2,12 +2,14 @@
 
 The production is a temporary copy of tests/fixtures/run/production on branch `trunk`, with one branch per
 recorded pull, and GitHub a copy of tests/fixtures/run/github (ticket 3, pull 4, caller `renderer`). The
-tools directory and the resources register are the shipped ones. The world writes a key file
-`platform.youtube` of mode 0600, commits `YOUTUBE_OAUTH_APP=production` and the upload request at
-`uploads/ep01.json`, and has the real gate pass a job of the tool `youtube-upload`. During `factory run`
+copies are edited only to make ticket 3 the post `ep01/youtube` of stage `distribution/post`, made by
+`renderer`. The tools directory and the resources register are the shipped ones. The world writes a key file
+`platform.youtube` of mode 0600, commits `YOUTUBE_OAUTH_APP=production`, `media/manifest.tsv` (rows
+`reel-ep01` and `captions-ep01`) and the upload request at `distribution/ep01/youtube/requests/upload.json`,
+and has the real gate pass the job `jobs/<request>` of the tool `youtube-upload`. During `factory run`
 `urllib.request.build_opener` returns a fake opener that logs each request and answers it from the answer
 file the scenario names for its method and URL (tests/fixtures/youtube_upload/answers/). Nothing reaches
-the network.
+the network. ``publish_findings`` runs the publish check on a record in a new temporary directory.
 """
 
 import contextlib
@@ -29,14 +31,18 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_gate, cmd_run, gitstate, github, ledger, media  # noqa: E402,F401
+from kit.lib import cmd_gate, cmd_run, gitstate, github, ledger, media, posts  # noqa: E402,F401
+from kit.lib.lints import publish  # noqa: E402
 
 RUN = ROOT / "tests" / "fixtures" / "run"
 ANSWERS = ROOT / "tests" / "fixtures" / "youtube_upload" / "answers"
 NOW = "2026-11-02T09:00:00Z"
 TICKET, PULL, BRANCH = 3, 4, "feat/RN-1-ep01"
 TOOL, RESOURCE = "youtube-upload", "platform.youtube"
-REQUEST_PATH = "uploads/ep01.json"
+REQUEST_PATH = "distribution/ep01/youtube/requests/upload.json"
+JOB_PATH = "jobs/" + REQUEST_PATH
+RECORD_PATH = "distribution/ep01/youtube/post.json"
+MANIFEST_PATH = "media/manifest.tsv"
 KEY_LINES = ["invented-client-id", "invented-client-secret", "invented-refresh-token"]
 ACCESS_TOKEN = "invented-access-token"
 VIDEO = (b"an invented video, sixty-four bytes long, for the upload tests.." * 2)[:64]
@@ -47,10 +53,17 @@ UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=res
 LOCATION = "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=invented-upload-1"
 READ_URL = "https://www.googleapis.com/youtube/v3/videos?part=status,processingDetails&id=inventedVid01"
 REASONS = ("request is not an upload request", "public link unreachable", "public link serves other bytes",
-           "upload refused", "upload failed", "video is not private", "disclosure not set")
+           "upload refused", "upload failed")
 GIT_IDENTITY = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME",
                 "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE")
 MANIFEST_HEADER = "id\tsha256\tbytes\tsource\n"
+CAPTIONS_SHA = hashlib.sha256(b"captions").hexdigest()
+VIDEO_ROW = f"reel-ep01\t{SHA}\t64\tconform-editor\n"
+CAPTIONS_ROW = f"captions-ep01\t{CAPTIONS_SHA}\t8\tconform-editor\n"
+MANIFEST = MANIFEST_HEADER + VIDEO_ROW + CAPTIONS_ROW
+OTHER_SHA = hashlib.sha256(b"other").hexdigest()
+RULEBOOK = {"platform": "youtube", "kinds": {}, "policy": [],
+            "disclosure": {"field": "status.containsSyntheticMedia", "value": True, "source": None, "read_at": None}}
 
 
 def answer(name):
@@ -62,8 +75,8 @@ def video_answer(status=200, body=VIDEO):
 
 
 def clean_request():
-    return {"bytes": len(VIDEO), "description": "An invented episode.", "link": LINK, "sha256": SHA,
-            "title": "Episode one"}
+    return {"captions": "media:captions-ep01", "description": "An invented episode.", "link": LINK,
+            "title": "Episode one", "video": "media:reel-ep01"}
 
 
 def clean_scenario():
@@ -75,6 +88,28 @@ def clean_scenario():
 def digest_of(path):
     job = json.loads(Path(path).read_text())
     return hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def clean_record(digest, **changes):
+    """The record of a clean upload of the job ``digest``, with ``changes``."""
+    return {"captions": True, "fields": {"status.containsSyntheticMedia": True}, "job": digest,
+            "platform": "youtube", "post_id": "inventedVid01", "processed": False, "read_at": NOW, "sha256": SHA,
+            "visibility": "private", **changes}
+
+
+def as_post(stage_files):
+    """The copied pipeline's `render` entry made the stage `distribution/post`, unit `post`, no `after`."""
+    entries = json.loads(stage_files.read_text())
+    for entry in entries:
+        if entry["stage"] == "render":
+            entry.update({"room": "distribution", "stage": "post", "unit": "post", "after": ""})
+    stage_files.write_text(json.dumps(entries) + "\n")
+
+
+def as_post_ticket(issue, platform):
+    data = json.loads(issue.read_text())
+    data["labels"] = ["room:distribution", "stage:post", "tracked", f"unit:ep01/{platform}"]
+    issue.write_text(json.dumps(data, indent=1) + "\n")
 
 
 class FakeResponse:
@@ -117,9 +152,12 @@ class FakeOpener:
 
 
 class World:
-    """A production on `trunk`, a recorded GitHub, a state directory and the key file, all temporary."""
+    """A production on `trunk`, a recorded GitHub, a state directory and the key file, all temporary.
 
-    def __init__(self, test, request=None, key="\n".join(KEY_LINES) + "\n"):
+    ``inputs`` are the job's inputs, ``(path, text)``, each committed on `trunk` when ``text`` is not None;
+    by default the request and the manifest."""
+
+    def __init__(self, test, request=None, key="\n".join(KEY_LINES) + "\n", manifest=MANIFEST, inputs=None):
         self.test = test
         self.tmp = Path(tempfile.mkdtemp())
         test.addCleanup(shutil.rmtree, self.tmp)
@@ -134,10 +172,12 @@ class World:
         for name in GIT_IDENTITY:
             os.environ.pop(name, None)
         shutil.copytree(RUN / "production", self.root)
+        as_post(self.root / ".factory" / "pipeline.json")
         self.git("init", "-q", "-b", "trunk")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "the production")
         shutil.copytree(RUN / "github", self.dir)
+        as_post_ticket(self.dir / "issues" / f"{TICKET}.json", "youtube")
         for path in sorted((self.dir / "pulls").glob("*.json")):
             self.branch(json.loads(path.read_text())["head_ref"])
         for path in sorted((self.dir / "comments").glob("*.json")):
@@ -148,15 +188,21 @@ class World:
         self.key_file.chmod(0o600)
         (self.root / "production.local.env").write_text(f"STATE_DIR={self.state}\nSECRETS_DIR={self.secrets}\n")
         self.set_env("YOUTUBE_OAUTH_APP", "production")
-        text = json.dumps(clean_request() if request is None else request, indent=1, sort_keys=True) + "\n"
-        self.commit(REQUEST_PATH, text)
-        job = {"caller": "renderer", "expected": {"compute_min": 0, "usd": 0},
-               "inputs": [{"path": REQUEST_PATH, "sha256": hashlib.sha256(text.encode()).hexdigest()}],
+        self.request_text = json.dumps(clean_request() if request is None else request, indent=1, sort_keys=True) + "\n"
+        self.manifest_text = manifest
+        found = []
+        for path, text in inputs or [(REQUEST_PATH, self.request_text), (MANIFEST_PATH, manifest)]:
+            if text is not None:
+                self.commit(path, text)
+            found.append({"path": path, "sha256": hashlib.sha256((self.root / path).read_bytes()).hexdigest()})
+        job = {"caller": "renderer", "expected": {"compute_min": 0, "usd": 0}, "inputs": found,
                "ticket": TICKET, "tool": TOOL}
-        self.job = str(self.write("jobs/upload.json", json.dumps(job, indent=1)))
+        self.job_text = json.dumps(job, indent=1)
+        self.job = str(self.write(JOB_PATH, self.job_text))
         self.digest = digest_of(self.job)
         code, out, err = self._main(cmd_gate.main, [self.job, "--root", str(self.root), "--apply"])
         test.assertEqual(code, 0, out + err)
+        self.branch_head = gitstate.head(self.root, BRANCH)
         self.opener = None
 
     def git(self, *args):
@@ -209,8 +255,12 @@ class World:
     def job_dir(self):
         return self.state / "jobs" / self.digest
 
+    def record_text(self):
+        path = self.job_dir() / "record" / "post.json"
+        return path.read_text() if path.is_file() else None
+
     def post(self):
-        return json.loads((self.job_dir() / "out" / "post.json").read_text())
+        return json.loads(self.record_text())
 
     def ledger_text(self):
         return gitstate.show(self.root, "trunk", ledger.PATH) or ""
@@ -220,6 +270,24 @@ class World:
 
     def manifest(self):
         return gitstate.show(self.root, BRANCH, gitstate.MANIFEST)
+
+
+def publish_findings(test, w, record):
+    """``(rule, message)`` of the publish check on ``record``, the world's manifest, request and job, sorted."""
+    tmp = Path(tempfile.mkdtemp())
+    test.addCleanup(shutil.rmtree, tmp)
+    for rel, text in ((MANIFEST_PATH, w.manifest_text), (REQUEST_PATH, w.request_text), (JOB_PATH, w.job_text),
+                      (RECORD_PATH, json.dumps(record, indent=1, sort_keys=True) + "\n"),
+                      ("rulebook/youtube.json", json.dumps(RULEBOOK, indent=1) + "\n")):
+        (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp / rel).write_text(text)
+    return sorted((f.rule, f.message) for f in publish.check(tmp))
+
+
+def succeeded(scenario):
+    """``scenario`` with the read's processing ``succeeded``."""
+    scenario[("GET", READ_URL)]["body"]["items"][0]["processingDetails"]["processingStatus"] = "succeeded"
+    return scenario
 
 
 def failed(world, reason):
@@ -235,7 +303,16 @@ class UploadTest(unittest.TestCase):
         code, out, err = w.run(scenario)
         self.assertEqual((code, out, err), (1, line(w, "FAILED"), failed(w, reason)))
         self.assertEqual([r["verdict"] for r in w.runs()], ["FAILED"])
-        self.assertIsNone(w.manifest())
+        self.assertIsNone(w.record_text())
+        self.assertEqual(gitstate.head(w.root, BRANCH), w.branch_head)
+
+    def assert_done(self, w, scenario):
+        """The run is DONE and its record is on the branch; the record."""
+        code, out, err = w.run(scenario)
+        self.assertEqual((code, out, err), (0, line(w, "DONE"), ""))
+        self.assertEqual(posts.answer_problems(w.post()), [])
+        self.assertEqual(gitstate.show(w.root, BRANCH, RECORD_PATH), w.record_text())
+        return w.post()
 
     def test_clean_upload(self):
         w = World(self)
@@ -267,45 +344,90 @@ class UploadTest(unittest.TestCase):
         self.assertEqual((put[2]["authorization"], put[2]["content-type"], put[2]["content-length"], put[3]),
                          (auth, "video/*", "64", VIDEO))
         self.assertEqual(requests[4][2]["authorization"], auth)
-        post_text = (w.job_dir() / "out" / "post.json").read_text()
-        post = json.loads(post_text)
-        self.assertEqual(post_text, json.dumps(post, indent=1, sort_keys=True) + "\n")
-        self.assertEqual(post, {"bytes": 64, "disclosure": True, "platform": "youtube", "post_id": "inventedVid01",
-                                "processing": "processing", "sha256": SHA, "upload_status": "uploaded",
-                                "visibility": "private"})
-        size = len(post_text.encode())
-        row = f"{w.digest[:16]}-post.json\t{hashlib.sha256(post_text.encode()).hexdigest()}\t{size}\tjob {w.digest}"
-        self.assertEqual(w.manifest(), MANIFEST_HEADER + row + "\n")
+        self.assertEqual(list((w.job_dir() / "out").iterdir()), [])
+        self.assertEqual(sorted(p.name for p in (w.job_dir() / "record").iterdir()), ["post.json"])
+        record = clean_record(w.digest)
+        text = json.dumps(record, indent=1, sort_keys=True) + "\n"
+        self.assertEqual(w.record_text(), text)
+        self.assertEqual(posts.answer_problems(w.post()), [])
+        # The branch's new commit adds only the record, at the post's path.
+        self.assertEqual(w.git("log", "--format=%s", f"{w.branch_head}..{BRANCH}").splitlines(),
+                         [f"manifest: job {w.digest[:12]}"])
+        self.assertEqual(w.git("diff", "--name-status", w.branch_head, BRANCH).splitlines(), ["A\t" + RECORD_PATH])
+        self.assertEqual(gitstate.show(w.root, BRANCH, RECORD_PATH), text)
+        self.assertIsNone(w.manifest())
         self.assertEqual([r["verdict"] for r in w.runs()], ["DONE"])
+        self.assertEqual(publish_findings(self, w, w.post()),
+                         [("publish-processed", "post inventedVid01 is not processed")])
 
-    def test_not_private(self):
+    def test_a_processed_upload_passes_the_publish_check(self):
         w = World(self)
-        scenario = clean_scenario()
-        scenario[("PUT", LOCATION)]["body"]["status"]["privacyStatus"] = "public"
-        self.assert_failed(w, scenario, "video is not private")
-        self.assertEqual(w.post()["visibility"], "public")
-        self.assertEqual(w.post()["post_id"], "inventedVid01")
+        post = self.assert_done(w, succeeded(clean_scenario()))
+        self.assertEqual(post, clean_record(w.digest, processed=True))
+        self.assertEqual(publish_findings(self, w, post), [])
 
-    def test_disclosure_dropped(self):
+    def test_seeded_answers(self):
+        """The platform's answer is recorded as it is, and the publish check judges it."""
+        def dropped(status):
+            del status["containsSyntheticMedia"]
+
+        cases = (
+            ("disclosure dropped", dropped, {"fields": {}},
+             [("publish-disclosure", "post inventedVid01 has no disclosure field status.containsSyntheticMedia")]),
+            ("disclosure false", lambda status: status.update(containsSyntheticMedia=False),
+             {"fields": {"status.containsSyntheticMedia": False}},
+             [("publish-disclosure", "post inventedVid01 sets status.containsSyntheticMedia to false, not true")]),
+            ("public", lambda status: status.update(privacyStatus="public"), {"visibility": "public"},
+             [("publish-visibility", "post inventedVid01 is public, not private")]),
+        )
+        for name, change, changes, findings in cases:
+            with self.subTest(name):
+                w = World(self)
+                scenario = succeeded(clean_scenario())
+                change(scenario[("PUT", LOCATION)]["body"]["status"])
+                post = self.assert_done(w, scenario)
+                self.assertEqual(post, clean_record(w.digest, processed=True, **changes))
+                self.assertEqual(publish_findings(self, w, post), findings)
+        with self.subTest("privacyStatus none"):
+            w = World(self)
+            scenario = succeeded(clean_scenario())
+            scenario[("PUT", LOCATION)]["body"]["status"]["privacyStatus"] = "none"
+            self.assert_failed(w, scenario, "upload failed")
+
+    def test_wrong_hash(self):
         w = World(self)
-        scenario = clean_scenario()
-        del scenario[("PUT", LOCATION)]["body"]["status"]["containsSyntheticMedia"]
-        self.assert_failed(w, scenario, "disclosure not set")
-        self.assertIsNone(w.post()["disclosure"])
+        post = self.assert_done(w, succeeded(clean_scenario()))
+        post["sha256"] = OTHER_SHA
+        self.assertEqual(posts.answer_problems(post), [])
+        self.assertIn(("publish-hash", f"post inventedVid01 has sha256 {OTHER_SHA[:12]}, not the {SHA[:12]} of "
+                                       "media:reel-ep01"), publish_findings(self, w, post))
 
     def test_bad_request(self):
         missing = clean_request()
         del missing["description"]
         cases = {
-            "a key missing": missing,
-            "a sixth key": {**clean_request(), "privacyStatus": "public"},
-            "bytes true": {**clean_request(), "bytes": True},
-            "link not ending in the sha256": {**clean_request(), "link": f"https://media.example.invalid/pub/{SHA}x"},
-            "http off loopback": {**clean_request(), "link": f"http://media.example.invalid/pub/{SHA}"},
+            "a key missing": {"request": missing},
+            "a sixth key": {"request": {**clean_request(), "privacyStatus": "public"}},
+            "the old request": {"request": {"bytes": 64, "description": "An invented episode.", "link": LINK,
+                                            "sha256": SHA, "title": "Episode one"}},
+            "video not media:<id>": {"request": {**clean_request(), "video": "reel-ep01"}},
+            "video media:": {"request": {**clean_request(), "video": "media:"}},
+            "captions not media:<id>": {"request": {**clean_request(), "captions": "captions-ep01"}},
+            "captions with no row": {"manifest": MANIFEST_HEADER + VIDEO_ROW},
+            "captions with two rows": {"manifest": MANIFEST + CAPTIONS_ROW},
+            "video with no row": {"manifest": MANIFEST_HEADER + CAPTIONS_ROW},
+            "one input only": {"inputs": [(REQUEST_PATH, json.dumps(clean_request()) + "\n")]},
+            "a second input elsewhere": {"inputs": [(REQUEST_PATH, json.dumps(clean_request()) + "\n"),
+                                                    ("media/other.tsv", MANIFEST)]},
+            "link ending with another sha256": {"request": {**clean_request(),
+                                                            "link": f"https://media.example.invalid/pub/{OTHER_SHA}"}},
+            "link not ending in the sha256": {"request": {**clean_request(),
+                                                          "link": f"https://media.example.invalid/pub/{SHA}x"}},
+            "http off loopback": {"request": {**clean_request(), "link": f"http://media.example.invalid/pub/{SHA}"}},
         }
-        for name, request in cases.items():
+        for name, options in cases.items():
             with self.subTest(name):
-                w = World(self, request=request)
+                w = World(self, **options)
                 self.assert_failed(w, clean_scenario(), "request is not an upload request")
                 self.assertEqual(w.sent(), [])
 
@@ -355,9 +477,7 @@ class UploadTest(unittest.TestCase):
         w = World(self)
         scenario = clean_scenario()
         scenario[("GET", READ_URL)]["body"] = {"items": []}
-        code, out, err = w.run(scenario)
-        self.assertEqual((code, out, err), (0, line(w, "DONE"), ""))
-        self.assertEqual((w.post()["processing"], w.post()["upload_status"]), (None, "uploaded"))
+        self.assertEqual(self.assert_done(w, scenario), clean_record(w.digest))
         self.assertEqual([r["verdict"] for r in w.runs()], ["DONE"])
 
     def test_the_resource_checks(self):
@@ -383,16 +503,16 @@ class UploadTest(unittest.TestCase):
         invalid_grant[("POST", TOKEN_URL)] = answer("token-invalid-grant")
         two_lines = "\n".join(KEY_LINES[:2]) + "\n"
         for name, key, scenario, exit_code in (("clean", None, clean_scenario(), 0),
-                                               ("not private", None, put_public, 1),
+                                               ("not private", None, put_public, 0),
                                                ("two lines", two_lines, clean_scenario(), 2),
                                                ("invalid grant", None, invalid_grant, 2)):
             with self.subTest(name):
                 w = World(self) if key is None else World(self, key=key)
                 code, out, err = w.run(scenario)
                 self.assertEqual(code, exit_code, out + err)
-                self.assertEqual((w.job_dir() / "out" / "post.json").is_file(), exit_code < 2)
-                texts = [out, err, w.ledger_text()]
-                for rel in ("out/post.json", "result.json"):
+                self.assertEqual(w.record_text() is not None, exit_code < 2)
+                texts = [out, err, w.ledger_text(), w.git("log", "-p", "--all")]
+                for rel in ("record/post.json", "result.json"):
                     if (w.job_dir() / rel).is_file():
                         texts.append((w.job_dir() / rel).read_text())
                 for secret in KEY_LINES + [ACCESS_TOKEN]:
