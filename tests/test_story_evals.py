@@ -70,9 +70,13 @@ def prefers(side):
 
 
 def unnamed_stage_lints(kit, role):
-    """The check named after the role file's `stage`, for a role no pipeline entry names yet."""
+    """The check named after the role file's `stage`, else the `lint` of the pipeline entry of that stage,
+    for a role no pipeline entry names yet."""
     stage = evals.role_file(kit, role)[0].get("stage", "")
-    return [stage] if (kit / "lib" / "lints" / f"{stage}.py").is_file() else []
+    if (kit / "lib" / "lints" / f"{stage}.py").is_file():
+        return [stage]
+    pipeline = json.loads((kit / "pipeline.json").read_text(encoding="utf-8"))
+    return sorted({check for entry in pipeline if entry["stage"] == stage for check in entry["lint"]})
 
 
 def stage_lints(key, role):

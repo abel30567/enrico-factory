@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Frame 4 of shot Q1-1 shows engine text (criterion 6).",
+      "evidence": "production/ep01/Q1-1/render/render.json"
+    }
+  ]
+}
