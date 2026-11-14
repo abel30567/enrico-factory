@@ -34,7 +34,7 @@ JUDGES = tuple(role for role in SUITES if KIND[role] == "judge")
 NOTE = ".no-suite.md"
 NO_SUITE = tuple(sorted(p.name[:-len(NOTE)] for p in (KIT / "evals").glob("*" + NOTE)))
 NOTE_TEXT = re.compile(r"# `(?P<role>[a-z0-9-]+)`: no suite yet\n\nWhy not yet: .+\nWave: (?P<wave>[0-9]+|never)\n")
-MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "refusal": 0, "pair": 4, "verdict": 0}
+MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "refusal": 0, "pair": 4, "verdict": 0, "ruling": 2, "selection": 2}
 NEVER = "held-out-judge"
 CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
@@ -254,7 +254,7 @@ class CompletenessTest(unittest.TestCase):
             for case in cases(role):
                 count += 1
                 self.assertEqual(completeness(KIT, case, self.dir / f"{role}-{case.id}" / "run"), [])
-        self.assertEqual(count, sum(declared(role) for role in SUITES))
+        self.assertEqual(count, sum(declared(role) for role in CHECKERS + MAKERS + JUDGES))
         self.assertEqual(read_first(KIT, "look-reviewer"),
                          ["bible/canon/ledger.tsv", "bible/charter.md", "media/manifest.tsv"])
 

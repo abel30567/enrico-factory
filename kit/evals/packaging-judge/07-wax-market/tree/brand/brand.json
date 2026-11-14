@@ -1,0 +1,30 @@
+{
+  "name": "Lanternfall",
+  "marks": {
+    "logo": "media:lanternfall-logo",
+    "corner": "media:lanternfall-corner",
+    "end-card": "media:lanternfall-end-card"
+  },
+  "palette": {
+    "ember": "#F2A23A",
+    "dusk": "#1E2340",
+    "paper": "#F7F1E3",
+    "moss": "#5E7D4E"
+  },
+  "type": {
+    "caption": {"family": "Lanternfall Sans", "weight": 700, "size": 0.045, "color": "paper"},
+    "thumbnail": {"family": "Lanternfall Display", "weight": 900, "size": 0.12, "color": "ember"}
+  },
+  "corner": {"mark": "corner", "corner": "top-left", "x": 0.04, "y": 0.04, "width": 0.12},
+  "end_card": {"mark": "end-card", "duration": [2, 4]},
+  "words": {
+    "exact": ["Lanternfall", "Wick", "the Low Lanes"],
+    "never": ["epic", "insane", "must-see", "viral"]
+  },
+  "legal": ["Lanternfall is an original animated series. Made with AI-assisted tools."],
+  "platforms": {
+    "youtube": {"handle": "@lanternfall", "hashtags": ["#Lanternfall", "#Wick"], "link": "https://lanternfall.example/watch"},
+    "tiktok": {"handle": "@lanternfall", "hashtags": ["#Lanternfall", "#animation"], "link": "https://lanternfall.example/watch"},
+    "instagram": {"handle": "@lanternfall.show", "hashtags": ["#Lanternfall", "#animation"], "link": "https://lanternfall.example/watch"}
+  }
+}

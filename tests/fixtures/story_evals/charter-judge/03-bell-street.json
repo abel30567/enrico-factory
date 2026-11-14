@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The story kept (criterion 2): the cut plays beat B3 before beat B2, out of the edit list's order.",
+      "evidence": "post/ep01/youtube/shorts/cut.json:1"
+    }
+  ]
+}

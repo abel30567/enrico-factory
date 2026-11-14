@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The master unchanged (criterion 5): cut.json names no master at all.",
+      "evidence": "post/ep01/youtube/shorts/cut.json:1"
+    }
+  ]
+}

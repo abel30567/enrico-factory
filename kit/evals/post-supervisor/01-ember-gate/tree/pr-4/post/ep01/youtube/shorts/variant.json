@@ -1,0 +1,14 @@
+{
+  "title": "Wick meets Wickabel in the Low Lanes",
+  "caption": "The lamps go out one street at a time. @lanternfall #Lanternfall #Wick",
+  "cta": ["Follow Lanternfall for the next street."],
+  "description": "Lanternfall is an original animated series. Made with AI-assisted tools.",
+  "aspect": "9:16",
+  "end_card": {"mark": "end-card", "seconds": 3},
+  "corner": {"mark": "corner", "box": [0.04, 0.04, 0.16, 0.1075]},
+  "caption_colors": ["#F7F1E3"],
+  "file": {"sha256": "c88558572f50b6acdec98a6a5e0ae0327f95199054a9f6873c906723224640c0", "bytes": 18874368,
+           "container": "mp4", "codec": "h264", "width": 1080, "height": 1920, "fps": 30, "seconds": 41},
+  "captions": [{"text": "The lamps go out.", "start": 0.5, "end": 2.5, "box": [0.1, 0.6, 0.8, 0.7]}],
+  "upload": {"status.containsSyntheticMedia": true, "status.privacyStatus": "private"}
+}

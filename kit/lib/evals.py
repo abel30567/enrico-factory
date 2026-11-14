@@ -16,11 +16,14 @@ from pathlib import Path
 from kit.lib import frontmatter, harness, lint, roles
 
 CASE_KEYS = {"seeded": ("catches",), "clean": (), "replay": ("lint", "expect_files"),
-             "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",), "verdict": ("verdicts",)}
+             "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",), "verdict": ("verdicts",),
+             "ruling": ("results",), "selection": ("selected",)}
 CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay", "refusal", "verdict"), "judge": ("pair",),
-              "analyst": ("verdict",)}
-# The kinds whose suite needs at least one case; a role of another kind may have none.
-NEEDS_CASES = ("checker", "maker", "judge")
+              "analyst": ("verdict",), "orchestrator": ("ruling", "selection")}
+# The kinds whose suite needs at least one case, an orchestrator's a ruling or selection case; a role
+# of another kind may have none.
+NEEDS_CASES = ("checker", "maker", "judge", "orchestrator")
+RULINGS = ("acted on", "rejected")
 VERDICTS = ("usable", "not usable")
 SIDES = ("old", "new")
 PLACES = 4
@@ -89,6 +92,16 @@ def _spec_problem(spec, role_kind, lint_ids):
                 or any(not isinstance(vid, str) or not vid for vid in verdicts) \
                 or any(value not in VERDICTS for value in verdicts.values()):
             return "verdicts is not an object of video id to usable or not usable"
+    if kind == "ruling":
+        results = spec["results"]
+        if not isinstance(results, dict) or not results \
+                or any(not isinstance(note, str) or not note for note in results) \
+                or any(value not in RULINGS for value in results.values()):
+            return "results is not an object of note to acted on or rejected"
+    if kind == "selection":
+        selected = spec["selected"]
+        if not isinstance(selected, int) or isinstance(selected, bool) or selected < 1:
+            return "selected is not a pull request number >= 1"
     if kind == "seeded":
         if not _is_strings(spec["catches"]) or not spec["catches"]:
             return "catches is not a non-empty list of regexes"
@@ -151,7 +164,7 @@ def _case(path, role, role_kind, actor, lint_ids):
 def load(kit, role):
     """The cases of ``<kit>/evals/<role>/``, sorted by id.
 
-    A checker, maker or judge needs at least one case; a role of another kind may have none.
+    A checker, maker, judge or orchestrator needs at least one case; a role of another kind may have none.
     """
     meta, _ = role_file(kit, role)
     role_kind = meta["kind"]
@@ -255,6 +268,26 @@ def _grade_verdict(case, result, run_dir):
     return True, "every verdict right"
 
 
+def _grade_ruling(case, result):
+    """A ruling case passes when each note's evidence results are exactly the case's one."""
+    if result["marker"] != "RULING":
+        return False, f"marker {result['marker']}, not RULING"
+    found = {}
+    for entry in result.get("evidence", []):
+        found.setdefault(entry["criterion"].strip(), set()).add(entry["result"].strip())
+    wrong = sorted(note for note, value in case.spec["results"].items() if found.get(note) != {value})
+    if wrong:
+        return False, "wrong or no ruling: " + ", ".join(wrong)
+    return True, "every note ruled as given"
+
+
+def _grade_selection(case, result):
+    if result["marker"] != "SELECTED":
+        return False, f"marker {result['marker']}, not SELECTED"
+    got, want = result["selected"], case.spec["selected"]
+    return got == want, f"selected #{got}, better is #{want}"
+
+
 def _grade_pair(case, result, run):
     choice = harness.PREFERS.get(result["marker"])
     if choice is None:
@@ -289,6 +322,10 @@ def grade(case, result, run=1, run_dir=None):
         passed, detail = _grade_refusal(case, result, run_dir)
     elif case.kind == "verdict":
         passed, detail = _grade_verdict(case, result, run_dir)
+    elif case.kind == "ruling":
+        passed, detail = _grade_ruling(case, result)
+    elif case.kind == "selection":
+        passed, detail = _grade_selection(case, result)
     else:
         passed, detail = _grade_pair(case, result, run)
     graded.update(marker=result["marker"], detail=detail)
@@ -318,6 +355,7 @@ def metrics(kind, graded):
     with a refusal case, refusal rate; its score is the share passed over both kinds; with a verdict
     case, also verdict rate. A maker with verdict cases only, and an analyst: verdict rate, its score.
     A judge: agreement.
+    An orchestrator: decision rate, the share of its ruling and selection cases passed, its score.
     A blocked case counts in each denominator and in no numerator; ``blocked`` is the number of
     graded cases whose marker is ``BLOCKED``. A rate with no case to count is None, and then there is
     no score: ``EvalError``.
@@ -336,6 +374,9 @@ def metrics(kind, graded):
             rates["verdict_rate"] = _rate(graded, "verdict", _passed)
     elif kind == "judge":
         rates = {"agreement": _rate(graded, "pair", _passed)}
+    elif kind == "orchestrator":
+        decided = [g for g in graded if g["kind"] in CASE_KINDS["orchestrator"]]
+        rates = {"decision_rate": sum(_passed(g) for g in decided) / len(decided) if decided else None}
     else:
         raise EvalError(f"no eval score for a role of kind {kind}")
     for name, value in rates.items():
