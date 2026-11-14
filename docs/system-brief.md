@@ -462,9 +462,10 @@ commits the files on the pull request's branch.
   `run: job <hash> has no counting GATE PASS`. With `--pull N` both commands read the job file and its
   inputs at the head of pull request N, which must be the open pull request of the job's ticket. Without
   it they read the job file from disk and its inputs on the base. The credential does not enter the
-  operator's session (`docs/harness.md`, section 8). No tool is installed yet (#93), and a pull request
-  that holds a job cannot be locked yet (#285): rule 7 of section 9 refuses its job files and its
-  manifest rows.
+  operator's session (`docs/harness.md`, section 8). The tools are the files under `kit/lib/tools/`. A pull
+  request that holds a job can be locked: beside the maker's `writes`, rule 7 of section 9 takes the job
+  file of each `DONE` job, its request when it is inside the stage's `paths`, and the manifest rows those
+  jobs added.
 - **Locks that need a gate PASS**: a lock that hands a package to another room (the story package,
   the master, a platform package), and any lock on a ticket that has passed its iteration cap.
 - **Release is staged**: private upload, a check that the platform finished processing and kept

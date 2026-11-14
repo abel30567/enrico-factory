@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Ruling on N1 misquotes bible/charter.md:5, which reads 'No one is hurt, tricked or shamed for a laugh.' (criterion 1).",
+      "evidence": "bible/charter.md:5"
+    }
+  ]
+}

@@ -445,6 +445,14 @@ class JudgeLaunch(unittest.TestCase):
             for line in body.splitlines():
                 self.assertNotIn(line, text)
 
+    def blind_beats(self):
+        path = self.w.root / ".factory" / "pipeline.json"
+        old = '"blind": false, "pitches": 1, "paths": ["episodes/*/beats.md"]'
+        text = path.read_text()
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, old.replace("false", "true")))
+        self.w.local()
+
     def test_judge(self):
         run = self.w.prepare("assessor", 7)
         text = (run.dir / "prompt.md").read_text()
@@ -473,6 +481,33 @@ class JudgeLaunch(unittest.TestCase):
         self.assertEqual(launch.load_run(run.dir).meta["blind"], True)
         launch.cleanup(self.w.root, run)
         self.assertEqual((pair / "A.md").read_text(), "one\n")
+
+    def test_judge_of_a_first_version(self):
+        self.blind_beats()
+        run = self.w.prepare("assessor", 7)
+        text = (run.dir / "prompt.md").read_text()
+        task = "Task: Judge pull request #7. Unit ep02 has no locked version: judge its head alone.\n"
+        self.assertIn(task, text)
+        line = next(line for line in text.splitlines() if line.startswith("Task: "))
+        self.assertIsNone(re.search(r"\b[AB]\b", line), line)
+        self.assertEqual(run.worktree, self.w.state / "worktrees" / "assessor-7-1")
+        self.assertFalse(run.meta["blind"])
+        launch.cleanup(self.w.root, run)
+
+    def test_judge_of_a_revision(self):
+        self.blind_beats()
+        self.w.set_issue(8, title="[BT-3] Beats for ep02", body="Earlier beats.\n", state="closed",
+                         created_at="2026-10-01T09:00:00Z", labels=["room:story", "stage:beats", "tracked", "unit:ep02"])
+        self.w.set_pull(9, title="Work for #8", body="Ticket: #8\n", state="merged", labels=[],
+                        head_ref="beats/BT-3-drafter-1", base_ref="trunk", ticket=8,
+                        created_at="2026-10-02T09:00:00Z", merged_at="2026-10-03T09:00:00Z")
+        pair = self.w.tmp / "pair"
+        pair.mkdir()
+        run = self.w.prepare("assessor", 7, pair_dir=pair)
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn("Task: Judge pull request #7.\n", text)
+        self.assertNotIn("no locked version", text)
+        launch.cleanup(self.w.root, run)
 
 
 class MakerRelaunch(unittest.TestCase):

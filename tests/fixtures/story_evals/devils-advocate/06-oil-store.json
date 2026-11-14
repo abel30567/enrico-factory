@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "PV5 states no hypothesis and no result that would refute it (criterion 4).",
+      "evidence": "research/quay-lamps.md:18"
+    }
+  ]
+}
