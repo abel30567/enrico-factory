@@ -220,6 +220,7 @@ rule 2, which only a checker opens.
 | story | `style` | style lock | art-director, media-wrangler | references resolve, palette values present | look-reviewer |
 | story | `board` | sequence | story-artist, media-wrangler | shot schema, durations, ids exist in the bible | continuity-supervisor, pitch-judge (blind) |
 | story | `reel` | episode | editorial, media-wrangler | edit list covers every beat ID, runtime, the bible version, the intent packet | story-editor, then Braintrust, audience-sim, distinctiveness-judge, held-out-judge (blind) |
+| story | `retro` | episode | retro-agent | none | held-out-judge |
 | production | `intake` | episode | none: `factory` writes the shot tickets from the locked edit list | shot list equals the locked edit list frame for frame; reads `production/<ep>/shots.json`, `reel/edit-list.json` | none |
 | production | `assets` | asset | asset-builder, render-wrangler | naming, references, budgets, scale against the bible, skeleton; reads `assets/state.json`, `bible/canon/` | look-reviewer |
 | production | `rigging` | asset | rigger, render-wrangler | range of motion, limits, interpenetration, rig hash; reads `rigging/state.json` | deformation-reviewer |

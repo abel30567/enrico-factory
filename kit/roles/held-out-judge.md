@@ -3,7 +3,7 @@ role: held-out-judge
 room: story
 kind: judge
 analog: outside screening reader
-stage: reel
+stage: reel, retro
 reads: bible/**, episodes/**
 may_not: leak its prompts
 model: checker

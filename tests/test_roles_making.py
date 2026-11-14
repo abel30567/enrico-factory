@@ -41,8 +41,6 @@ ROLES = {
     "editorial": ("maker", "drop a beat silently", "story-editor"),
     "media-wrangler": ("operator", "write or change a prompt", ""),
 }
-# The one maker no pipeline entry names yet: its stage and writes come from the ticket.
-UNNAMED = {"retro-agent": ("retro", "playbook/**, lab/proposals/**")}
 # A write glob may never reach these: the kit, the ledger, the manifest alone, the rules.
 OFF_LIMITS = ("kit/lib/roles.py", ".factory/roles/x.md", "ledger/spend.tsv", "media/manifest.tsv",
               "rules/production-rules.md")
@@ -81,9 +79,8 @@ def expected_meta(role_id):
                     tools="Read, Write, Grep, Glob, Bash", knowledge="", gated="yes")
     elif kind == "maker":
         entries = maker_entries(role_id)
-        stage, writes = UNNAMED.get(role_id, (
-            ", ".join(e["stage"] for e in entries),
-            ", ".join(p for e in entries for p in e["paths"])))
+        stage = ", ".join(e["stage"] for e in entries)
+        writes = ", ".join(p for e in entries for p in e["paths"])
         web = role_id == "researcher"
         meta.update(stage=stage, writes=writes, checked_by=checked_by,
                     tools=MAKER_TOOLS + (WEB if web else ""),
@@ -300,7 +297,7 @@ class ShippedFilesTest(unittest.TestCase):
     def test_every_story_stage_is_written_and_checked(self):
         self.assertEqual(coverage_problems(KIT), [])
         makers = {m for e in STORY for m in names(e["maker"])}
-        self.assertEqual(makers | set(UNNAMED), {r for r, v in ROLES.items() if v[0] in BRANCHED})
+        self.assertEqual(makers, {r for r, v in ROLES.items() if v[0] in BRANCHED})
 
     def test_factory_lists_every_role_file_by_room(self):
         result = subprocess.run([sys.executable, str(FACTORY), "roles"], capture_output=True,
