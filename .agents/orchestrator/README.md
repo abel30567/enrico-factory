@@ -15,6 +15,7 @@ the rules for agents are in your repo's CLAUDE.md / AGENTS.md (from `templates/A
 | `heartbeat.py` | `orch status`: workers, each PR's markers and next step, disk. |
 | `tick.py` | `orch tick`: the state machine. Launches the next worker for each PR and each `status:ready` issue, runs the merge gate, syncs the board. No model. |
 | `tick.sh`, `install-tick.sh` | `orch heartbeat`: a LaunchAgent that runs `tick.py --apply` every 10 minutes. Log: `logs/tick.log`. |
+| `wake.sh`, `install-wake.sh`, `prompts/wake.md` | `orch wake`: a LaunchAgent that runs a fresh headless orchestrator session every 15 minutes, for what needs judgement. No chat app is involved, so a busy or stuck chat thread cannot stop it. Log: `logs/wake.log`. |
 | `board.py` | Kanban derived from markers: secret gist (`gist`) or GitHub Project (`setup` / `sync`). |
 | `baseline.sh` | Runs GATES on a clean base and records `baseline.txt`. |
 | `task.sh` | Creates a tracked issue (`ISSUE-<n>` key, or your own key). |

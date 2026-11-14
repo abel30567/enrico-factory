@@ -23,6 +23,7 @@ L
   status)   py heartbeat.py ;;
   tick)     py tick.py "$@" ;;
   heartbeat) exec "$D/install-tick.sh" "$@" ;;
+  wake)     if [ "${1:-}" = "--once" ]; then exec "$D/wake.sh"; else exec "$D/install-wake.sh" "$@"; fi ;;
   merge)    py merge-gate.py "$@" ;;
   board)    py board.py "$@" ;;
   risk)     py risk.py "$@" ;;
@@ -58,6 +59,11 @@ the mechanical heartbeat (no model)
   orch tick [--apply]                 one pass of the state machine: launches each PR's and each status:ready
                                       issue's next worker, runs the merge gate, syncs the board; prints NEED lines
   orch heartbeat [--uninstall]        run `orch tick --apply` every 10 min from a LaunchAgent (macOS)
+
+the judgement heartbeat (a model)
+  orch wake [--uninstall]             run a fresh headless orchestrator session (prompts/wake.md) every 15 min
+                                      from a LaunchAgent (macOS); it acts on the tick's NEED lines
+  orch wake --once                    one such session now; the answer is appended to logs/wake.log
 
 watching
   orch status                         workers, every open PR's state and next step, disk
