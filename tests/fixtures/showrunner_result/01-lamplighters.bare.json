@@ -1,0 +1,16 @@
+{
+  "marker": "RULING",
+  "summary": "Ruled each open note.",
+  "evidence": [
+    {
+      "criterion": "canon-reviewer B1",
+      "result": "acted on",
+      "command": "bible/charter.md:9"
+    },
+    {
+      "criterion": "canon-reviewer B2",
+      "result": "rejected",
+      "command": "bible/charter.md:9"
+    }
+  ]
+}
