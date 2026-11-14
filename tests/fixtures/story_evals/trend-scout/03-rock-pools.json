@@ -1,0 +1,31 @@
+{
+ "evidence": [
+  {
+   "command": "read .snapshot/youtube.ranking.txt",
+   "criterion": "each video judged",
+   "result": "pass"
+  }
+ ],
+ "marker": "SYMPTOMS",
+ "notes": [
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-crab",
+   "id": "I1",
+   "severity": "Issue",
+   "text": "yt-crab usable: a counting rhythm short-four-act can tell, and it fits the charter, though it ranks last; pivot P2, hypothesis in research/rock-pools.md"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-prank",
+   "id": "I2",
+   "severity": "Issue",
+   "text": "yt-prank not usable: rising fastest, but the joke is a grandfather tricked for a laugh, which the charter forbids"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-shell",
+   "id": "I3",
+   "severity": "Issue",
+   "text": "yt-shell usable: a which-one question and its answer fit short-hook-payoff and the charter; pivot P0, hypothesis in research/rock-pools.md"
+  }
+ ],
+ "summary": "Three videos on rock-pools in the YouTube snapshot of 2026-11-12; two are usable."
+}

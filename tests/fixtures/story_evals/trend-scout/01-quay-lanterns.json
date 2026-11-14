@@ -1,0 +1,31 @@
+{
+ "evidence": [
+  {
+   "command": "read .snapshot/youtube.ranking.txt",
+   "criterion": "each video judged",
+   "result": "pass"
+  }
+ ],
+ "marker": "SYMPTOMS",
+ "notes": [
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-fold",
+   "id": "I1",
+   "severity": "Issue",
+   "text": "yt-fold usable: a 20 s fold-and-reveal fits short-hook-payoff and the charter; pivot P0, hypothesis in research/quay-lanterns.md"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-trip",
+   "id": "I2",
+   "severity": "Issue",
+   "text": "yt-trip not usable: rising fastest, but the joke is a fall played for a laugh, which the charter forbids"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-wick",
+   "id": "I3",
+   "severity": "Issue",
+   "text": "yt-wick not usable: its only hook is Wickabel, a character of Skarrowfen; listed in research/not-ours.tsv"
+  }
+ ],
+ "summary": "Three rising videos on quay-lanterns in the YouTube snapshot of 2026-11-12; one is usable."
+}

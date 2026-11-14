@@ -1,8 +1,8 @@
 """Tests for the eval case kind `verdict` (kit/lib/evals.py): the two trend cases of `researcher` and
 `trend-scout` under tests/fixtures/trend_evals/, their grade, their spec problems and their metrics.
 
-The cases are not a suite of the kit: each test copies `kit/` to a temporary directory and the role's
-fixture directory to `<copy>/evals/<role>/`.
+The cases are fixtures, not the kit's suites: each test copies `kit/` to a temporary directory and the
+role's fixture directory to `<copy>/evals/<role>/`, in place of the suite `kit/evals/trend-scout/`.
 """
 
 import json
@@ -40,10 +40,12 @@ def temp_dir(test):
 
 
 def kit_copy(test, roles=ROLES):
-    """A copy of `kit/` whose `evals/<role>/` is a copy of the role's fixture directory."""
+    """A copy of `kit/` whose `evals/<role>/` is a copy of the role's fixture directory, in place of
+    the role's own suite where the kit holds one."""
     kit = temp_dir(test) / "kit"
     shutil.copytree(ROOT / "kit", kit, ignore=shutil.ignore_patterns("__pycache__"))
     for role in roles:
+        shutil.rmtree(kit / "evals" / role, ignore_errors=True)
         shutil.copytree(FIX / role, kit / "evals" / role)
     return kit
 
