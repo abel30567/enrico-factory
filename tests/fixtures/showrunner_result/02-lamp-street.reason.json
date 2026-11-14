@@ -1,0 +1,16 @@
+{
+  "marker": "RULING",
+  "summary": "Ruled each open note.",
+  "evidence": [
+    {
+      "criterion": "story-editor B1",
+      "result": "acted on: the kettle scene needs it",
+      "command": "bible/charter.md:9"
+    },
+    {
+      "criterion": "story-editor B2",
+      "result": "rejected: the tide chart already says so",
+      "command": "bible/charter.md:9"
+    }
+  ]
+}
