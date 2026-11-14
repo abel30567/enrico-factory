@@ -1,0 +1,53 @@
+{
+ "audio": true,
+ "cuts_per_minute": 26.67,
+ "cuts_s": [
+  1.201,
+  3.504
+ ],
+ "deleted_at": "2026-11-14T09:00:00Z",
+ "duration_s": 4.5,
+ "fps": 29.97,
+ "height": 1920,
+ "hook": {
+  "cuts_s": [
+   1.201
+  ],
+  "screen_text": [
+   {
+    "at_s": 0,
+    "text": "Skarrowfen"
+   }
+  ],
+  "until_s": 3,
+  "words": "The tide is out. Bring the nets in."
+ },
+ "id": "yt-a",
+ "link": "https://www.youtube.com/watch?v=yt-a",
+ "mean_shot_s": 1.5,
+ "platform": "youtube",
+ "read_at": "2026-11-14T09:00:00Z",
+ "screen_text": [
+  {
+   "at_s": 0,
+   "text": "Skarrowfen"
+  },
+  {
+   "at_s": 3,
+   "text": "Wickabel"
+  }
+ ],
+ "transcript": [
+  {
+   "from_s": 0.0,
+   "text": "The tide is out.",
+   "to_s": 1.8
+  },
+  {
+   "from_s": 1.8,
+   "text": "Bring the nets in.",
+   "to_s": 4.2
+  }
+ ],
+ "width": 1080
+}
