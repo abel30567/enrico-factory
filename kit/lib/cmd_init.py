@@ -18,7 +18,7 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from kit.lib import frontmatter  # noqa: E402
+from kit.lib import frontmatter, snapshot  # noqa: E402
 
 SOURCE = Path(__file__).resolve().parent.parent
 ROOMS = ("story", "production", "post", "distribution", "lab")
@@ -137,7 +137,8 @@ def _install(source: Path, dest: Path, rooms: list[str], warn, evals: bool = Tru
     for dirpath, dirnames, filenames in os.walk(source):
         here = Path(dirpath)
         rel = here.relative_to(source)
-        dirnames[:] = sorted(d for d in dirnames if not _skipped(d))
+        dirnames[:] = sorted(d for d in dirnames
+                             if not _skipped(d) or (d == snapshot.DIR and rel.parts[:1] == ("evals",)))
         if rel == Path(".") and not evals:
             dirnames[:] = [d for d in dirnames if d != "evals"]
         if rel == Path("evals"):

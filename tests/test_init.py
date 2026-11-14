@@ -43,7 +43,7 @@ def kit_files(kit, roles=None):
     out = []
     for dirpath, dirnames, filenames in os.walk(kit):
         rel = Path(dirpath).relative_to(kit)
-        dirnames[:] = [d for d in dirnames if not skipped(d)]
+        dirnames[:] = [d for d in dirnames if not skipped(d) or (d == ".snapshot" and rel.parts[:1] == ("evals",))]
         if roles is not None and rel == Path("evals"):
             dirnames[:] = [d for d in dirnames if d in roles]
         for name in filenames:
@@ -155,6 +155,30 @@ class TreeTest(InitTest):
             self.assertEqual(os.stat(target / ".factory" / rel).st_mode, os.stat(kit / rel).st_mode, rel)
         self.assertTrue(os.access(target / ".factory/factory", os.X_OK))
         self.assertIn("ROOMS=story,distribution\n", (target / "production.env").read_text())
+
+    def test_snapshot_directories_of_eval_trees_are_installed(self):
+        kit = self.source_kit()
+        case = kit / "evals/uploader/case-2/tree"
+        for rel, text in [(".snapshot/youtube.read.json", "{}\n"), (".hidden/note.txt", "hidden\n"),
+                          (".snapshot/.keep", "")]:
+            (case / rel).parent.mkdir(parents=True, exist_ok=True)
+            (case / rel).write_text(text)
+        (kit / "lib/.snapshot").mkdir()
+        (kit / "lib/.snapshot/note.txt").write_text("outside evals\n")
+        target, _ = self.production(kit, "--rooms", "distribution")
+        installed = target / ".factory/evals/uploader/case-2/tree"
+        self.assertEqual(sorted(p.name for p in installed.glob(".snapshot/*")), ["youtube.read.json"])
+        self.assertEqual((installed / ".snapshot/youtube.read.json").read_bytes(), b"{}\n")
+        self.assertFalse((installed / ".hidden").exists())
+        self.assertFalse((target / ".factory/lib/.snapshot").exists())
+        (case / ".snapshot/youtube.ranking.txt").write_text("1\tclip\n")
+        result = self.init(kit, target, "--upgrade")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(sorted(p.name for p in installed.glob(".snapshot/*")),
+                         ["youtube.ranking.txt", "youtube.read.json"])
+        self.assertEqual((installed / ".snapshot/youtube.ranking.txt").read_bytes(), b"1\tclip\n")
+        self.assertFalse((installed / ".hidden").exists())
+        self.assertFalse((target / ".factory/lib/.snapshot").exists())
 
     def test_install_without_evals_is_init_less_evals_and_prints_nothing(self):
         kit = self.source_kit()
