@@ -1,0 +1,12 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/lin.md": "adds Lin, the glassblower's daughter",
+    "bible/canon/ledger.tsv": "adds the row of Lin"
+  },
+  "why": "the kiln episode needs its glassblower",
+  "evidence": {
+    "bible/canon/characters/lin.md": "adds Lin, the glassblower's daughter",
+    "bible/canon/ledger.tsv": "adds the row of Lin"
+  }
+}

@@ -17,6 +17,6 @@ L2 LIN: You too?
 ## S3 The hedge
 beats: B4
 
-Lin sets a small glass nest in the hedge by the door.
+Lin turns a fresh gather into a small glass nest, lets it cool, and sets it in the hedge by the door.
 
 L3 LIN: There. Warm enough.
