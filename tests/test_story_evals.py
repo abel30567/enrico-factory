@@ -149,6 +149,8 @@ def completeness(kit, case, run_dir):
             problems.append(f"{where}: a side holds .factory")
         roots = [run_dir / "A", run_dir / "B"]
     else:
+        if case.kind == "replay":
+            shutil.copytree(FIX / case.role / case.id, run_dir, dirs_exist_ok=True)
         ids = checked_lints(kit, case)
         done = subprocess.run([sys.executable, str(run_dir / ".factory" / "factory"), "lint", "--only",
                                ",".join(ids)], cwd=run_dir, capture_output=True, text=True, timeout=120)
