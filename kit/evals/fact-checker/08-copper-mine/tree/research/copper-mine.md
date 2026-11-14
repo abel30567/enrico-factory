@@ -6,11 +6,11 @@ Question: how the Tarn mine was worked.
 
 | Id | Finding | Tag |
 |---|---|---|
-| F1 | The Tarn mine was surveyed in the spring of 1788. | [text](sources/mine-survey.md) |
+| F1 | The Tarn mine was surveyed in April 1788. | [text](sources/mine-survey.md) |
 | F2 | The main shaft was sixty fathoms deep. | [text](sources/mine-survey.md) |
 | F3 | Twelve men and four boys worked the lower level. | [text](sources/mine-survey.md) |
 | F4 | Water was drawn from the mine by a horse gin. | [text](sources/mine-survey.md) |
-| F5 | After the survey the owner, Ruth Meriden, ordered a second gin. | [text](sources/owner-letter.md) |
+| F5 | After the survey Ruth Meriden ordered a second gin. | [text](sources/owner-letter.md) |
 
 ## Evidence
 
@@ -24,4 +24,4 @@ Question: how the Tarn mine was worked.
 
 ## Pivot
 
-An episode on the lower level, the day the second gin arrives.
+An episode on the lower level, after the second gin is ordered.
