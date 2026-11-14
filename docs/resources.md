@@ -119,6 +119,7 @@ Everything else an agent can do. Start the long ones in wave 4, as the build ord
 | 6 | Key files for the factory: image, 3D, voice, media store, asset store | minutes each | generation, storage |
 | 7 | Logins: a yearly token per inference account; the proxy logins when they end | minutes each | inference, Grok Imagine |
 | 8 | TikTok For Business account, a Business API app and an ad account | not verified | TikTok trend reads, and the optional watch-through |
+| 9 | Fermi: `FERMI_URL` and the key file `knowledge.fermi`, a bearer token that lasts (#216) | minutes, unless the token needs a change on the live server (D2) | the knowledge gateway; without it a run goes on with `GATEWAY=off` |
 
 ## 4. TikTok
 

@@ -203,6 +203,11 @@ requests the stage's gated jobs.
 (rule 4). `pitches: N` launches N makers on one ticket; the judge scores all of them on one rubric and
 the orchestrator selects one.
 
+A unit with no locked version is judged alone: each judge gets the head with no `A` and `B`, applies
+every criterion of its rubric to that one version and returns `NO PREFERENCE`, its Blockers and Issues
+in its evidence. That verdict counts for rule 3 of section 9. A judge's Blocker is not a Blocker of
+rule 2, which only a checker opens.
+
 | Room | Stage | Unit | Maker | Lint | Judged by |
 |---|---|---|---|---|---|
 | story | `research` | topic | researcher | provenance, references | fact-checker |
@@ -567,6 +572,13 @@ program can grade. A checker's eval is its catch rate on seeded defects and its 
 clean cases. A maker's eval is its lint pass rate and its blind win rate on replayed tickets. The lab
 owns the suites; no role and no engineering team may edit the suite it is measured by. These evals are
 what "the harness is failing" means in `docs/harness.md`.
+
+A role's measured noise floor (`factory eval <role> --runs 5` or more) is kept in the kit's
+repository, beside this brief in `docs/eval-floors.tsv`, which is not installed into a production: one
+appended row per measurement with `time`, `role`, `kit` (the commit), `harness`, `model`, `cases`,
+`runs`, `mean`, `floor` and `blocked`, copied from its `summary.json`. A later run is compared with the
+newest row of the same role. A lab loop's floor is its control rows in the production's
+`lab/results.tsv`.
 
 ## 14. Runtime
 
