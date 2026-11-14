@@ -25,7 +25,7 @@ echo $$ >"$LOCK"; trap 'rm -f "$LOCK"' EXIT
 ts=$(date -u +%Y%m%dT%H%M%SZ); J="$OUT/$ts.json"; E="$OUT/$ts.err"
 cd "$REPO" || exit 1
 say "=== start ($WAKE_MODEL, limit $WAKE_MAX_MIN min)"
-{ cat "$D/prompts/wake.md"; [ -f "$STATE/wake-extra.md" ] && cat "$STATE/wake-extra.md"; } \
+{ cat "$D/prompts/wake.md"; [ ! -f "$STATE/wake-extra.md" ] || cat "$STATE/wake-extra.md"; } \
   | $WAKE_CMD -p --permission-mode bypassPermissions --model "$WAKE_MODEL" --output-format json >"$J" 2>"$E" &
 pid=$!
 end=$(( $(date +%s) + WAKE_MAX_MIN * 60 )); killed=""
