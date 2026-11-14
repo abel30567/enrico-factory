@@ -406,7 +406,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
         if record is None:
             verdict, usd, compute_min, reason, outputs, record = (
                 FAILED, expected["usd"], expected["compute_min"], BROKE, [], [])
-        if not any(os.scandir(kept)):
+        if not os.listdir(kept):
             kept.rmdir()
         _write_result(job_dir, verdict, usd, compute_min, reason, outputs, record)
     if verdict == DONE and outputs and stage_files:

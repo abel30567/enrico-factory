@@ -1,0 +1,24 @@
+{
+ "bible": "A-1",
+ "events": [
+  {
+   "beat": "B1",
+   "duration": 4.5,
+   "shot": "s1",
+   "start": 0
+  },
+  {
+   "beat": "B1",
+   "duration": 3.2,
+   "shot": "s2",
+   "start": 4.5
+  },
+  {
+   "beat": "B2",
+   "duration": 10,
+   "shot": "s3",
+   "start": 7.7
+  }
+ ],
+ "fps": 24
+}
