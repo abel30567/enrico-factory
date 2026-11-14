@@ -1,0 +1,22 @@
+ranking	rank	id	link	read_at	note
+engagement-rate:short	1	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+engagement-rate:short	2	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+engagement-rate:short	3	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+views-per-hour:short	1	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+views-per-hour:short	2	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+views-per-hour:short	3	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+outlier-score:short	1	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+outlier-score:short	2	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+outlier-score:short	3	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+comment-rate:short	1	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+comment-rate:short	2	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+comment-rate:short	3	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+reach:short	1	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+reach:short	2	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+reach:short	3	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+velocity:short	1	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+velocity:short	2	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
+velocity:short	3	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+platform-order	1	yt-flat	https://www.youtube.com/watch?v=yt-flat	2026-11-12T09:00:00Z	
+platform-order	2	yt-hum	https://www.youtube.com/watch?v=yt-hum	2026-11-12T09:00:00Z	
+platform-order	3	yt-knot	https://www.youtube.com/watch?v=yt-knot	2026-11-12T09:00:00Z	
