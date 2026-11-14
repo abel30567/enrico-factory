@@ -167,14 +167,14 @@ class TreeTest(InitTest):
         (kit / "lib/.snapshot/note.txt").write_text("outside evals\n")
         target, _ = self.production(kit, "--rooms", "distribution")
         installed = target / ".factory/evals/uploader/case-2/tree"
+        self.assertEqual(sorted(p.name for p in installed.glob(".snapshot/*")), ["youtube.read.json"])
         self.assertEqual((installed / ".snapshot/youtube.read.json").read_bytes(), b"{}\n")
-        self.assertEqual(sorted(p.name for p in (installed / ".snapshot").iterdir()), ["youtube.read.json"])
         self.assertFalse((installed / ".hidden").exists())
         self.assertFalse((target / ".factory/lib/.snapshot").exists())
         (case / ".snapshot/youtube.ranking.txt").write_text("1\tclip\n")
         result = self.init(kit, target, "--upgrade")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(sorted(p.name for p in (installed / ".snapshot").iterdir()),
+        self.assertEqual(sorted(p.name for p in installed.glob(".snapshot/*")),
                          ["youtube.ranking.txt", "youtube.read.json"])
         self.assertEqual((installed / ".snapshot/youtube.ranking.txt").read_bytes(), b"1\tclip\n")
         self.assertFalse((installed / ".hidden").exists())
