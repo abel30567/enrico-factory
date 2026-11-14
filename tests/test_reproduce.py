@@ -314,5 +314,217 @@ class Entrypoints(unittest.TestCase):
         self.assertIn("  reproduce\n", out)
 
 
+
+GOLDEN = str(FIX / "golden")
+INSIDE = str(FIX / "inside")
+OUTSIDE = str(FIX / "outside")
+FRAMES = str(FIX / "frames")
+PRODUCTION = str(FIX / "production")
+R = ("--frames", FRAMES, "--root", PRODUCTION)
+FRAME_100 = "e0ca8417c92913a5a46f7366c45c7b153203b2bb81eae733db65f6732a732b5f"
+FRAME_160 = "1299e2234ffdd18a5d4b23817314f023268e6948dd83058368f4f8235a171868"
+
+
+def scored(k, m, p, q, tolerance="9.9"):
+    return f"note render.json frames_sha256: {k} of {m} frame hashes differ; {p} of {q} scored frames at least {tolerance}"
+
+
+SCORED_2 = scored(2, 12, 2, 2)
+UNDER_8 = "render.json frames_sha256[8]: frame 8 scores 8.4314, under 9.9"
+
+
+class FrameCopies(Copies):
+    def production(self, text=None):
+        """A copy of `production/`, its `production.env` replaced by `text` when given."""
+        root = self.copy("production", "p")
+        if text is not None:
+            (root / "production.env").write_text(text)
+        return str(root)
+
+    def tolerance(self, value):
+        return self.production(f"RERENDER_MIN={value}\nPERCEPTUAL_METRIC=python3 metric.py\n")
+
+    def metric(self, value):
+        return self.production(f"RERENDER_MIN=9.9\nPERCEPTUAL_METRIC={value}\n")
+
+    def refused(self, argv, lines):
+        self.assertEqual(run(*argv), (2, "", "".join(f"reproduce: {line}\n" for line in lines)))
+
+
+class FramesInside(FrameCopies):
+    """Frames, behaviour 1."""
+
+    def test_pair_inside_the_tolerance_is_equal(self):
+        self.assertEqual(run(GOLDEN, INSIDE, *R), (0, f"reproduce EQUAL\n{SCORED_2}\n", ""))
+
+    def test_same_run_twice_scores_nothing(self):
+        expected = (0, f"reproduce EQUAL\n{scored(0, 12, 0, 0)}\n", "")
+        self.assertEqual(run(GOLDEN, GOLDEN, *R), expected)
+        root = self.metric("/nonexistent/metric")
+        self.assertEqual(run(GOLDEN, GOLDEN, "--frames", FRAMES, "--root", root), expected)
+
+
+class FramesOutside(unittest.TestCase):
+    """Frames, behaviour 2."""
+
+    def test_pair_outside_the_tolerance_is_different(self):
+        expected = (1, f"reproduce DIFFERENT 1 difference\n{UNDER_8}\n{scored(2, 12, 1, 2)}\n", "")
+        self.assertEqual(run(GOLDEN, OUTSIDE, *R), expected)
+        self.assertEqual(run(OUTSIDE, GOLDEN, *R), expected)
+
+
+class FramesTolerance(FrameCopies):
+    """Frames, behaviour 3."""
+
+    def test_tolerance_is_read_from_the_settings(self):
+        self.assertEqual(run(GOLDEN, OUTSIDE, "--frames", FRAMES, "--root", self.tolerance("8")),
+                         (0, f"reproduce EQUAL\n{scored(2, 12, 2, 2, '8')}\n", ""))
+
+    def test_score_equal_to_the_tolerance_is_inside(self):
+        self.assertEqual(run(GOLDEN, INSIDE, "--frames", FRAMES, "--root", self.tolerance("9.9608")),
+                         (0, f"reproduce EQUAL\n{scored(2, 12, 2, 2, '9.9608')}\n", ""))
+
+    def test_score_under_the_tolerance_is_different(self):
+        self.assertEqual(run(GOLDEN, INSIDE, "--frames", FRAMES, "--root", self.tolerance("9.9609")),
+                         (1, "reproduce DIFFERENT 2 differences\n"
+                             "render.json frames_sha256[3]: frame 3 scores 9.9608, under 9.9609\n"
+                             "render.json frames_sha256[8]: frame 8 scores 9.9608, under 9.9609\n"
+                             f"{scored(2, 12, 0, 2, '9.9609')}\n", ""))
+
+
+class FramesAndKeys(Copies):
+    """Frames, behaviour 4."""
+
+    def test_state_line_with_frames_inside(self):
+        run_dir = self.copy("inside", "seeded")
+        self.edit(run_dir / "state.json", lambda state: state["render"].update(spatial_samples=4))
+        self.assertEqual(run(GOLDEN, str(run_dir), *R),
+                         (1, "reproduce DIFFERENT 1 difference\n"
+                             "state.json render.spatial_samples: 8 in first, 4 in second\n" f"{SCORED_2}\n", ""))
+
+    def test_render_key_line_comes_before_the_frame_line(self):
+        run_dir = self.copy("outside", "seeded")
+        self.edit(run_dir / "render.json", lambda render: render.update(black=[7]))
+        self.assertEqual(run(GOLDEN, str(run_dir), *R),
+                         (1, "reproduce DIFFERENT 2 differences\n"
+                             "render.json black[0]: absent in first, 7 in second\n"
+                             f"{UNDER_8}\n{scored(2, 12, 1, 2)}\n", ""))
+
+    def test_lists_of_different_length(self):
+        run_dir = self.copy("inside", "seeded")
+        self.edit(run_dir / "render.json", lambda render: render["frames_sha256"].pop())
+        self.assertEqual(run(GOLDEN, str(run_dir), *R),
+                         (1, "reproduce DIFFERENT 1 difference\n"
+                             "render.json frames_sha256: 12 frames in first, 11 in second\n"
+                             f"{scored(3, 12, 2, 2)}\n", ""))
+
+
+class FramesSettings(FrameCopies):
+    """Frames, behaviour 5."""
+
+    def frames(self, root):
+        return (GOLDEN, INSIDE, "--frames", FRAMES, "--root", root)
+
+    def test_both_settings_empty(self):
+        self.refused(self.frames(self.production("RERENDER_MIN=\nPERCEPTUAL_METRIC=\n")),
+                     ["setting RERENDER_MIN is empty", "setting PERCEPTUAL_METRIC is empty"])
+
+    def test_absent_settings_are_empty(self):
+        self.refused(self.frames(self.production("")),
+                     ["setting RERENDER_MIN is empty", "setting PERCEPTUAL_METRIC is empty"])
+
+    def test_tolerance_not_a_number(self):
+        self.refused(self.frames(self.tolerance("high")), ["setting RERENDER_MIN is not a number"])
+
+    def test_metric_not_a_command(self):
+        self.refused(self.frames(self.metric('"')), ["setting PERCEPTUAL_METRIC is not a command"])
+
+    def test_no_production_above_the_root(self):
+        self.refused(self.frames("/"), ["no production.env at or above the start directory"])
+
+    def test_compare_without_settings_reads_both_as_empty(self):
+        with self.assertRaises(reproduce.ReproduceError) as caught:
+            reproduce.compare(GOLDEN, INSIDE, FRAMES)
+        self.assertEqual(caught.exception.problems,
+                         ["setting RERENDER_MIN is empty", "setting PERCEPTUAL_METRIC is empty"])
+
+
+class FramesRefused(FrameCopies):
+    """Frames, behaviour 6."""
+
+    def test_missing_frames_first_run_first(self):
+        self.refused((FIRST, SECOND, *R), [
+            f"{FRAMES}/165e896e0956b2c0ffe7976ab625c55cad0c0a1acc02fa67a591d0b14ea42152 is missing",
+            f"{FRAMES}/7df6b806af81a38d7dd6b7d2b9f7eaac7a837d03f0d141aae5eb89f64dee701c is missing",
+            f"{FRAMES}/2912bb946c94eb30148c02b6b2c560ca12a7b5232e16a5d71ea0013a5e59ca32 is missing",
+            f"{FRAMES}/fbd60975215c2bf43f1793d8dd7fd9ae3e44d2c85df615ca1319cfdc6f91dcf6 is missing",
+        ])
+
+    def test_frame_without_the_bytes_of_its_hash(self):
+        frames = self.copy("frames")
+        (frames / FRAME_160).write_bytes(b"x")
+        self.refused((GOLDEN, OUTSIDE, "--frames", str(frames), "--root", PRODUCTION),
+                     [f"{frames}/{FRAME_160} does not hold the bytes of its sha256"])
+
+    def test_metric_exits_non_zero(self):
+        root = self.metric('python3 -c "import sys; sys.exit(4)"')
+        self.refused((GOLDEN, INSIDE, "--frames", FRAMES, "--root", root),
+                     ["the metric exited 4 on frame 3", "the metric exited 4 on frame 8"])
+
+    def test_metric_prints_no_number(self):
+        root = self.metric("python3 -c \"print('high')\"")
+        self.refused((GOLDEN, INSIDE, "--frames", FRAMES, "--root", root),
+                     ["the metric printed no number on its last line on frame 3",
+                      "the metric printed no number on its last line on frame 8"])
+
+    def test_metric_cannot_start(self):
+        root = self.metric("/nonexistent/metric")
+        self.refused((GOLDEN, INSIDE, "--frames", FRAMES, "--root", root),
+                     ["the metric exited 127 on frame 3", "the metric exited 127 on frame 8"])
+
+    def test_file_problem_stops_before_the_settings_and_frames(self):
+        run_dir = self.copy("inside", "seeded")
+        (run_dir / "state.json").unlink()
+        root = self.production("")
+        self.refused((str(run_dir), GOLDEN, "--frames", str(self.tmp / "nowhere"), "--root", root),
+                     [f"{run_dir}/state.json is missing"])
+        self.refused((str(run_dir), GOLDEN, *R), [f"{run_dir}/state.json is missing"])
+
+
+class FramesNotAsked(unittest.TestCase):
+    """Frames, behaviour 7."""
+
+    def test_root_is_not_read_without_frames(self):
+        self.assertEqual(run(GOLDEN, INSIDE, "--root", "/nonexistent"), (0, f"reproduce EQUAL\n{NOTE_2}\n", ""))
+
+    def test_compare_without_frames_reads_no_settings(self):
+        self.assertEqual(reproduce.compare(GOLDEN, INSIDE, None, {"RERENDER_MIN": "high"}, "/nonexistent"),
+                         ([], NOTE_2))
+
+
+class FramesDeterministic(unittest.TestCase):
+    """Frames, behaviour 8."""
+
+    def test_same_bytes_and_trailing_slashes(self):
+        expected = run(GOLDEN, OUTSIDE, *R)
+        self.assertEqual(expected[0], 1)
+        self.assertEqual(run(GOLDEN, OUTSIDE, *R), expected)
+        self.assertEqual(run(GOLDEN + "/", OUTSIDE + "/", "--frames", FRAMES + "/", "--root", PRODUCTION + "/"),
+                         expected)
+
+
+class FramesEntrypoints(unittest.TestCase):
+    """Frames, behaviour 9."""
+
+    python = Entrypoints.python
+
+    def test_factory_and_module_give_the_same_output_with_frames(self):
+        for (first, second), code in (((GOLDEN, INSIDE), 0), ((GOLDEN, OUTSIDE), 1), ((FIRST, SECOND), 2)):
+            expected = run(first, second, *R)
+            self.assertEqual(expected[0], code)
+            self.assertEqual(self.python("kit/factory", "reproduce", first, second, *R), expected)
+            self.assertEqual(self.python("kit/lib/cmd_reproduce.py", first, second, *R), expected)
+
+
 if __name__ == "__main__":
     unittest.main()
