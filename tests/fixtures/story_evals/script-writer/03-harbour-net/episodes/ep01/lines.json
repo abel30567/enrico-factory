@@ -1,6 +1,7 @@
 [
- {"id": "L1", "scene": "S1", "speaker": "MASTER", "text": "By the new moon, Ros."},
- {"id": "L2", "scene": "S2", "speaker": "ROS", "text": "Where did you keep it?"},
- {"id": "L3", "scene": "S3", "speaker": "ROS", "text": "Still here."},
- {"id": "L4", "scene": "S4", "speaker": "ROS", "text": "Dear Jem."}
+ {"id": "L1", "scene": "S1", "speaker": "ROS", "text": "One more knot."},
+ {"id": "L2", "scene": "S2", "speaker": "ROS", "text": "By the new moon."},
+ {"id": "L3", "scene": "S4", "speaker": "ROS", "text": "Where did you keep it?"},
+ {"id": "L4", "scene": "S5", "speaker": "ROS", "text": "Still here."},
+ {"id": "L5", "scene": "S8", "speaker": "ROS", "text": "Dear Jem."}
 ]
