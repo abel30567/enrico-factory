@@ -15,3 +15,9 @@ time	role	kit	harness	model	cases	runs	mean	floor	blocked
 2026-11-14T02:59:14Z	deformation-reviewer	42ee7b3	real 2.1.290 (hbar)	sonnet	9	5	0.8	0.0745	19
 2026-11-14T03:17:06Z	mix-reviewer	42ee7b3	real 2.1.290 (hbar)	sonnet	9	5	1.0	0.0	0
 2026-11-14T03:44:52Z	performance-reviewer	42ee7b3	real 2.1.290 (hbar)	sonnet	9	5	0.2	0.1826	0
+2026-11-14T04:34:35Z	canon-reviewer	e3cd554	real 2.1.290 (hbar)	sonnet	11	5	0.95	0.1118	0
+2026-11-14T04:57:00Z	continuity-supervisor	e3cd554	real 2.1.290 (hbar)	sonnet	9	5	1.0	0.0	0
+2026-11-14T05:12:09Z	fact-checker	e3cd554	real 2.1.290 (hbar)	sonnet	9	5	1.0	0.0	0
+2026-11-14T05:59:55Z	script-writer	e3cd554	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-14T06:37:57Z	story-artist	e3cd554	real 2.1.290 (hbar)	opus	5	5	1.0	0.0	0
+2026-11-14T08:03:41Z	story-editor	e3cd554	real 2.1.290 (hbar)	sonnet	9	5	0.9667	0.0746	0
