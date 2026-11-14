@@ -18,7 +18,7 @@ import re
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from kit.lib import blind, frontmatter, gitstate, jobs, lab, ledger, markers, production, tickets
+from kit.lib import blind, frontmatter, gitstate, jobs, lab, ledger, markers, posts, production, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
          "base", "released", "bible-version", "keep", "pivot")
@@ -78,10 +78,11 @@ def _makers_last(entry, comments):
 
 
 def maker_role(entry, pull):
-    """The role of the pull's first ``READY`` comment when the stage names it as a maker, else None."""
+    """The role of the pull's first ``READY`` comment, or ``POSTED`` by a ``CHANNEL:`` actor, when the stage
+    names it as a maker, else None."""
     for c in _ordered(pull["comments"]):
         m = markers.parse(c["body"])
-        if m and m.verb == "READY":
+        if m and (m.verb == "READY" or (m.verb == "POSTED" and m.actor.startswith("CHANNEL:"))):
             role = c.get("role")
             return role if role in production.stage_roles(entry, "maker") else None
     return None
@@ -171,6 +172,20 @@ def _checkers(summary):
         b = summary["blockers"][0]
         return f"Blocker {b['note']} by {b['by']} is open (#{b['comment']})"
     return ""
+
+
+def _verified(p, maker, pull):
+    """Rule 2 for a channel operator: its ``VERIFIED``, with its role, newer than the counting lint verdict."""
+    actor = p.actors.get(maker) if maker else None
+    if not actor or not actor.startswith("CHANNEL:"):
+        return ""
+    lint = pull["summary"]["lint"]
+    for c in pull["comments"]:
+        m = markers.parse(c["body"])
+        if (m and m.actor == actor and m.verb == "VERIFIED" and c.get("role") == maker and lint is not None
+                and _order(c) > (lint["created_at"], lint["id"])):
+            return ""
+    return f"no [{actor}] VERIFIED newer than the counting [LINT] verdict"
 
 
 def _judges(p, state, pull):
@@ -280,11 +295,30 @@ def operator_paths(p, state, ticket, pull, root) -> set:
     return accepted
 
 
-def _writes(p, room, maker, changed, accepted):
+def recorded_answers(ticket, pull, root) -> set:
+    """At ``distribution/post``: the pull's ``distribution/<unit>/post.json`` when it has no answer problem at
+    the head and the base's ledger has a ``run`` row for its ``job`` whose last verdict is ``DONE``. Rule 7
+    takes it out of the writes check: ``factory run`` wrote it, not the operator."""
+    path = posts.ANSWER.format(ticket["unit"])
+    if not posts.is_post(ticket) or path not in pull["git"]["changed"]:
+        return set()
+    answer = posts.parse_answer(gitstate.show(root, pull["git"]["head"], path))
+    if answer is None:
+        return set()
+    text = gitstate.show(root, pull["base_ref"], ledger.PATH)
+    try:
+        rows = ledger.read(text) if text is not None else []
+    except ledger.LedgerError:
+        return set()
+    ran = [r for r in rows if r["kind"] == "run" and r["hash"] == answer["job"]]
+    return {path} if ran and ran[-1]["verdict"] == "DONE" else set()
+
+
+def _writes(p, room, maker, changed, accepted, recorded=()):
     changed = [path for path in changed if path not in accepted]
     writes = frontmatter.as_list(p.roles[maker]["meta"].get("writes"))
     room_paths = [glob for e in production.stages(p, room) for glob in e["paths"]]
-    outside_writes = [path for path in changed if not production.matches(path, writes)]
+    outside_writes = [path for path in changed if not production.matches(path, writes) and path not in recorded]
     outside_room = [path for path in changed if not production.matches(path, room_paths)]
     reasons = []
     if outside_writes:
@@ -575,13 +609,14 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
     no_maker = f"no maker of stage {entry['stage']} has posted READY"
     reasons = [
         _lint(entry, pull),
-        _checkers(pull["summary"]),
+        _checkers(pull["summary"]) or _verified(p, maker, pull),
         _judges(p, state, pull),
         _upstream(p, state, ticket, root),
         _selected(state, ticket, entry, pull),
         _amendment(entry, pull, root),
         (_lab_writes(p, ticket["room"], changed) if in_lab
-         else _writes(p, ticket["room"], maker, changed, operator_paths(p, state, ticket, pull, root)))
+         else _writes(p, ticket["room"], maker, changed, operator_paths(p, state, ticket, pull, root),
+                      recorded_answers(ticket, pull, root)))
         if maker else no_maker,
         _repeat_notes(p, state, ticket, entry, pull),
         _gate(p, state, ticket, entry, pull, maker) if maker else no_maker,

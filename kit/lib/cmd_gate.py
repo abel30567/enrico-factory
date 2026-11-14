@@ -105,13 +105,14 @@ def _check_inputs(p, job, ref=None, where="the base"):
             raise Refused(f"input {item['path']} does not match its hash on {where}")
 
 
-def _verdicts(state, number):
-    """True when the ticket has one open pull and its lint, checkers and judges all say yes."""
+def _verdicts(state, number, lint=True):
+    """True when the ticket has one open pull and its lint (unless ``lint`` is false), checkers and judges
+    all say yes."""
     pulls = [pull for pull in tickets.pulls_of(state, number) if pull["state"] == "open"]
     if len(pulls) != 1:
         return False
     s = pulls[0]["summary"]
-    return (s["lint"] is not None and s["lint"]["verb"] == "PASS"
+    return ((not lint or (s["lint"] is not None and s["lint"]["verb"] == "PASS"))
             and all(v is not None and v["verb"] == "APPROVED" for v in s["checkers"].values())
             and all(v is not None for v in s["judges"].values()))
 
@@ -143,11 +144,13 @@ def _job_request(p, state, path_text, number=None):
     if (p.kinds.get(caller) != "operator" or p.roles[caller]["meta"].get("gated") != "yes"
             or caller not in production.stage_roles(entry, "maker")):
         raise Refused(f"caller {caller} is not a gated operator of stage {ticket['room']}/{ticket['stage']}")
+    # At a stage whose makers are all operators the check runs on what the job uploads: no lint comes first.
+    operators_only = all(p.kinds.get(role) == "operator" for role in production.stage_roles(entry, "maker"))
     return {"kind": "job", "hash": digest, "ticket": ticket, "target": ticket["number"],
             "comments": state.ticket_comments.get(ticket["number"], []), "tool": job["tool"],
             "usd": Decimal(str(job["expected"]["usd"])),
             "compute_min": Decimal(str(job["expected"]["compute_min"])),
-            "caller": caller, "verdicts": _verdicts(state, ticket["number"]),
+            "caller": caller, "verdicts": _verdicts(state, ticket["number"], lint=not operators_only),
             "job": job, "ref": ref, "on": pull}
 
 

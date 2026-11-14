@@ -43,6 +43,13 @@ and may have:
 - ``inputs``: the job's inputs, each ``{"path", "sha256", "text"}``, ``text`` the file's text on the base;
 - ``out``: the path of an empty directory. Every regular file directly inside it when ``run`` returns is
   an output: non-empty, its name matching ``[a-z0-9][a-z0-9._-]*``;
+- ``record``: the path of an empty directory ``<job dir>/record/`` beside ``out``. After a DONE call it is empty,
+  or holds only the regular file ``post.json``, for a ticket of room ``distribution`` (unit ``<ep>/<platform>``):
+  the platform's answer to an upload, with no problem of ``kit.lib.posts.answer_problems`` and ``job`` the job's
+  hash. Anything else breaks the interface: the job is FAILED at its expected cost. An empty ``record/`` is
+  removed. A kept ``post.json`` is listed in ``result.json`` as ``record`` (``bytes``, ``name``, ``sha256``),
+  checked again on a later run as the outputs are, and committed at ``distribution/<unit>/post.json`` on the
+  pull's branch in the manifest commit, which is then made even with no row;
 - ``settings``: the name and value of each ``setting`` check of the resource;
 - ``secrets``: the name and absolute path of each ``secret`` check of the resource. `factory run` never
   opens a key file; the tool reads it.
