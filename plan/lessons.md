@@ -18,3 +18,8 @@
   needs judgement, and a launch is a label (`status:ready`), not a command typed in a session.
 - **A launchd job cannot read Desktop, Documents or Downloads.** The first install failed with
   "Operation not permitted". The heartbeat runs from a second checkout outside those folders.
+- **A chat app's scheduled task cannot be a heartbeat.** The wake thread wedged a third time on 2026-11-13,
+  from 21:20 to 22:07, with no background task involved: a message typed while a wake was running left one
+  run open and eight wakes queued behind it. Moving launches to the tick was half the fix. The judgement wake
+  is now also a program on a timer (`orch wake`): a fresh headless session per run, killed at a time limit,
+  with GitHub and a notes file as its only memory. A chat thread is for talking to the owner, not for timing.
