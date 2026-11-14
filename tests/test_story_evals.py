@@ -353,7 +353,9 @@ class SuitesTest(unittest.TestCase):
                         count = sum(p.is_file() for p in (case.path / name).rglob("*"))
                         self.assertLessEqual(count, 20, f"{role}/{case.id}/{name}")
         for path in (KIT / "evals").rglob("*"):
-            if path.is_file() and path.suffix != ".png":
+            parts = path.relative_to(KIT / "evals").parts
+            recorded = parts[:1] == ("golden",) and parts[1:2] != ("corpus",) and path.suffix == ".json"
+            if path.is_file() and path.suffix != ".png" and not recorded:
                 self.assertLessEqual(len(path.read_text(encoding="utf-8").splitlines()), 80, path)
 
     def test_no_role_writes_its_suite(self):

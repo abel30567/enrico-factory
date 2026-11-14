@@ -195,7 +195,7 @@ class CorpusTest(unittest.TestCase):
         code, out, err = self.corpus()
         self.assertEqual((code, err), (0, ""))
         self.assertRegex(out.splitlines()[-1], r"^corpus PASS caught (\d+)/\1 share \S+ clean (\d+)/\2$")
-        self.assertEqual(sorted(p.name for p in (KIT / "evals" / "golden").iterdir()), ["corpus"])
+        self.assertEqual(sorted(p.name for p in (KIT / "evals" / "golden").iterdir()), ["README.md", "corpus", "lit-render", "prop-drop", "two-shot"])
         readme = (SHIPPED / "README.md").read_text(encoding="utf-8")
         self.assertLessEqual(len(readme.splitlines()), 40)
         for sentence in (FREEZE, FROM_LEVEL):

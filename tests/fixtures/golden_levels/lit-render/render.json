@@ -1,0 +1,65 @@
+{
+  "fps": 24,
+  "frames": {
+    "first": 0,
+    "last": 23
+  },
+  "count": 24,
+  "width": 640,
+  "height": 360,
+  "frames_sha256": [
+    "426d74066233b0e908f8cefc5f14371d83e1bb11b2104f3fded1ac748db22009",
+    "6b85c6fbafa7573ef7d96d03ac8b1eaeeef60f0f8e0eda44c46c3bd7178d2ed4",
+    "ffdce4a4d678eb6d0d933621e128402e1cf97eab2d77bc98bc700881642f2f2e",
+    "4c51e4dc1dd5c1fcbbf1246dcc9a0e95cbf999786c063b8169f347c573cea8a1",
+    "b2c4b0a4355fcf67455a044ae48482ef8507a1099ae086bd2cad33b1380f6484",
+    "e8ab7d9261fd4cbb9b735a41bacf99de25e36877b5b7ca3f78cea55bf29a9f24",
+    "d29bc5b691dd527154061c41a52717e9f3addfea2b139acb32e01ef580f539cf",
+    "0215dd11a48893162beb4f32b80e05ec790ffc5c215d4bad2515933dac4b5f7a",
+    "7831960781cbd540846185f7d7715e370c0f7889e1ad802a0474bea99b01256c",
+    "bf8797dff54a3dd7dcd311c5c8f3a3e8026b6e6ad5f55c8dd51f4e9189f94ded",
+    "b61d6434f8cd01cd15a481d7d9e6b8019dd45906515056b92d5ff472e322a600",
+    "6cc3e8944af4c8a81551ce6616e097fc6408934fc1be1579a1c8a9f4c0201233",
+    "ad077e8341daba0bde74dad8759c81ff712739ab904916476869ec2bb525c4d6",
+    "166203abbf53d53687fa7f8018f956f5d3b73d486dd46b6ecedcc9579028d91b",
+    "8f44271986af265155a91584dc245e8a0c7245b5f9eadf53f4b3b99cb7f222e7",
+    "e4e204d034bf7843800a990cc89c3c5a42bc87cb3443711fd99ebc20a8866555",
+    "6dc8316341c8a1546fcd93d6ebfc811f6f023900c687861e05ba5a1f0ce8d052",
+    "93638c336548158e87cce94ea28c22ba0d8b574d0bc9bfcc09d7ed7f5cb00242",
+    "b5392be211dd67ad2a4f69c5ecc0b8e5dc67e45cadf329c238e45fcfdf53da15",
+    "37c12d9eacf8c1210e579c9200e240bba325c93009f983aba4295a21a079eb90",
+    "3c3fa1fb7c25e050700180ef24f184358e39b30ce1bf9992b73691099b5f0996",
+    "8acc8328952f188f122bb3dc6db751ecd971dcc4caf7b59e4c214a570d976705",
+    "6456e5f7d9722912d3f0a71d0d4beb23aa10d29ff0267cfc08e32ba08e8be629",
+    "7c34a8d6f497fb8a064c092550e6a4f8aa92c213a48e98bfd0c7fc3ebd7155f9"
+  ],
+  "sequence_sha256": "e8959cb331e1384daa0a25303eb2aa38e0390217ca8974671284b6e811f7f538",
+  "black": [],
+  "nan": [],
+  "text": [],
+  "samples": [
+    {
+      "frame": 0,
+      "luma": 0.42,
+      "clipped": 0.0,
+      "color": [
+        0.4,
+        0.42,
+        0.44
+      ]
+    }
+  ],
+  "rerender": {
+    "frames": [
+      0,
+      12,
+      23
+    ],
+    "metric": "ssim",
+    "scores": [
+      0.998,
+      0.997,
+      0.998
+    ]
+  }
+}
