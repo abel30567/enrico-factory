@@ -47,7 +47,7 @@ while kill -0 "$pid" 2>/dev/null; do
 done
 wait "$pid"; rc=$?
 
-# One summary block; exit 0 only for a run that ended by itself with a result that is not an error.
+# One summary block; exit 0 only for a run that ended by itself with a result that is not an error and not empty.
 python3 -I - "$J" "$E" "$rc" "$killed" >>"$LOG" 2>&1 <<'PY'
 import datetime, json, sys
 j, e, rc, killed = sys.argv[1:5]
@@ -56,7 +56,8 @@ try:
     d = json.loads(open(j).read().strip().splitlines()[-1])
 except (OSError, ValueError, IndexError):
     d = None
-ok = bool(d) and not d.get("is_error") and rc == "0" and not killed
+# An empty answer is a failure too: a session that ends in seconds with no text did no work.
+ok = bool(d) and not d.get("is_error") and rc == "0" and not killed and bool(str(d.get("result") or "").strip())
 head = "KILLED at the time limit" if killed else ("end" if ok else "FAILED")
 if d:
     print(f"{now} === {head} rc={rc} turns={d.get('num_turns')} {round((d.get('duration_ms') or 0) / 60000)} min")
