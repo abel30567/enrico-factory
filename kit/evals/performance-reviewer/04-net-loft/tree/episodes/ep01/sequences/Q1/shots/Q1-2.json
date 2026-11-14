@@ -2,7 +2,7 @@
   "id": "Q1-2",
   "scene": "S1",
   "beat": "B1",
-  "duration": 0.5,
+  "duration": 5,
   "characters": ["wen", "dax"],
   "set": "net-loft",
   "camera": "medium two-shot, eye level, static",

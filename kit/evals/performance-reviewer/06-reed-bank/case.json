@@ -1,1 +1,1 @@
-{"kind": "seeded", "catches": ["\\blantern\\b"]}
+{"kind": "seeded", "catches": ["(?i)\\blantern\\b"]}
