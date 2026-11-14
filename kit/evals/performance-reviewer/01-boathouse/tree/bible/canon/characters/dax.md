@@ -4,7 +4,7 @@ An old boatman.
 
 ## Behaviour
 
-Dax moves slowly and leans on a cane; he never runs.
+Dax moves slowly; he never runs.
 
 ## Motivation
 
