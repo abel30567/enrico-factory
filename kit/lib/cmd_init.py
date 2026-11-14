@@ -26,6 +26,9 @@ STUDIO = "studio"
 DEFAULT_ROOMS = "story"
 KIT_DIR = ".factory"
 ENV = "production.env"
+LAB = "lab"
+GOLDEN = Path("evals/golden")
+CORPUS = "corpus"
 
 PRODUCTION_ENV = """\
 # Production settings. No secrets and no machine paths here: those go in production.local.env.
@@ -131,7 +134,8 @@ def _pipeline(path: Path, rooms: list[str], warn) -> str | None:
 
 def _install(source: Path, dest: Path, rooms: list[str], warn, evals: bool = True) -> int:
     """Copy the kit at `source` into the new directory `dest` for `rooms`, without `evals/` when `evals`
-    is false. Returns the number of files."""
+    is false. Of `evals/golden/` only `corpus/` is copied, and only with the lab room. Returns the number
+    of files."""
     roles = _role_ids(source, rooms, warn)
     count = 0
     for dirpath, dirnames, filenames in os.walk(source):
@@ -142,7 +146,10 @@ def _install(source: Path, dest: Path, rooms: list[str], warn, evals: bool = Tru
         if rel == Path(".") and not evals:
             dirnames[:] = [d for d in dirnames if d != "evals"]
         if rel == Path("evals"):
-            dirnames[:] = [d for d in dirnames if d in roles]
+            dirnames[:] = [d for d in dirnames if d in roles or (d == GOLDEN.name and LAB in rooms)]
+        if rel == GOLDEN:
+            dirnames[:] = [d for d in dirnames if d == CORPUS]
+            filenames = []
         (dest / rel).mkdir(exist_ok=True)
         shutil.copymode(here, dest / rel)
         for name in sorted(filenames):
