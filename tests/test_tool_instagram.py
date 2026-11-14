@@ -2,9 +2,12 @@
 
 The production is tests/fixtures/run/production, made into a git repository on branch `trunk` in a
 temporary directory, with one branch per recorded pull, and GitHub a copy of tests/fixtures/run/github.
-The world commits `media/manifest.tsv` (row `reel-ep01`) and the request of
-tests/fixtures/tool_instagram/request.json on `trunk`, writes the job, passes it with the real gate and
-runs it with the real `factory run`, the shipped tool and the shipped register.
+The copies are edited only to make ticket 3 the post `ep01/instagram` of stage `distribution/post`, made by
+`renderer`. The world commits `media/manifest.tsv` (rows `reel-ep01` and `captions-ep01`) and the request of
+tests/fixtures/tool_instagram/request.json at `distribution/ep01/instagram/requests/upload.json` on `trunk`,
+writes the job `jobs/<request>`, passes it with the real gate and runs it with the real `factory run`, the
+shipped tool and the shipped register. ``publish_findings`` runs the publish check on a record in a new
+temporary directory.
 
 The platform is one `ThreadingHTTPServer` on 127.0.0.1, port 0, in a thread. It serves the Reel's
 invented bytes under `/pub/<sha256>` and the queued answers of tests/fixtures/tool_instagram/answers
@@ -32,7 +35,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_gate, cmd_run, gitstate, ledger, resources  # noqa: E402
+from kit.lib import cmd_gate, cmd_run, gitstate, ledger, posts, resources  # noqa: E402
+from kit.lib.lints import publish  # noqa: E402
 
 RUN = ROOT / "tests" / "fixtures" / "run"
 FIX = ROOT / "tests" / "fixtures" / "tool_instagram"
@@ -43,10 +47,16 @@ ACCOUNT, CONTAINER, POST = "17841400000000001", "17890000000000010", "1792000000
 TOKEN = "invented-instagram-token-0b1c2d3e"
 REEL = b"invented reel bytes, not a video"
 REEL_SHA = hashlib.sha256(REEL).hexdigest()
-REQUEST = "distribution/ep01/requests/reel.json"
+REQUEST = "distribution/ep01/instagram/requests/upload.json"
+JOB = "jobs/" + REQUEST
+RECORD = "distribution/ep01/instagram/post.json"
 MANIFEST = "media/manifest.tsv"
 HEADER = "id\tsha256\tbytes\tsource\n"
-ROW = f"reel-ep01\t{REEL_SHA}\t{len(REEL)}\tupload\n"
+ROW = f"reel-ep01\t{REEL_SHA}\t{len(REEL)}\tconform-editor\n"
+CAPTIONS_ROW = f"captions-ep01\t{hashlib.sha256(b'captions').hexdigest()}\t8\tconform-editor\n"
+OTHER_SHA = hashlib.sha256(b"other").hexdigest()
+RULEBOOK = {"platform": "instagram", "kinds": {}, "policy": [],
+            "disclosure": {"field": "is_ai_generated", "value": True, "source": None, "read_at": None}}
 REASONS = ("bad request", "public link does not serve the reel", "platform unreachable", "platform refused",
            "container failed", "container not ready")
 CHECKS = [{"kind": "secret", "name": "platform.instagram"}, {"kind": "setting", "name": "INSTAGRAM_TEST_ACCOUNT"},
@@ -77,6 +87,27 @@ def sha(text):
 
 def line(digest, verdict):
     return f"run job {digest}: {verdict} usd 0 compute_min 0\n"
+
+
+def record_of(digest, **changes):
+    """The record of a clean upload of the job ``digest``, with ``changes``."""
+    return {"captions": True, "fields": {"is_ai_generated": True}, "job": digest, "platform": "instagram",
+            "post_id": POST, "processed": True, "read_at": NOW, "sha256": REEL_SHA, "visibility": "public", **changes}
+
+
+def as_post(stage_files):
+    """The copied pipeline's `render` entry made the stage `distribution/post`, unit `post`, no `after`."""
+    entries = json.loads(stage_files.read_text())
+    for entry in entries:
+        if entry["stage"] == "render":
+            entry.update({"room": "distribution", "stage": "post", "unit": "post", "after": ""})
+    stage_files.write_text(json.dumps(entries) + "\n")
+
+
+def as_post_ticket(issue):
+    data = json.loads(issue.read_text())
+    data["labels"] = ["room:distribution", "stage:post", "tracked", "unit:ep01/instagram"]
+    issue.write_text(json.dumps(data, indent=1) + "\n")
 
 
 class Platform:
@@ -163,16 +194,19 @@ class World:
         self.sleep = sleep.start()
         test.addCleanup(sleep.stop)
         shutil.copytree(RUN / "production", self.root)
-        self.write(MANIFEST, HEADER + ROW)
-        self.write(REQUEST, (FIX / "request.json").read_text())
+        as_post(self.root / ".factory" / "pipeline.json")
         self.git("init", "-q", "-b", "trunk")
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "the production")
         shutil.copytree(RUN / "github", self.dir)
+        as_post_ticket(self.dir / "issues" / f"{TICKET}.json")
         for path in sorted((self.dir / "pulls").glob("*.json")):
             self.branch(json.loads(path.read_text())["head_ref"])
         for path in sorted((self.dir / "comments").glob("*.json")):
             path.write_text(path.read_text().replace(f"{{head:{PULL}}}", gitstate.head(self.root, BRANCH)))
+        self.commit(MANIFEST, HEADER + ROW + CAPTIONS_ROW)
+        self.commit(REQUEST, (FIX / "request.json").read_text())
+        self.branch_head = gitstate.head(self.root, BRANCH)
         self.secrets.mkdir()
         self.token(token)
         settings = {"STATE_DIR": self.state, "SECRETS_DIR": self.secrets,
@@ -207,7 +241,7 @@ class World:
         path.write_text(text)
         path.chmod(0o600)
 
-    def job(self, inputs=None, name="reel.json"):
+    def job(self, inputs=None):
         """A job file, untracked, whose inputs are ``inputs`` (default the request and the manifest), each
         ``(path, text)`` committed on `trunk` when its text is not None; its absolute path."""
         found = []
@@ -217,7 +251,7 @@ class World:
             found.append({"path": path, "sha256": sha((self.root / path).read_text())})
         job = {"caller": "renderer", "expected": {"compute_min": 0, "usd": 0}, "inputs": found,
                "ticket": TICKET, "tool": TOOL}
-        return str(self.write("jobs/" + name, json.dumps(job, indent=1) + "\n"))
+        return str(self.write(JOB, json.dumps(job, indent=1) + "\n"))
 
     def _main(self, main, argv):
         out, err = io.StringIO(), io.StringIO()
@@ -243,6 +277,22 @@ class World:
 
     def job_dir(self, digest):
         return self.state / "jobs" / digest
+
+    def record_text(self, digest):
+        path = self.job_dir(digest) / "record" / "post.json"
+        return path.read_text() if path.is_file() else None
+
+    def publish_findings(self, record):
+        """``(rule, message)`` of the publish check on ``record``, the manifest, request and job, sorted."""
+        tmp = Path(tempfile.mkdtemp())
+        self.test.addCleanup(shutil.rmtree, tmp)
+        for rel, text in ((MANIFEST, (self.root / MANIFEST).read_text()), (REQUEST, (self.root / REQUEST).read_text()),
+                          (JOB, (self.root / JOB).read_text()),
+                          (RECORD, json.dumps(record, indent=1, sort_keys=True) + "\n"),
+                          ("rulebook/instagram.json", json.dumps(RULEBOOK, indent=1) + "\n")):
+            (tmp / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / rel).write_text(text)
+        return sorted((f.rule, f.message) for f in publish.check(tmp))
 
 
 class Case(unittest.TestCase):
@@ -271,6 +321,8 @@ class Case(unittest.TestCase):
         self.assertEqual((code, out, err), (1, line(digest, "FAILED"), f"run: tool {TOOL} failed: {reason}\n"))
         [row] = self.w.rows("run")
         self.assertEqual(ledger.line(row).split("\t")[5:], [TOOL, "0", "0", "renderer", "FAILED", "-"])
+        self.assertIsNone(self.w.record_text(digest))
+        self.assertEqual(gitstate.head(self.w.root, BRANCH), self.w.branch_head)
 
     def failing(self, inputs=None, *queued):
         """Gate and run a job with ``inputs``, the platform answering ``queued`` ``(method, path, answer)``."""
@@ -282,26 +334,41 @@ class Case(unittest.TestCase):
 
 
 class CleanTest(Case):
-    """Behaviour 1: one Reel through `factory run`, five requests, `post.json`, one manifest row, one run row."""
+    """Behaviour 1: one Reel through `factory run`, five requests, the record `post.json` on the branch, one run
+    row."""
 
     def test_clean_run(self):
         w = self.world()
-        branch = gitstate.head(w.root, BRANCH)
         digest, code, out, err = self.clean_run()
         self.assertEqual((code, out, err), (0, line(digest, "DONE"), ""))
         self.assertEqual(w.platform.sent(), [LINK, MEDIA, STATUS, STATUS, PUBLISH])
-        post = w.job_dir(digest) / "out" / "post.json"
-        text = json.dumps({"account": ACCOUNT, "container": CONTAINER, "post": POST, "video": "media:reel-ep01"},
-                          indent=1, sort_keys=True) + "\n"
-        self.assertEqual(post.read_text(), text)
-        self.assertEqual(sorted(p.name for p in post.parent.iterdir()), ["post.json"])
-        self.assertEqual(w.git("diff", "--name-only", branch, BRANCH).split(), [MANIFEST])
-        self.assertEqual(gitstate.show(w.root, BRANCH, MANIFEST), HEADER + ROW + "\t".join(
-            [f"{digest[:16]}-post.json", sha(text), str(len(text)), f"job {digest}"]) + "\n")
+        record = record_of(digest)
+        text = json.dumps(record, indent=1, sort_keys=True) + "\n"
+        self.assertEqual(w.record_text(digest), text)
+        self.assertEqual(posts.answer_problems(record), [])
+        self.assertEqual(list((w.job_dir(digest) / "out").iterdir()), [])
+        self.assertEqual(sorted(p.name for p in (w.job_dir(digest) / "record").iterdir()), ["post.json"])
+        self.assertEqual(w.git("log", "--format=%s", f"{w.branch_head}..{BRANCH}").splitlines(),
+                         [f"manifest: job {digest[:12]}"])
+        self.assertEqual(w.git("diff", "--name-status", w.branch_head, BRANCH).splitlines(), ["A\t" + RECORD])
+        self.assertEqual(gitstate.show(w.root, BRANCH, RECORD), text)
         last = w.rows()[-1]
         self.assertEqual(ledger.line(last).split("\t"), [NOW, "run", digest, str(TICKET), "ep01", TOOL, "0", "0",
                                                          "renderer", "DONE", "-"])
         self.assertEqual(w.sleep.call_args_list, [mock.call(60)])
+        self.assertEqual(w.publish_findings(record), [("publish-visibility", f"post {POST} is public, not private")])
+        self.assertEqual(w.publish_findings({**record, "visibility": "private"}), [])
+        self.assertIn(("publish-disclosure", f"post {POST} has no disclosure field is_ai_generated"),
+                      w.publish_findings({**record, "fields": {}}))
+
+    def test_wrong_hash(self):
+        w = self.world()
+        digest, code, _, _ = self.clean_run()
+        self.assertEqual(code, 0)
+        record = {**json.loads(w.record_text(digest)), "sha256": OTHER_SHA}
+        self.assertEqual(posts.answer_problems(record), [])
+        self.assertIn(("publish-hash", f"post {POST} has sha256 {OTHER_SHA[:12]}, not the {REEL_SHA[:12]} of "
+                                       "media:reel-ep01"), w.publish_findings(record))
 
     def test_a_second_run_sends_nothing(self):
         w = self.world()
@@ -309,7 +376,7 @@ class CleanTest(Case):
         self.assertEqual(code, 0)
         sent = w.platform.sent()
         w.platform.clean()
-        self.assertEqual(w.run(str(w.root / "jobs" / "reel.json")),
+        self.assertEqual(w.run(str(w.root / JOB)),
                          (0, line(digest, "DONE").rstrip("\n") + cmd_gate.ALREADY + "\n", ""))
         self.assertEqual(w.platform.sent(), sent)
         self.assertEqual(len(w.rows("run")), 1)
@@ -412,8 +479,8 @@ class LinkTest(Case):
 
     def test_a_size_one_byte_larger(self):
         w = self.world()
-        row = f"reel-ep01\t{REEL_SHA}\t{len(REEL) + 1}\tupload\n"
-        digest, result = self.failing([(REQUEST, None), (MANIFEST, HEADER + row)])
+        row = f"reel-ep01\t{REEL_SHA}\t{len(REEL) + 1}\tconform-editor\n"
+        digest, result = self.failing([(REQUEST, None), (MANIFEST, HEADER + row + CAPTIONS_ROW)])
         self.assert_failed(result, digest, "public link does not serve the reel")
         self.assertEqual(w.platform.sent(), [LINK])
 
@@ -437,21 +504,43 @@ class BadRequestTest(Case):
         data.update(changes)
         return json.dumps(data, sort_keys=True) + "\n"
 
-    def test_a_third_key(self):
+    def test_a_fourth_key(self):
         self.world()
         self.assert_bad([(REQUEST, self.request(title="out")), (MANIFEST, None)])
+
+    def test_a_key_missing(self):
+        for key in ("caption", "captions", "video"):
+            with self.subTest(key):
+                self.world()
+                data = json.loads((FIX / "request.json").read_text())
+                del data[key]
+                self.assert_bad([(REQUEST, json.dumps(data) + "\n"), (MANIFEST, None)])
 
     def test_a_video_without_media(self):
         self.world()
         self.assert_bad([(REQUEST, self.request(video="reel-ep01")), (MANIFEST, None)])
 
+    def test_captions_without_media(self):
+        for value in ("captions-ep01", "media:", True):
+            with self.subTest(value):
+                self.world()
+                self.assert_bad([(REQUEST, self.request(captions=value)), (MANIFEST, None)])
+
     def test_an_id_with_no_row(self):
         self.world()
         self.assert_bad([(REQUEST, self.request(video="media:reel-ep02")), (MANIFEST, None)])
 
+    def test_captions_with_no_row(self):
+        self.world()
+        self.assert_bad([(REQUEST, None), (MANIFEST, HEADER + ROW)])
+
     def test_two_rows_with_the_id(self):
         self.world()
-        self.assert_bad([(REQUEST, None), (MANIFEST, HEADER + ROW + ROW)])
+        self.assert_bad([(REQUEST, None), (MANIFEST, HEADER + ROW + ROW + CAPTIONS_ROW)])
+
+    def test_two_rows_with_the_captions_id(self):
+        self.world()
+        self.assert_bad([(REQUEST, None), (MANIFEST, HEADER + ROW + CAPTIONS_ROW + CAPTIONS_ROW)])
 
     def test_one_input_only(self):
         self.world()
@@ -459,7 +548,7 @@ class BadRequestTest(Case):
 
     def test_a_second_input_elsewhere(self):
         self.world()
-        self.assert_bad([(REQUEST, None), ("media/other.tsv", HEADER + ROW)])
+        self.assert_bad([(REQUEST, None), ("media/other.tsv", HEADER + ROW + CAPTIONS_ROW)])
 
     def test_the_request(self):
         w = self.world()
