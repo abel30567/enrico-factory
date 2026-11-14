@@ -7,7 +7,8 @@ pool of section 4, the result object of section 5 and the sandbox of section 7, 
 jobs between them (sections 3 and 8), in `kit/lib/jobs.py`, `launch.py`, `steps.py` and `cmd_tick.py`,
 the knowledge gateway of section 6 for all five capabilities, in `kit/lib/gateway.py`, the tools
 `factory run` calls, in `kit/lib/tools/`, and the lock of a pull request that holds a job, in
-`kit/lib/lockrules.py`. Not built: forks of section 9.
+`kit/lib/lockrules.py`. Not built: a fork of section 9; the gate's check of a fork issue is in
+`kit/lib/harnessfork.py`.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 

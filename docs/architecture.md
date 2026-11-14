@@ -795,6 +795,7 @@ flowchart LR
 
 ## 11. What is not built
 
-Everything in this file is design. Nothing is built or measured yet. The kit is built in this
+This file is the design. Waves 1 and 2 are built in `kit/`, with parts of later waves, and sixteen
+role eval suites have a measured noise floor in `docs/eval-floors.tsv`. The kit is built in this
 repository in the waves of brief 17: text-stage machinery and lints first, then the command line and
 the story room, then production tooling, a one-shot pilot, a full episode, and the live loops last.

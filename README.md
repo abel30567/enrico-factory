@@ -20,6 +20,6 @@ lint and an independent judge check the exact commit, and a merge is a lock.
 - `samples/primal/`: the first sample production.
 - `.agents/orchestrator/`: the software pattern this repository is built with.
 
-Status (2026-11-14): wave 1 of the build is closed and later waves are being built. Nothing is
-measured yet. See `docs/system-brief.md` section 17 for the build order and the open issues for what
-is being built.
+Status (2026-11-14): wave 1 of the build is closed and later waves are being built. Sixteen role
+eval suites have a measured noise floor in `docs/eval-floors.tsv`. See `docs/system-brief.md` section
+17 for the build order and the open issues for what is being built.
