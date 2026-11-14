@@ -1,0 +1,4 @@
+[
+ {"room": "story", "stage": "script", "unit": "episode", "after": "", "maker": "artist", "lint": [], "checker": "editor", "judge": "", "blind": false, "pitches": 1, "paths": ["episodes/*/script.md"]},
+ {"room": "story", "stage": "board", "unit": "sequence", "after": "script", "maker": "artist", "lint": [], "checker": "editor", "judge": "critic", "blind": true, "pitches": 1, "paths": ["episodes/*/sequences/**"]}
+]

@@ -1,0 +1,23 @@
+{
+	"systeminfo": "fake",
+	"model": {"type": "base"},
+	"params": {"model": "fake.bin", "language": "en", "translate": false},
+	"result": {"language": "en"},
+	"transcription": [
+		{
+			"timestamps": {"from": "00:00:00,000", "to": "00:00:01,800"},
+			"offsets": {"from": 0, "to": 1800},
+			"text": " The tide is out."
+		},
+		{
+			"timestamps": {"from": "00:00:01,800", "to": "00:00:04,200"},
+			"offsets": {"from": 1800, "to": 4200},
+			"text": "  Bring the\n nets in. "
+		},
+		{
+			"timestamps": {"from": "00:00:04,200", "to": "00:00:04,500"},
+			"offsets": {"from": 4200, "to": 4500},
+			"text": "  "
+		}
+	]
+}

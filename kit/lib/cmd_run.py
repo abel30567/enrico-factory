@@ -441,10 +441,21 @@ def main(argv):
     parser.add_argument("--pull", type=int, help="read the job file and its inputs at the head of this pull")
     parser.add_argument("--read", nargs=2, metavar=("TOPIC", "PLATFORM"),
                         help="instead of a job, read the videos of a topic on a platform (kit/lib/reads.py)")
+    parser.add_argument("--analyse", nargs=3, metavar=("PLATFORM", "ID", "LINK"),
+                        help="instead of a job, analyse a temporary copy of one video (kit/lib/analysis.py)")
     parser.add_argument("--root", default=".", help="a directory inside the production (default: .)")
     parser.add_argument("--apply", action="store_true", help="make the call and record it")
     args = parser.parse_args(argv)
     try:
+        if args.analyse is not None:
+            if args.job is not None or args.pull is not None or args.read is not None:
+                raise Refused("--analyse takes no job file, no --pull and no --read")
+            from kit.lib import analysis
+            try:
+                return analysis.main(production.load(production.find_root(args.root)), *args.analyse, args.apply)
+            except analysis.Refused as error:
+                print(f"run: {error}", file=sys.stderr)
+                return 2
         if args.read is None and args.job is None:
             raise Refused("give a job file or --read <topic> <platform>")
         if args.read is not None and (args.job is not None or args.pull is not None):

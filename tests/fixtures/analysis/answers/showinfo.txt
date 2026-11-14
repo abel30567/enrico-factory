@@ -1,0 +1,6 @@
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'copy.mp4':
+  Duration: 00:00:04.50, start: 0.000000, bitrate: 1200 kb/s
+[Parsed_showinfo_1 @ 0x5600a1b2c3d0] config in time_base: 1/30000, frame_rate: 30000/1001
+[Parsed_showinfo_1 @ 0x5600a1b2c3d0] n:   0 pts:  36036 pts_time:1.201   duration:   1001 duration_time:0.0333667 fmt:yuv420p
+[Parsed_showinfo_1 @ 0x5600a1b2c3d0] n:   1 pts: 105105 pts_time:3.504   duration:   1001 duration_time:0.0333667 fmt:yuv420p
+[out#0/null @ 0x5600a1b2c4e0] video:1kB audio:0kB pts_time:9.999 is not a cut
