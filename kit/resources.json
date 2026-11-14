@@ -142,12 +142,12 @@
       "id": "engine.unreal",
       "title": "Unreal Engine, the version the production pins",
       "class": "engine",
-      "auth": "none",
-      "holder": "none",
+      "auth": "key",
+      "holder": "run",
       "rooms": ["production"],
       "wave": 4,
       "setup": "owner",
-      "checks": [{"kind": "path", "setting": "UNREAL_EDITOR"}]
+      "checks": [{"kind": "setting", "name": "UNREAL_IMAGE"}, {"kind": "secret", "name": "engine.unreal"}]
     },
     {
       "id": "render.node",
