@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "lio"
+  ],
+  "set": "kelp-cove",
+  "camera": "wide on the water",
+  "action": "Lio surfaces and waves goodbye."
+}

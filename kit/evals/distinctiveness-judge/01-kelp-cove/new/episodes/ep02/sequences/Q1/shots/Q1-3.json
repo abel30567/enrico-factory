@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "lio"
+  ],
+  "set": "kelp-cove",
+  "camera": "close in the kelp",
+  "action": "A seal pup bumps Lio and darts off."
+}

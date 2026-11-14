@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "bex"
+  ],
+  "set": "night-market",
+  "camera": "wide on the stall",
+  "action": "Bex hangs her lanterns; the best one stays dark."
+}

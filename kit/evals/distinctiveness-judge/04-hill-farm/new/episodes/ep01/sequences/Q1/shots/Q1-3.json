@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "ysa"
+  ],
+  "set": "hill-farm",
+  "camera": "wide on the yard",
+  "action": "Ysa sings to the horse while her uncle looks on."
+}

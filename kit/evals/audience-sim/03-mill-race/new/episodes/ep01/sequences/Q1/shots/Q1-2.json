@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "nuri"
+  ],
+  "set": "mill-race",
+  "camera": "tracking along the race",
+  "action": "The leaf boat speeds toward the wheel; Nuri sprints."
+}

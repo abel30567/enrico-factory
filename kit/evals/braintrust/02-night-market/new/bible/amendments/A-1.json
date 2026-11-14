@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/bex.md": "adds Bex, the lantern seller",
+    "bible/canon/places/night-market.md": "adds the night market"
+  },
+  "why": "the night-market episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/night-market.md": "the stalls and their lanterns"
+  }
+}

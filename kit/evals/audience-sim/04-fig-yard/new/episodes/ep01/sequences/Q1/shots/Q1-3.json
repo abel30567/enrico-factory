@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "zeb"
+  ],
+  "set": "fig-yard",
+  "camera": "low, on the ground",
+  "action": "Zeb shakes the fig branches; figs fall."
+}

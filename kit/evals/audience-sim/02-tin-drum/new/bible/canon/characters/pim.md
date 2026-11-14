@@ -1,0 +1,13 @@
+# Pim
+
+origin: house A-1
+
+A boy, eight, who plays the tin drum in the village band.
+
+## Behaviour
+
+Acts and speaks as the episode files in this tree show.
+
+## Motivation
+
+Wants what the episode files in this tree show.

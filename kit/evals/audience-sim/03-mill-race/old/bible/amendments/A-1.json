@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/nuri.md": "adds Nuri, the leaf boat racer",
+    "bible/canon/places/mill-race.md": "adds the mill race"
+  },
+  "why": "the mill-race episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/mill-race.md": "the channel, the sluice and the wheel"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/mela.md": "adds Mela, the boat girl",
+    "bible/canon/places/reed-marsh.md": "adds the reed marsh"
+  },
+  "why": "the reed-marsh episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/reed-marsh.md": "the reeds and the channels"
+  }
+}

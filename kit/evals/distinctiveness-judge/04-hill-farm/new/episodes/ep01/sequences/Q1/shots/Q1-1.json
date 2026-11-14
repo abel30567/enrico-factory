@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "ysa"
+  ],
+  "set": "hill-farm",
+  "camera": "medium in the yard",
+  "action": "Ysa strokes the horse's nose."
+}

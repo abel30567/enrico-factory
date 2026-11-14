@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "kesh"
+  ],
+  "set": "snow-bus",
+  "camera": "close on the dashboard",
+  "action": "The driver turns the key; the engine coughs and dies."
+}

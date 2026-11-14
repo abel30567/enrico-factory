@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "kesh"
+  ],
+  "set": "snow-bus",
+  "camera": "inside the bus, wide",
+  "action": "Kesh waits at the stop as snow falls; the bus pulls up."
+}

@@ -1,0 +1,1 @@
+Two cuts of episode ep01 are in A/ and B/; each is a full copy of the production (A/episodes/ep01/ and B/episodes/ep01/). Screen both against the charter and the canon, and say which is the better episode, or that neither is.

@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "ysa"
+  ],
+  "set": "hill-farm",
+  "camera": "wide on the lane",
+  "action": "Ysa rides at the front of the parade."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "kesh"
+  ],
+  "set": "snow-bus",
+  "camera": "low, under the back seat",
+  "action": "Kesh drags out an old sledge."
+}

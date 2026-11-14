@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "lio"
+  ],
+  "set": "kelp-cove",
+  "camera": "inside the kelp",
+  "action": "Something tugs at the net."
+}

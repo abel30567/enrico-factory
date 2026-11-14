@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/ysa.md": "adds Ysa, the farmer's niece",
+    "bible/canon/places/hill-farm.md": "adds the hill farm"
+  },
+  "why": "the hill-farm episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/hill-farm.md": "the yard and the horse"
+  }
+}

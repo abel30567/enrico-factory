@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "pim"
+  ],
+  "set": "tin-drum",
+  "camera": "wide on the street",
+  "action": "The band marches in time behind Pim."
+}

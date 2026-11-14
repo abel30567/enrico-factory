@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "wren"
+  ],
+  "set": "glass-roof",
+  "camera": "close on the frame",
+  "action": "The putty sits in a magpie's nest."
+}

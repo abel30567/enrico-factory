@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "wren"
+  ],
+  "set": "glass-roof",
+  "camera": "wide on the greenhouse",
+  "action": "Wren fits the pane as the rain starts."
+}

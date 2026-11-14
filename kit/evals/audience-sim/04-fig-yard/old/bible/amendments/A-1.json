@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/zeb.md": "adds Zeb, the fig keeper",
+    "bible/canon/places/fig-yard.md": "adds the fig yard"
+  },
+  "why": "the fig-yard episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/fig-yard.md": "the fig tree and the trough"
+  }
+}

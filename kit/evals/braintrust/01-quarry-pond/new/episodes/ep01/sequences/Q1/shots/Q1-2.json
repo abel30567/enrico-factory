@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "tavi"
+  ],
+  "set": "quarry-pond",
+  "camera": "wide on the pond",
+  "action": "The boat drifts into the reeds and stops."
+}

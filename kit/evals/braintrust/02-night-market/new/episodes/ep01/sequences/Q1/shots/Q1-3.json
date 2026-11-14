@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "bex"
+  ],
+  "set": "night-market",
+  "camera": "inside the lantern cap",
+  "action": "A moth's cocoon covers the vent."
+}
