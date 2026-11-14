@@ -71,12 +71,12 @@ def prefers(side):
 
 def unnamed_stage_lints(kit, role):
     """The check named after the role file's `stage`, else the `lint` of the pipeline entry of that stage,
-    for a role no pipeline entry names yet."""
-    stage = evals.role_file(kit, role)[0].get("stage", "")
-    if (kit / "lib" / "lints" / f"{stage}.py").is_file():
-        return [stage]
+    for a role no pipeline entry names yet. A `stage` that lists several stages takes the union of theirs."""
+    stages = frontmatter.as_list(evals.role_file(kit, role)[0].get("stage", ""))
+    if len(stages) == 1 and (kit / "lib" / "lints" / f"{stages[0]}.py").is_file():
+        return stages
     pipeline = json.loads((kit / "pipeline.json").read_text(encoding="utf-8"))
-    return sorted({check for entry in pipeline if entry["stage"] == stage for check in entry["lint"]})
+    return sorted({check for entry in pipeline if entry["stage"] in stages for check in entry["lint"]})
 
 
 def stage_lints(key, role):
@@ -306,7 +306,9 @@ class SuitesTest(unittest.TestCase):
             self.assertEqual(len(suite), sum(p.is_dir() for p in (KIT / "evals" / role).iterdir()), role)
             kinds = [c.kind for c in suite]
             for kind in evals.CASE_KINDS[KIND[role]]:
-                self.assertGreaterEqual(kinds.count(kind), MINIMUM[kind], f"{role}: {kind}")
+                # A maker whose every case is a verdict case meets the replay minimum with them.
+                count = kinds.count("verdict" if kind == "replay" and set(kinds) == {"verdict"} else kind)
+                self.assertGreaterEqual(count, MINIMUM[kind], f"{role}: {kind}")
             if KIND[role] == "judge":
                 old = sum(c.spec["better"] == "old" for c in suite)
                 self.assertLessEqual(abs(old - (len(suite) - old)), 1, role)
@@ -412,7 +414,7 @@ class MakerTest(unittest.TestCase):
             entries = [e for e in PIPELINE if role in production.stage_roles(e, "maker")]
             for case in cases(role):
                 where = f"{role}/{case.id}"
-                if case.kind == "refusal":
+                if case.kind in ("refusal", "verdict"):
                     continue
                 self.assertEqual(case.kind, "replay", where)
                 entry = next((e for e in entries if e["lint"] == case.spec["lint"]), None)

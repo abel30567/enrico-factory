@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "N2 was raised at screenings 1 and 2 in a row; rejecting it breaks rule 5 (criterion 2).",
+      "evidence": "task: screenings 1 and 2 of ep02"
+    }
+  ]
+}

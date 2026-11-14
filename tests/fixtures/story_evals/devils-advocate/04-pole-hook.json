@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "PV3 bends Mara's arc, a P2, and its proposal says P2; calling it P1 skips the Braintrust vote (criterion 3).",
+      "evidence": "research/quay-lamps.md:16"
+    }
+  ]
+}

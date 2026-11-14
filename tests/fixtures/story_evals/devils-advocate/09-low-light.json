@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "PV4 breaks the canon ledger row bible/canon/ledger.tsv:4 and the P3 call carries no retcon plan (criterion 6).",
+      "evidence": "bible/canon/ledger.tsv:4"
+    }
+  ]
+}
