@@ -23,3 +23,8 @@
   run open and eight wakes queued behind it. Moving launches to the tick was half the fix. The judgement wake
   is now also a program on a timer (`orch wake`): a fresh headless session per run, killed at a time limit,
   with GitHub and a notes file as its only memory. A chat thread is for talking to the owner, not for timing.
+- **Do not push to `main` while a merge train is in its gates (2026-11-14).** A train tests `main` plus its
+  pull requests for about 35 minutes and merges only if `main` has not moved. A docs commit pushed at 13:50Z
+  ended the 13:39Z train of #439 and #440 with "main moved while GATES ran", and an earlier docs push did the
+  same. Before any push, check `pgrep -f merge-gate.py`; while it runs, keep the commit local and push when
+  the tick has ended.
