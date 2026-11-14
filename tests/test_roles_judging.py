@@ -46,6 +46,10 @@ ALL_VERBS = sorted(set(markers.ROLE_VERBS) | set(markers.CHANNEL_VERBS)
 FORBIDDEN = re.compile(r"(claude|opus|sonnet|gpt|--model|sk-|/Users/)")
 JUDGE_FORBIDDEN = re.compile(r"(?i)\b(maker|comment|pull request history|newer version is)\b")
 MAX_LINES = 120
+# What a judge is told when the unit has no locked version (brief section 6, ISSUE-417).
+FIRST_VERSION = ("When the task says the unit has no locked version, {{WORKTREE}} holds the head alone, "
+                 "with no `A` and `B`: apply every criterion to it, note each Blocker and Issue, and return "
+                 "`NO PREFERENCE`, not `BLOCKED`.")
 # The roles that read what is released, and the file that records a release (ISSUE-255).
 RELEASED = ("canon-reviewer", "distinctiveness-judge", "render-reviewer")
 UNOWNED = "registry/posts.tsv"
@@ -172,9 +176,11 @@ def own_problems(role_id, text):
         if match:
             problems.append(f"judge body mentions {match.group(0)!r}")
         for phrase in ("`A` and `B`", "not told which is newer", "Do not guess",
-                       "Judge only the work in those two directories"):
+                       "Judge only the work in those two directories", FIRST_VERSION):
             if phrase not in part.get("Task", ""):
                 problems.append(f"judge Task lacks {phrase!r}")
+        if "`none` with `NO PREFERENCE`" not in result:
+            problems.append("Result lacks '`none` with `NO PREFERENCE`'")
     return problems
 
 
@@ -300,6 +306,16 @@ class SeededDefectTest(unittest.TestCase):
         kit = KitCopy(self)
         kit.edit("audience-sim", "You are not\ntold which is newer.", "")
         self.assertIn("judge Task lacks 'not told which is newer'", kit.own("audience-sim"))
+
+    def test_judge_without_the_first_version_rule(self):
+        kit = KitCopy(self)
+        kit.edit("held-out-judge", "return `NO PREFERENCE`, not `BLOCKED`.", "return `BLOCKED`.")
+        self.assertIn(f"judge Task lacks {FIRST_VERSION!r}", kit.own("held-out-judge"))
+
+    def test_judge_with_an_empty_choice(self):
+        kit = KitCopy(self)
+        kit.edit("braintrust", "`none` with", "empty with")
+        self.assertEqual(kit.own("braintrust"), ["Result lacks '`none` with `NO PREFERENCE`'"])
 
     def test_headings_out_of_order(self):
         kit = KitCopy(self)
