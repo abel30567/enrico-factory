@@ -75,9 +75,13 @@ def build_run_dir(kit, case, run, run_dir):
     A ``seeded``, ``clean`` or ``replay`` case: a production as ``factory init`` makes it, with
     ``.factory/`` copied from ``kit`` without ``evals/``, then the case's ``tree/`` over it (a tree file
     wins). A ``pair`` case: ``A/`` and ``B/`` only, each the version ``evals.sides`` gives it, plus the
-    init charter and canon ledger where the version has none.
+    init charter and canon ledger where the version has none. A ``ruling`` or ``selection`` case: a copy
+    of its ``tree/`` and nothing else, one directory ``pr-<n>/`` for each pull request its task names.
     """
     run_dir = Path(run_dir)
+    if case.kind in ("ruling", "selection"):
+        shutil.copytree(case.path / "tree", run_dir)
+        return
     if case.kind == "pair":
         for side, version in sorted(evals.sides(case.id, run).items()):
             shutil.copytree(case.path / version, run_dir / side)

@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Our own characters (criterion 2): the thumbnail text names Wickabel, a character of Skarrowfen in research/not-ours.tsv:3.",
+      "evidence": "post/ep01/youtube/shorts/thumbnail.json:1"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Our own characters (criterion 2): the caption tags #Skarrowfen, a work of someone else in research/not-ours.tsv:2.",
+      "evidence": "post/ep01/youtube/shorts/variant.json:3"
+    }
+  ]
+}

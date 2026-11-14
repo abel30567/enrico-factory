@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "No spoiler, no bait (criterion 5): the caption points at the harbour's keeper, the packet's spoiler, before the episode tells it.",
+      "evidence": "post/ep01/youtube/shorts/variant.json:3"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "Voice (criterion 1): the CTA 'SMASH that follow button' shouts and begs, against the CTAs of brand/voice.md.",
+      "evidence": "post/ep01/youtube/shorts/variant.json:4"
+    }
+  ]
+}

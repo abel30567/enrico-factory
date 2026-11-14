@@ -21,6 +21,7 @@ holds `suite.json`, `{"cases": N}`: the number of case directories it holds.
 less `evals/`, and copies `tree/` over it, so a tree file wins and no answer is in the run directory.
 A pair case's run directory holds only `A/` and `B/`, each a version plus the init charter and canon
 ledger where the version has none, the same bytes on both sides.
+A ruling or selection case's run directory holds only its `tree/`: one directory `pr-<n>/` for each pull request its task names, and no `.factory/`. A note is named as the role file names it, `<role> B<n>`.
 
 A case whose tree cites `media:<id>` holds the image beside `tree/`, as `media/<id>.png`, and the tree's
 `media/manifest.tsv` row gives that file's `sha256` and `bytes`. The bytes are not in `tree/`: a
@@ -37,6 +38,8 @@ each case's model sheets, style lock and canon ledger; run it again after changi
 | maker | `{"kind": "refusal", "lint": [...], "expect_files": [glob, ...], "forbid": [regex, ...]}` | BLOCKED whose missing matches every regex; or READY, files present, lints pass, no regex in the files |
 | maker or analyst | `{"kind": "verdict", "verdicts": {id: "usable" or "not usable"}}` | READY (maker) or SYMPTOMS (analyst), each video's verdict as given |
 | judge | `{"kind": "pair", "better": "old"}` or `"new"` | PREFERS the side that shows `better` |
+| orchestrator | `{"kind": "ruling", "results": {note: "acted on" or "rejected"}}` | RULING, each note's `evidence` result as given |
+| orchestrator | `{"kind": "selection", "selected": n}` | SELECTED, and `selected` is n |
 
 A seeded case plants exactly one defect that is the role's job and that no lint of its stages catches;
 its tree passes those lints. A clean case is a near miss: it looks suspicious and is correct. A

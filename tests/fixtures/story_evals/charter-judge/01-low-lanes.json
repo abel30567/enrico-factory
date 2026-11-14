@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes on the variant post/ep01/youtube/shorts/.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "The story kept (criterion 2): the cut drops beat B3 of the locked edit list.",
+      "evidence": "post/ep01/youtube/shorts/cut.json:1"
+    }
+  ]
+}
