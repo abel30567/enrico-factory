@@ -6,7 +6,8 @@ loaded, git through ``kit.lib.gitstate`` and the blinding key through ``kit.lib.
 ``evaluate`` always returns fourteen rules, in order: the ten of section 9, then (rule 11) that a released
 episode's files are never changed, (rule 12, ``bible-version``) that every edit list the pull request
 changes names the newest amendment of its head, (rule 13, ``keep``) that a lab maker's pull carries the
-change of a ``KEEP`` row of ``lab/results.tsv`` on the base, and (rule 14, ``pivot``) that a pivot ticket
+change of a ``KEEP`` row of ``lab/results.tsv`` on the base, a counting ``KEEP`` of loop ``craft`` when the
+pull changes a role file a proposal in ``lab/proposals/`` on the base names, and (rule 14, ``pivot``) that a pivot ticket
 (section 7) has one class label, its class's approval and test, room in its season limit and no cooldown. A reason is one line of fixed words, ids and
 paths; it never quotes a comment's prose.
 """
@@ -31,6 +32,8 @@ VOTE_MIN = 5
 RELEASE = "distribution/{}/release.json"
 LAB_ROOM = "lab"
 AMENDMENTS = "bible/amendments"
+PROPOSALS = "lab/proposals"
+CRAFT = "craft"
 PIVOT = "pivot"
 PIVOT_CLASSES = ("P0", "P1", "P2", "P3")
 PIVOT_LIMITS = {"P2": 3, "P3": 1}
@@ -45,6 +48,7 @@ _EPISODE_FILE = re.compile(r"(?:episodes|production|post)/([^/]+)/")
 _EDIT_LIST = re.compile(r"episodes/[^/]+/reel/edit-list\.json")
 _AMENDMENT_FILE = re.compile(r"bible/amendments/(A-([0-9]+))\.json")
 _AMENDMENT_ID = re.compile(r"A-[0-9]+")
+_PROPOSAL = re.compile(r"lab/proposals/[^/]+\.md")
 
 
 class Rule(NamedTuple):
@@ -463,8 +467,45 @@ def is_lab(p, maker) -> bool:
     return maker is not None and maker in p.roles and p.roles[maker]["meta"].get("room") == LAB_ROOM
 
 
-def _keep(pull, root):
-    """A ``KEEP`` row of the log on the base names a commit of the pull, and the pull carries its change."""
+def _proposed(p, root, base, changed):
+    """``(paths, problem)``: the sorted role files of ``changed`` that a proposal on ``base`` names, and
+    ``""`` or the first proposal whose front matter does not parse or names no role."""
+    prefix = f"{p.kit.relative_to(p.root).as_posix()}/roles/"
+    if not any(path.startswith(prefix) for path in changed):
+        return [], ""
+    named = set()
+    for path in gitstate.files(root, base, PROPOSALS):
+        if not _PROPOSAL.fullmatch(path):
+            continue
+        try:
+            meta, _ = frontmatter.parse(gitstate.show(root, base, path))
+        except frontmatter.FrontMatterError as e:
+            return [], f"{path} on {base}: {e}"
+        roles = frontmatter.as_list(meta.get("roles", ""))
+        if not roles:
+            return [], f"{path} on {base} names no role in roles:"
+        named.update(roles)
+    return sorted(f"{prefix}{role}.md" for role in named if f"{prefix}{role}.md" in changed), ""
+
+
+def _uncounted(rows, index, spec):
+    """Why the ``KEEP`` row ``rows[index]`` of loop ``craft`` does not count, or ``""``."""
+    row = rows[index]
+    values = row["values"].split(",")
+    if len(values) != 2:
+        return f"it has {len(values)} value(s), not 2"
+    now = lab.standing(rows[:index], CRAFT, spec)
+    if now["threshold"] is None:
+        return f"{now['controls']} of {spec['controls']} no-op controls before it"
+    threshold = lab.number(now["threshold"])
+    if row["threshold"] != threshold:
+        return f"its threshold {row['threshold']} is not {threshold}, twice the noise floor before it"
+    return ""
+
+
+def _keep(p, pull, root):
+    """A ``KEEP`` row of the log on the base names a commit of the pull, and the pull carries its change; a
+    counting ``KEEP`` of loop ``craft`` when the pull changes a role file a proposal names."""
     base = pull["base_ref"]
     text = gitstate.show(root, base, lab.PATH)
     try:
@@ -472,9 +513,28 @@ def _keep(pull, root):
     except lab.LabError as e:
         return f"{lab.PATH} on {base}: {e}"
     shas = {c["sha"] for c in pull["git"]["commits"]}
-    candidates = [row for row in rows if row["kind"] == "run" and row["verdict"] == "KEEP" and row["commit"] in shas]
-    if not candidates:
-        return f"no KEEP in {lab.PATH} on {base} names a commit of PR #{pull['number']}"
+    proposed, problem = _proposed(p, root, base, pull["git"]["changed"])
+    if problem:
+        return problem
+    if proposed:
+        keeps = [i for i, row in enumerate(rows) if row["loop"] == CRAFT and row["kind"] == "run"
+                 and row["verdict"] == "KEEP" and row["commit"] in shas]
+        if not keeps:
+            return (f"no KEEP of loop {CRAFT} in {lab.PATH} on {base} names a commit of PR #{pull['number']}, "
+                    f"which changes a role file a proposal names: {', '.join(proposed)}")
+        try:
+            spec = lab.load_loop(root, base, CRAFT)
+        except lab.LabError as e:
+            return str(e)
+        why = {i: _uncounted(rows, i, spec) for i in keeps}
+        candidates = [rows[i] for i in keeps if not why[i]]
+        if not candidates:
+            return f"KEEP {rows[keeps[-1]]['commit']} of loop {CRAFT} does not count: {why[keeps[-1]]}"
+    else:
+        candidates = [row for row in rows
+                      if row["kind"] == "run" and row["verdict"] == "KEEP" and row["commit"] in shas]
+        if not candidates:
+            return f"no KEEP in {lab.PATH} on {base} names a commit of PR #{pull['number']}"
     head, changed = pull["git"]["head"], set(pull["git"]["changed"])
     differs = []
     for row in candidates:
@@ -623,7 +683,7 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _base(ticket, pull, root),
         _released(pull, root),
         _bible_version(pull, root),
-        _keep(pull, root) if in_lab else "",
+        _keep(p, pull, root) if in_lab else "",
         _pivot(p, state, ticket, entry, pull),
     ]
     return [Rule(number, name, not reason, reason)

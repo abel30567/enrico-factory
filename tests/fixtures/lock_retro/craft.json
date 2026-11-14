@@ -1,0 +1,1 @@
+{"metric": "blind_win_rate", "better": "higher", "command": ["python3", "lab/metrics/replay.py"], "controls": 5, "drift_every": 10, "ticket": 1}
