@@ -2,9 +2,9 @@
 platform's disclosure (brief sections 6 and 16).
 
 Rule ids: publish-upload, publish-exists, publish-answer, publish-job, publish-visibility, publish-processed,
-publish-hash, publish-captions, publish-disclosure. Each upload request
-`distribution/<ep>/<platform>/requests/upload.json` names `video` and `captions` as `media:<id>`, ids of
-`media/manifest.tsv`. Its upload has run when `distribution/<ep>/<platform>/post.json`, the answer `factory run`
+publish-hash, publish-captions, publish-disclosure. The upload request of each post directory
+`distribution/<ep>/<platform>/` (`upload.json`, a request as `kit/lib/jobs.py` names one) names `video` and
+`captions` as `media:<id>`, ids of `media/manifest.tsv`. Its upload has run when `distribution/<ep>/<platform>/post.json`, the answer `factory run`
 recorded (`kit/lib/posts.py`), exists: that answer names the job `jobs/<request path>` by its hash, is
 private and processed, has the sha256 of the video and captions, and gives the disclosure field of
 `rulebook/<platform>.json` its value. A rulebook that is missing, is not JSON, or has no disclosure field
@@ -17,10 +17,10 @@ import json
 import re
 from pathlib import Path
 
-from .. import cmd_gate, posts
+from .. import cmd_gate, jobs, posts
 from ..lint import Finding, LintError, files, read_text, read_tsv
 
-UPLOAD = re.compile(r"^distribution/([^/]+)/([^/]+)/requests/upload\.json$")
+UPLOAD = "upload.json"
 MEDIA = re.compile(r"media:(\S+)")
 MANIFEST = "media/manifest.tsv"
 RULEBOOK = "rulebook/{}.json"
@@ -67,13 +67,21 @@ def _shown(value) -> str:
     return json.dumps(value, sort_keys=True)
 
 
-def _upload(root: Path, rel: str, episode: str, platform: str, media: dict) -> list[Finding]:
+def _is_upload(rel: str) -> bool:
+    """``rel`` is the upload request of a post directory ``distribution/<ep>/<platform>/``."""
+    parts = rel.split("/")
+    return (len(parts) == 5 and parts[0] == posts.ROOM and parts[4] == UPLOAD
+            and jobs.REQUEST.fullmatch(rel) is not None)
+
+
+def _upload(root: Path, rel: str, media: dict) -> list[Finding]:
+    _, episode, platform, *name = rel.split("/")
     request = _json(root, rel)
     ids = [MEDIA.fullmatch(request.get(k)) if isinstance(request, dict) and isinstance(request.get(k), str)
            else None for k in ("video", "captions")]
     if not all(ids):
         return [Finding(rel, 1, "publish-upload",
-                        "requests/upload.json does not name video and captions as media:<id>")]
+                        f"{'/'.join(name)} does not name video and captions as media:<id>")]
     video, captions = (m.group(1) for m in ids)
     missing = [Finding(rel, 1, "publish-upload", f"media:{mid} is not in {MANIFEST}")
                for mid in dict.fromkeys((video, captions)) if mid not in media]
@@ -127,11 +135,11 @@ def _upload(root: Path, rel: str, episode: str, platform: str, media: dict) -> l
 
 
 def check(root: Path) -> list[Finding]:
-    uploads = sorted((p.as_posix(), m) for p in files(root) for m in [UPLOAD.match(p.as_posix())] if m)
+    uploads = sorted(rel for rel in (p.as_posix() for p in files(root)) if _is_upload(rel))
     if not uploads:
         return []
     media = _manifest(root)
     found = []
-    for rel, m in uploads:
-        found += _upload(root, rel, m.group(1), m.group(2), media)
+    for rel in uploads:
+        found += _upload(root, rel, media)
     return found
