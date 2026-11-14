@@ -2,9 +2,9 @@
 
 `MEDIA_STORE` is the URL under which objects are put, `MEDIA_PUBLIC_BASE` the URL under which anyone gets
 them. An object's key is the file's sha256 in lower-case hex. Requests are a signed `HEAD` and `PUT`
-(Signature Version 4, service `s3`, the payload signed in one piece) and a plain `GET` on the public link,
-all through one opener that reads no proxy from the environment and follows no redirect. An object is
-never overwritten or deleted.
+(Signature Version 4, service `s3`, the payload signed in one piece) and a plain `GET` on the public link
+with no credential and the kit's own `User-Agent`, all through one opener that reads no proxy from the
+environment and follows no redirect. An object is never overwritten or deleted.
 
 A reason never contains a value: not a setting, a key, a signature, a response body or header, or the
 text of an exception.
@@ -23,6 +23,8 @@ import urllib.request
 from kit.lib import production
 
 TIMEOUT = 60
+# A public address may refuse a client by its signature (Python's own user agent): the link check names the kit.
+USER_AGENT = "enrico-factory-media/1"
 CHUNK = 1024 * 1024
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 SIGNED_HEADERS = "host;x-amz-content-sha256;x-amz-date"
@@ -232,8 +234,8 @@ def _body(response, size):
 
 def check(settings, sha256, size):
     """Get the public link with no credential; ``Failed`` unless it serves ``size`` bytes of ``sha256``."""
-    status, _, body = _send(urllib.request.Request(link(settings, sha256)), LINK_UNREACHABLE,
-                            lambda response: _body(response, size))
+    request = urllib.request.Request(link(settings, sha256), headers={"User-Agent": USER_AGENT})
+    status, _, body = _send(request, LINK_UNREACHABLE, lambda response: _body(response, size))
     if status != 200:
         raise Failed(f"public link answered {status}")
     if body != (sha256, size):
