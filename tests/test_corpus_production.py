@@ -27,7 +27,7 @@ RULES = {
     "cross-shot": ["cut", "shots", "state"],
 }
 LINES = {"animation": 5, "assets": 6, "conform": 6, "cross-shot": 4, "intake": 4,
-         "layout": 7, "lighting": 7, "render": 7, "rigging": 5, "simulation": 4}
+         "layout": 7, "lighting": 7, "publish": 9, "render": 7, "rigging": 5, "simulation": 4}
 
 
 def missing(corpus: Path) -> list[str]:

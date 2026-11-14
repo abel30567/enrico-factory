@@ -1,0 +1,11 @@
+{
+ "platform": "instagram",
+ "kinds": {},
+ "disclosure": {
+  "field": "is_ai_generated",
+  "value": true,
+  "read_at": "2026-11-11",
+  "source": "https://example.invalid/instagram"
+ },
+ "policy": []
+}

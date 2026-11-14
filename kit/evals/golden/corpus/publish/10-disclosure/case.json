@@ -1,0 +1,1 @@
+{"kind": "seeded", "catches": ["^distribution/ep01/youtube/post\\.json:1 publish-disclosure post yt123 sets status\\.containsSyntheticMedia to false, not true$"]}
