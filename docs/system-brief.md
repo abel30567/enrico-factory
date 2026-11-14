@@ -8,7 +8,7 @@ proposal (`docs/design/autonomous-story-studio.html`) and replaces brief v0. Com
 - `docs/resources.md`: every resource a run needs and how an unattended agent reaches it.
 - `docs/research/`: the research behind it.
 
-This brief wins where they disagree. Everything here is design: nothing is built or measured yet.
+This brief wins where they disagree. It is the design: what is built so far is in `kit/`, and what is measured is in `docs/eval-floors.tsv`.
 
 ## 1. What it is
 
