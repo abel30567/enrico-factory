@@ -6,7 +6,8 @@ fresh `TMPDIR` (`tmp/`), `state/` (`STATE_DIR`), `secrets/` (absent unless a tes
 seeded `home/` (`.netrc`, `.config/yt-dlp/config` with `--cookies`). `PATH` is `<world>/bin` alone: `yt-dlp`,
 `ffprobe`, `ffmpeg`, `tesseract` and `whisper-cli` are copies of `fake_tool.py`, which reads `bin/control.json`
 and logs each call to `log.jsonl`. The environment also holds `GH_TOKEN` and `http_proxy`, both seeds that
-the fetch must never see. `FACTORY_NOW` is 2026-11-14T09:00:00Z. Each seeded defect is one change to the world.
+the fetch must never see, and `LC_CTYPE` and `__CF_USER_TEXT_ENCODING`, which it must not get from the caller
+either. `FACTORY_NOW` is 2026-11-14T09:00:00Z. Each seeded defect is one change to the world.
 
 The answers: 4.5 s, 1080 by 1920, `30000/1001`, an audio stream; whisper 0 to 1800 and 1800 to 4200 ms (and an
 empty entry); cuts at 1.201 and 3.504 s; 5 frames, text on the first and the fourth. No video file is
@@ -24,13 +25,18 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from kit.lib import analysis  # noqa: E402
+
 FIX = ROOT / "tests" / "fixtures" / "analysis"
 FACTORY = ROOT / "kit" / "factory"
 NOW = "2026-11-14T09:00:00Z"
 SEED = "seeded-Wickabel-7f3a90"
 LINK = "https://www.youtube.com/watch?v=yt-a"
+CF_SEED = "0x7F3A:0x0:0x0"
 NOTES = "analyses/youtube/yt-a/20261114T090000Z.json"
 TOOLS = ("yt-dlp", "ffprobe", "ffmpeg", "tesseract", "whisper-cli")
 CHECK_STEPS = {"version", "filters"}
@@ -66,6 +72,15 @@ def tree(path):
     return {f.relative_to(path).as_posix(): f.read_bytes() for f in sorted(path.rglob("*")) if f.is_file()}
 
 
+def started_with(env):
+    """``os.environ`` of the fake tools' interpreter when it is started with exactly ``env``: ``env`` plus what
+    the interpreter or the OS adds itself (PEP 538 sets `LC_CTYPE` where `LANG` is no locale; macOS sets
+    `__CF_USER_TEXT_ENCODING`)."""
+    done = subprocess.run([sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ)))"],
+                          env=env, capture_output=True, text=True, timeout=60, check=True)
+    return json.loads(done.stdout)
+
+
 def imported(source):
     """The modules ``source`` imports, by `ast`: `import a.b` gives `a.b`, `from a import b` gives `a.b`."""
     names = []
@@ -84,6 +99,10 @@ def forbidden(source):
     `urllib.request`."""
     return sorted({name for name in imported(source)
                    if set(name.split(".")) & FORBIDDEN or name == "urllib.request" or name.startswith("urllib.request.")})
+
+
+class Stop(Exception):
+    """Ends a job after its first tool."""
 
 
 class World:
@@ -115,7 +134,8 @@ class World:
         self.settings = {"STATE_DIR": str(self.state), "SECRETS_DIR": "", "TRANSCRIBE_CMD": "whisper-cli",
                          "TRANSCRIBE_MODEL": str(self.model)}
         self.env = {"PATH": str(self.bin), "TMPDIR": str(self.tmpdir), "FACTORY_NOW": NOW, "HOME": str(self.home),
-                    "GH_TOKEN": SEED, "http_proxy": "http://127.0.0.1:1", "LANG": "C.UTF-8"}
+                    "GH_TOKEN": SEED, "http_proxy": "http://127.0.0.1:1", "LANG": "C.UTF-8",
+                    "LC_CTYPE": "C.UTF-8", "__CF_USER_TEXT_ENCODING": CF_SEED}
 
     def install(self, name, text):
         path = self.bin / name
@@ -215,12 +235,26 @@ class AnonymousFetch(Base):
         self.assertEqual(Path(directory).parent, self.w.tmpdir.resolve())
         self.assertTrue(Path(directory).name.startswith("factory-copy-"))
         self.assertEqual(call["argv"], [*FETCH_ARGV, directory, "--output", "copy.%(ext)s", "--", LINK])
-        self.assertEqual(sorted(call["env"]), ["HOME", "LANG", "PATH"])
-        self.assertEqual(call["env"]["HOME"], f"{directory}/home")
-        self.assertEqual(call["env"]["LANG"], "C.UTF-8")
-        self.assertEqual(call["env"]["PATH"], str(self.w.bin))
+        given = {"HOME": f"{directory}/home", "LANG": "C.UTF-8", "PATH": str(self.w.bin)}
+        self.assertEqual(call["env"], started_with(given))
+        self.assertNotEqual(call["env"].get("__CF_USER_TEXT_ENCODING"), CF_SEED)
         self.assertNotIn(SEED, json.dumps(call))
         self.assertNotIn(str(self.w.home), json.dumps(call))
+
+    def test_only_the_listed_names_are_passed(self):
+        """What the job hands to the fetch's ``Popen``, whatever the caller's environment holds."""
+        caller = {**self.w.env, "LC_ALL": "C.UTF-8"}
+        seen = []
+
+        def run(argv, reason, env=None):
+            seen.append(env)
+            raise Stop()
+
+        directory = self.w.tmpdir / "factory-copy-test"
+        directory.mkdir()
+        with mock.patch.dict(os.environ, caller, clear=True), self.assertRaises(Stop):
+            analysis._derive(run, directory, "yt-dlp", LINK, {})
+        self.assertEqual(seen, [{"HOME": str(directory / "home"), "LANG": "C.UTF-8", "PATH": str(self.w.bin)}])
 
     def test_keys_on_the_machine(self):
         self.w.secrets.mkdir()
