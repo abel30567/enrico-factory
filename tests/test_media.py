@@ -42,6 +42,7 @@ VECTORS = (
 HEADER = "id\tsha256\tbytes\tsource\n"
 PNG = b"\x89PNG\r\n\x1a\ninvented image bytes"
 OTHER = b"\x89PNG\r\n\x1a\ninvented image BYTES"  # the same length as PNG
+AGENT = "enrico-factory-media/1"
 
 
 def sha(data):
@@ -62,11 +63,12 @@ def free_port():
 
 class FakeStore:
     """An S3 object store on 127.0.0.1. ``status[method] = (code, body)`` makes it answer that instead;
-    ``public[sha256]`` is served on the public path instead of the object (None: a 404)."""
+    ``public[sha256]`` is served on the public path instead of the object (None: a 404). With ``agent`` set,
+    the public path answers 403 to any other `User-Agent`, as a provider that refuses a client's signature."""
 
     def __init__(self, test):
         self.objects, self.public, self.status, self.requests = {}, {}, {}, []
-        self.location = None
+        self.location = self.agent = None
         store = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -111,6 +113,8 @@ class FakeStore:
             self.objects[name] = body
             return self.reply(h, method, 200, b"")
         if h.path.startswith("/pub/") and method == "GET":
+            if self.agent is not None and headers.get("user-agent") != self.agent:
+                return self.reply(h, method, 403, b"error code: 1010")
             data = self.public.get(name, self.objects.get(name))
             return self.reply(h, method, 404, b"") if data is None else self.reply(h, method, 200, data)
         return self.reply(h, method, 404, b"")
@@ -318,6 +322,45 @@ class B4PublicLink(MediaTest):
     def test_defect_link_serves_more_bytes(self):
         self.store.public[sha(PNG)] = PNG + b"tail"
         self.assert_failed(self.put(self.file()), "public link serves other bytes")
+
+
+class B4UserAgent(MediaTest):
+    """The public address refuses Python's own user agent; the link check names the kit and sends nothing else."""
+
+    def stored(self):
+        self.store.objects[sha(PNG)] = PNG
+        self.store.agent = media.USER_AGENT
+
+    def test_twin_check_passes_where_the_kit_agent_is_served(self):
+        self.store.objects[sha(PNG)] = PNG
+        self.store.agent = getattr(media, "USER_AGENT", AGENT)
+        media.check(self.values, sha(PNG), len(PNG))
+        self.assertEqual(media.USER_AGENT, AGENT)
+        self.assertEqual([r["headers"]["user-agent"] for r in self.store.requests], [AGENT])
+
+    def test_twin_put_writes_the_row(self):
+        self.stored()
+        code, out, _ = self.put(self.file())
+        self.assertEqual((code, out), (0, f"media a: STORED {sha(PNG)} {len(PNG)} {self.link()}\n"))
+        self.assertEqual(self.rows(), HEADER + f"a\t{sha(PNG)}\t{len(PNG)}\ttest\n")
+
+    def test_twin_the_link_request_carries_no_credential(self):
+        self.stored()
+        self.put(self.file())
+        get = [r for r in self.store.requests if r["method"] == "GET"]
+        self.assertEqual(len(get), 1)
+        self.assertNotIn("authorization", get[0]["headers"])
+        self.assertEqual([h for h in get[0]["headers"] if h.startswith("x-amz-")], [])
+        self.assertTrue(all("authorization" in r["headers"] for r in self.store.requests if r["method"] != "GET"))
+
+    def test_defect_another_agent_is_refused_once(self):
+        self.stored()
+        self.store.agent = "another-client/1"
+        self.assert_failed(self.put(self.file()), "public link answered 403")
+        self.assertEqual(self.store.methods(), ["HEAD", "GET"])
+        with self.assertRaises(media.Failed) as raised:
+            media.check(self.values, sha(PNG), len(PNG))
+        self.assertEqual(str(raised.exception), "public link answered 403")
 
 
 class B5KeyFile(MediaTest):
