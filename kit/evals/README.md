@@ -52,7 +52,6 @@ case's two versions differ for one reason the rubric names and in no other way.
 
 A verdict case's ids are the videos of its tree's `.snapshot/`. A maker gives a verdict at the start of a note in
 `research/trends/*.tsv`, an analyst at the start of a note's text after the id: `"usable: "` or `"not usable: "`.
-No suite under `kit/evals/` holds one yet.
 
 ## Case ids
 

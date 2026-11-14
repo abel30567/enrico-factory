@@ -1,0 +1,31 @@
+{
+ "evidence": [
+  {
+   "command": "read .snapshot/youtube.ranking.txt",
+   "criterion": "each video judged",
+   "result": "pass"
+  }
+ ],
+ "marker": "SYMPTOMS",
+ "notes": [
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-flat",
+   "id": "I1",
+   "severity": "Issue",
+   "text": "yt-flat not usable: velocity:short ranks it last, so it no longer rises, though its outlier-score is first"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-hum",
+   "id": "I2",
+   "severity": "Issue",
+   "text": "yt-hum not usable: its only hook is a sea shanty of Skarrowfen, a sound that is not ours"
+  },
+  {
+   "evidence": "https://www.youtube.com/watch?v=yt-knot",
+   "id": "I3",
+   "severity": "Issue",
+   "text": "yt-knot usable: a 30 s show-and-name rhythm fits short-four-act and the charter; pivot P1, hypothesis in research/net-mending.md"
+  }
+ ],
+ "summary": "Three videos on net-mending in the YouTube snapshot of 2026-11-12; one is usable."
+}
