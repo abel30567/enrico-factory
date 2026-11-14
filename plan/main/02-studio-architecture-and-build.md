@@ -124,6 +124,40 @@ images, #381) and `references ERROR` (the documents cite example media ids and t
 - [x] merged by a train on 2026-11-14 (07:30Z), main `a410093`: #419 the cinematography-reviewer case repairs (PR #428) and #430 the media client's public-link check sends a user agent (#433). Each was verified on its head and merged through the gate.
 - [ ] in flight on 2026-11-14 (07:35Z), main `256d203`: no pull open. Builders launched after a recheck of their tickets against `aa3752d`: #414 (conform-editor suite), #392 (a request the pull carries passes rule 7) and #369 (monitor: gaming the judges). Held, body filed: #417 behind #392 (`tests/test_launch.py`), and #426 (devils-advocate and researcher suites) behind #414 (`tests/test_story_evals.py`). #86: five of the six repaired suites are measured again and story-editor is running; then the floors are recorded and #86 closes, then #87. #153: the two suites repaired by #418 and #419 are to be measured again. The other open builder issues wait for the production itself or for the owner (#207 Epic, #208 and #216 keys and login).
 
+## Wave 6: licence and plan checks before the first public post (#179)
+
+The second half of the "Done when" of #179. Each check below was read from the vendor's public page on
+2026-11-13 by a research subagent and posted on #179 in the `[ORCHESTRATOR]` comment of 2026-11-14,
+which carries the quotes (the comment's heading says 2026-11-14; its table gives 2026-11-13 as the date
+of every check). Nothing was logged in to and no account was opened. A verdict is `clear`, `not clear`
+or `owner to read`; anything that depends on the plan an account is on is `owner to read`, and the owner
+reads it in the account (the pointer is on #218). A box is ticked when the verdict is `clear`.
+
+- [ ] `gen.voice`, ElevenLabs: commercial use of speech needs a paid plan; free-plan output is non-commercial only. Source: elevenlabs.io/terms-of-use and elevenlabs.io/pricing, read 2026-11-13. Verdict: owner to read.
+- [ ] `gen.sfx`, ElevenLabs sound effects: royalty free for commercial use with no attribution on a paid plan; never published as a standalone pack. Source: elevenlabs.io/sound-effects/commercial, elevenlabs.io/terms-of-use and elevenlabs.io/use-policy, read 2026-11-13. Verdict: owner to read.
+- [ ] `gen.music`, ElevenLabs Music: commercial use from Starter, audio delivered on its own from Creator, individual use only up to Pro, no film, TV or radio use. Source: elevenlabs.io/music-terms, read 2026-11-13. Verdict: owner to read.
+- [ ] `gen.model3d`, Tripo output on a Tripo plan: a paid user holds the rights in the output, Tripo keeps the rights in free-user output. Source: developers.tripo3d.ai/en/terms, read 2026-11-13. Verdict: owner to read.
+- [ ] `gen.model3d`, Tripo output on a job paid through fal.ai: fal's terms are silent on the output and defer to the model vendor, and no page says whether such a job counts as a Tripo paid user. Source: fal.ai/legal/terms-of-service and fal.ai/models/tripo3d/tripo/v2.5/image-to-3d, read 2026-11-13. Verdict: not clear. A written answer from fal or Tripo closes it.
+- [ ] `gen.rig`, Meshy: the API is offered from Pro, and a paid customer owns the output; free output is Meshy's under CC BY 4.0. Source: meshy.ai/pricing and meshy.ai/terms-of-use, read 2026-11-13. Verdict: owner to read.
+- [ ] `gen.image.login`, Grok Imagine by login: the terms pages returned 403, and a search summary names an attribution duty and leaves unattended use through a proxy open (D1). Source: x.ai/legal/terms-of-service and x.ai/legal/faq (not reachable), read 2026-11-13. Verdict: not clear. No panel from this route is published until the owner has read the terms and the Brand Guidelines.
+- [x] `gen.image.key`, Gemini API: Google does not claim ownership of generated content. Source: ai.google.dev/gemini-api/terms, read 2026-11-13. Verdict: clear. No tool calls a keyed image model yet; the chosen model's own licence is read when one is picked.
+- [x] `engine.unreal`, Unreal Engine 5.8.x: free for individuals and small businesses below $1 million annual gross revenue. Source: the archive.org copy of unrealengine.com/license dated 2026-10-08 (the live page returned 403), read 2026-11-13. Verdict: clear.
+- [x] `platform.youtube`, monetisation and AI disclosure: each episode needs its own storyline to stay monetisable, and non-realistic AI content needs no disclosure (the upload job sets `containsSyntheticMedia` anyway). Source: support.google.com/youtube/answer/1311392 and support.google.com/youtube/answer/14328491, read 2026-11-13. Verdict: clear.
+- [ ] `platform.tiktok`, `direct` mode: the guidelines list "a utility tool to help upload contents to the account(s) you or your team manages" as not acceptable, so the audit may refuse it. Source: developers.tiktok.com/docs/en/content-sharing-guidelines, read 2026-11-13. Verdict: not clear. Followed on #203.
+- [x] `platform.tiktok`, `inbox` and private posting: allowed without an audit, up to 5 users in 24 hours, every account private. Source: developers.tiktok.com/docs/en/content-sharing-guidelines, read 2026-11-13. Verdict: clear.
+- [ ] `platform.tiktok`, Music Usage Confirmation: each post confirms the music is licensed, which ElevenLabs Music covers on a qualifying plan. Source: tiktok.com/legal/page/global/music-usage-confirmation/en, read 2026-11-13. Verdict: owner to read.
+- [x] `platform.instagram`, publishing: Reels are published to a professional account, 100 API posts in 24 hours (the same page also says 50 for carousels), and the page puts no licence term on what is published. Source: developers.facebook.com/documentation/instagram-platform/content-publishing, read 2026-11-13. Verdict: clear.
+- [x] `local.transcribe` and `local.ocr`: whisper.cpp is MIT and Tesseract is Apache 2.0, and neither puts a term on the video. Source: the licence file installed with each tool, read 2026-11-13. Verdict: clear.
+
+Not checked yet (named in `docs/resources.md` section 7 or in the #179 comment, and not covered by it):
+
+- [ ] The terms of a voice-library or cloned voice behind each stored `voice_id`.
+- [ ] Meta's and TikTok's rules on labelling AI-generated content (the pages were not read or did not open).
+- [ ] Where the Gemini API terms limit the unpaid tier's use of output.
+- [ ] The licence of the Whisper model file.
+- [ ] How long TikTok's audit takes (the acceptance question is the `direct` item above).
+- [ ] How long the subscription logins last unattended, a Movie Render Graph render from the command line on macOS, an identity metric on stylised 3D renders, and lip sync for a non-MetaHuman character. None is a licence or plan check, and none is checked by #179.
+
 ## Review
 
 2026-11-11. Done: the proposal is in the tree; brief v1, `harness.md`, `resources.md`, the register and
