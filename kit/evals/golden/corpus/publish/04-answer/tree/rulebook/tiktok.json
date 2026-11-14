@@ -1,0 +1,11 @@
+{
+ "platform": "tiktok",
+ "kinds": {},
+ "disclosure": {
+  "field": "post_info.is_aigc",
+  "value": true,
+  "read_at": "2026-11-11",
+  "source": "https://example.invalid/tiktok"
+ },
+ "policy": []
+}

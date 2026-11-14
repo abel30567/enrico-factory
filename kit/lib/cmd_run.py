@@ -7,7 +7,8 @@ installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with ex
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
 manifest row per output on the pull's branch (for a tool with ``STAGE_FILES``: puts every other output in the
-asset store and commits those in the ticket's production directory instead), and appends the `run` row with the real cost to the ledger
+asset store and commits those in the ticket's production directory instead) and, in the same commit, the post's
+answer the tool recorded at `distribution/<unit>/post.json`, and appends the `run` row with the real cost to the ledger
 on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down.
 Without `--apply` it makes every check, calls no tool and writes nothing.
 
@@ -34,7 +35,8 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import assets, cmd_gate, down, gitstate, github, ledger, media, production, resources, tickets  # noqa: E402
+from kit.lib import (assets, cmd_gate, down, gitstate, github, ledger, media, posts, production,  # noqa: E402
+                     resources, tickets)
 from kit.lib.tools import Down, Failed  # noqa: E402
 from kit.lib import release  # noqa: E402
 
@@ -44,6 +46,7 @@ OUTPUT_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*")
 UNIT_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 STORE = "store.assets"
 RESULT = "result.json"
+RECORD = "record"
 DONE, FAILED = "DONE", "FAILED"
 CRASHED, BROKE, NO_RESULT, TOOL_FAILED = "tool crashed", "tool broke the interface", "no result", "tool failed"
 ERRORS = cmd_gate.ERRORS + (OSError,)
@@ -196,6 +199,34 @@ def _outputs(out):
     return found
 
 
+def _record(directory, ticket, digest):
+    """The record a DONE call left in ``directory``: ``[]`` when it is empty, the listing of its one
+    ``post.json`` when that is the sound answer of this job for a ticket of room ``distribution``, else None."""
+    entries = sorted(os.scandir(directory), key=lambda e: e.name)
+    if not entries:
+        return []
+    if (len(entries) != 1 or entries[0].name != posts.ANSWER.rsplit("/", 1)[1]
+            or not entries[0].is_file(follow_symlinks=False) or _answer_path(ticket) is None):
+        return None
+    path = Path(entries[0].path)
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if posts.answer_problems(doc) or doc["job"] != digest:
+        return None
+    return [{"bytes": path.stat().st_size, "name": entries[0].name, "sha256": _sha256(path)}]
+
+
+def _answer_path(ticket):
+    """Where a post's recorded answer is committed, ``distribution/<unit>/post.json``; None for a ticket of
+    another room or a unit that is not ``<ep>/<platform>``."""
+    parts = ticket["unit"].split("/")
+    if ticket["room"] != posts.ROOM or len(parts) != 2 or not all(UNIT_PART.fullmatch(part) for part in parts):
+        return None
+    return posts.ANSWER.format(ticket["unit"])
+
+
 def _call(tool, call, expected):
     """``(verdict, usd, compute_min, reason, outputs)`` of the one call; ``Down`` passes through."""
     try:
@@ -218,9 +249,11 @@ def _call(tool, call, expected):
     return FAILED, expected["usd"], expected["compute_min"], BROKE, []
 
 
-def _write_result(job_dir, verdict, usd, compute_min, reason, outputs):
+def _write_result(job_dir, verdict, usd, compute_min, reason, outputs, record=()):
     data = {"compute_min": _text(compute_min), "outputs": outputs, "reason": reason, "usd": _text(usd),
             "verdict": verdict}
+    if record:
+        data["record"] = list(record)
     tmp = job_dir / (RESULT + ".tmp")
     tmp.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, job_dir / RESULT)
@@ -230,14 +263,18 @@ def _read_result(job_dir, digest, expected):
     """The recorded call of an earlier run, from its ``result.json``; FAILED ``no result`` without one."""
     path = job_dir / RESULT
     if not path.is_file():
-        return FAILED, expected["usd"], expected["compute_min"], NO_RESULT, []
+        return FAILED, expected["usd"], expected["compute_min"], NO_RESULT, [], []
     data = json.loads(path.read_text(encoding="utf-8"))
+    record = data.get("record", [])
     if data["verdict"] == DONE:
-        for item in data["outputs"]:
-            found = job_dir / "out" / item["name"]
-            if not found.is_file() or found.stat().st_size != item["bytes"] or _sha256(found) != item["sha256"]:
-                raise Refused(f"the outputs of job {digest} changed after the call")
-    return data["verdict"], Decimal(data["usd"]), Decimal(data["compute_min"]), data["reason"], data["outputs"]
+        for folder, items in (("out", data["outputs"]), (RECORD, record)):
+            for item in items:
+                found = job_dir / folder / item["name"]
+                if (not found.is_file() or found.stat().st_size != item["bytes"]
+                        or _sha256(found) != item["sha256"]):
+                    raise Refused(f"the outputs of job {digest} changed after the call")
+    return (data["verdict"], Decimal(data["usd"]), Decimal(data["compute_min"]), data["reason"], data["outputs"],
+            record)
 
 
 def _add_rows(tree, digest, outputs):
@@ -275,10 +312,16 @@ def _on_branch(p, gh, branch, change, message):
     gh.push(p.root, branch)
 
 
-def _manifest(p, gh, branch, digest, outputs):
-    """Commit the manifest rows on ``branch``."""
-    _on_branch(p, gh, branch, lambda tree: [gitstate.MANIFEST] if _add_rows(tree, digest, outputs) else [],
-               f"manifest: job {digest[:12]}")
+def _manifest(p, gh, branch, digest, outputs, answer=None, recorded=None):
+    """Commit the manifest rows on ``branch``, with the recorded answer ``recorded`` at ``answer`` when given."""
+    def change(tree):
+        paths = [gitstate.MANIFEST] if _add_rows(tree, digest, outputs) else []
+        if answer is not None:
+            (tree / answer).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(recorded, tree / answer)
+            paths.append(answer)
+        return paths
+    _on_branch(p, gh, branch, change, f"manifest: job {digest[:12]}")
 
 
 def _stage_files(p, gh, branch, digest, out, directory, names):
@@ -332,7 +375,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
         print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
         return 0
     if earlier:
-        verdict, usd, compute_min, reason, outputs = _read_result(job_dir, digest, expected)
+        verdict, usd, compute_min, reason, outputs, record = _read_result(job_dir, digest, expected)
     else:
         job = request["job"]
         secrets_dir = resources.expand(values[register["secrets_dir_setting"]])
@@ -340,11 +383,14 @@ def _run(p, gh, state, rows, target, apply, number=None):
         os.mkdir(job_dir)
         out = job_dir / "out"
         out.mkdir()
+        kept = job_dir / RECORD
+        kept.mkdir()
         call = {
             "hash": digest, "ticket": request["ticket"]["number"], "caller": request["caller"],
             "expected": job["expected"],
             "inputs": [{**item, "text": gitstate.show(p.root, request["ref"], item["path"])} for item in job["inputs"]],
             "out": str(out),
+            "record": str(kept),
             "settings": {c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"},
             "secrets": {c["name"]: os.path.abspath(os.path.join(secrets_dir, c["name"]))
                         for c in resource["checks"] if c["kind"] == "secret"},
@@ -356,14 +402,24 @@ def _run(p, gh, state, rows, target, apply, number=None):
             issue = down.report(p, gh, resource["id"], f"tool {name} could not use it; nothing was spent",
                                 f"run job {digest[:12]} on #{request['ticket']['number']}")
             raise Refused(f"resource {resource['id']} is down (#{issue})") from None
-        _write_result(job_dir, verdict, usd, compute_min, reason, outputs)
+        record = _record(kept, request["ticket"], digest) if verdict == DONE else []
+        if record is None:
+            verdict, usd, compute_min, reason, outputs, record = (
+                FAILED, expected["usd"], expected["compute_min"], BROKE, [], [])
+        if not os.listdir(kept):
+            kept.rmdir()
+        _write_result(job_dir, verdict, usd, compute_min, reason, outputs, record)
     if verdict == DONE and outputs and stage_files:
         names = [o["name"] for o in outputs]
         _store(values, register, job_dir / "out", [n for n in names if n not in stage_files])
         _stage_files(p, gh, pull["head_ref"], digest, job_dir / "out", directory,
                      [n for n in names if n in stage_files])
-    elif verdict == DONE and outputs:
-        _manifest(p, gh, pull["head_ref"], digest, outputs)
+    elif verdict == DONE and (outputs or record):
+        if record:
+            _manifest(p, gh, pull["head_ref"], digest, outputs, _answer_path(request["ticket"]),
+                      job_dir / RECORD / record[0]["name"])
+        else:
+            _manifest(p, gh, pull["head_ref"], digest, outputs)
     if verdict == DONE:
         release.write(p, gh, request, job_dir, outputs)
     ticket = request["ticket"]

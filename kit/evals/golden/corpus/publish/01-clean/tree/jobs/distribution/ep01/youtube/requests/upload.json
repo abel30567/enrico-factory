@@ -1,0 +1,15 @@
+{
+ "caller": "channel-youtube",
+ "expected": {
+  "compute_min": 1,
+  "usd": 0
+ },
+ "inputs": [
+  {
+   "path": "distribution/ep01/youtube/requests/upload.json",
+   "sha256": "5abe57fab5d61c51fcee35c6122b6ed851e496d4730cbbc28a466ebfe7610d00"
+  }
+ ],
+ "ticket": 3,
+ "tool": "upload"
+}

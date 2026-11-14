@@ -1,0 +1,12 @@
+{
+ "base_ref": "main",
+ "body": "Ticket: #3\n",
+ "created_at": "2026-11-01T10:00:00Z",
+ "head_ref": "feat/PO-1-ep01-youtube",
+ "labels": [],
+ "merged_at": null,
+ "number": 4,
+ "state": "open",
+ "ticket": 3,
+ "title": "Work for #3"
+}

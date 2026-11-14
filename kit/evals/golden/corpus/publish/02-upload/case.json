@@ -1,0 +1,1 @@
+{"kind": "seeded", "catches": ["^distribution/ep01/youtube/requests/upload\\.json:1 publish-upload requests/upload\\.json does not name video and captions as media:<id>$"]}

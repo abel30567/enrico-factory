@@ -1,0 +1,14 @@
+{
+ "captions": true,
+ "fields": {
+  "status.containsSyntheticMedia": true,
+  "status.privacyStatus": "private"
+ },
+ "job": "63aeb0af64890fc07590e98add51802428f87001ca62ee2c87c1ea780855965e",
+ "platform": "youtube",
+ "post_id": "yt123",
+ "processed": true,
+ "read_at": "2026-11-02T09:30:00Z",
+ "sha256": "7c1e1099b371e81cebe490304b313bf0cd37491b610378e6f9b498b523939b59",
+ "visibility": "public"
+}

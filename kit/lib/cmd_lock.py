@@ -7,18 +7,21 @@ ticket. Before it reads, ``--apply`` brings the local base up to GitHub's (``syn
 the merge. Exit 0 report printed, 2 frozen, usage, or the production or GitHub cannot be read (a sync that
 fails before the read included), 3 merge failed (the LOCK is void), 4 merged and the ticket closed but the
 local base not synced, 5 merged and the ticket closed, but the asset registry row or a stale shot's ticket not
-written.
+written, or, beside it, the post registry row of a ``distribution/post`` lock (``registry/posts.tsv``,
+``kit/lib/posts.py``) not written. Each ``--apply``, before its report, first writes that row for every merged
+pull of a ``distribution/post`` ticket that no row names, by pull number; one that fails also exits 5.
 """
 
 import argparse
 import json
 import os
+import re
 import sys
 
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import github, ledger, lockrules, production, registry, tickets  # noqa: E402
+from kit.lib import github, gitstate, ledger, lockrules, markers, posts, production, registry, tickets  # noqa: E402
 from kit.lib.gitstate import GitError  # noqa: E402
 from kit.lib.github import GitHubError  # noqa: E402
 from kit.lib.production import ProductionError  # noqa: E402
@@ -27,6 +30,8 @@ from kit.lib.tickets import TicketError  # noqa: E402
 ROLE = "program:lock"
 VOID = "lock: merge failed, the LOCK above is void"
 ERRORS = (ProductionError, GitHubError, GitError, TicketError)
+POST_ERRORS = (posts.PostsError, GitError, GitHubError)
+_LOCKED_HEAD = re.compile(r"locked head ([0-9a-f]{40}) manifest \S+")
 
 
 class Unsynced(Exception):
@@ -114,6 +119,64 @@ def lock(p, gh, state, ticket, pull) -> int:
         return 5
     for line in lines:
         print(line)
+    if posts.is_post(ticket):
+        try:
+            print(posts.append(p, gh, p.root, ticket["unit"], number, pull["git"]["head"]))
+        except POST_ERRORS as error:
+            print(_unwritten(number, merged, error), file=sys.stderr)
+            return 5
+    return 0
+
+
+def _unwritten(number, merged, error) -> str:
+    return f"lock: PR #{number} is merged at {merged[:12]}, {posts.PATH} not written: " + " ".join(str(error).split())
+
+
+def _locked_head(gh, number):
+    """The head the newest ``LOCK`` by ``program:lock`` on the pull names, or None."""
+    found = None
+    for c in sorted(gh.comments(number), key=lambda c: (c["created_at"], c["id"])):
+        m = markers.parse(c["body"])
+        heads = [h.group(1) for h in map(_LOCKED_HEAD.fullmatch, c["body"].splitlines()) if h]
+        if c.get("role") == ROLE and m is not None and m.verb == "LOCK" and heads:
+            found = heads[0]
+    return found
+
+
+def _merge_of(root, base, head) -> str:
+    """The commit of ``base``'s first-parent line that brought ``head`` in; ``head`` when none is found."""
+    try:
+        found = gitstate.git(root, "rev-list", "--first-parent", "--ancestry-path", f"{head}..{base}").split()
+    except GitError:
+        found = []
+    return found[-1] if found else head
+
+
+def backfill(p, gh) -> int:
+    """Write the post registry row of every merged pull of a ``distribution/post`` ticket that no row names,
+    by pull number. 0, or 5 when a row is not written."""
+    base = production.base(p)
+    units = {}
+    for issue in gh.issues("all"):
+        try:
+            ticket = tickets.parse(issue)
+        except TicketError:
+            continue
+        if ticket is not None and posts.is_post(ticket):
+            units[ticket["number"]] = ticket["unit"]
+    named = {row["pull"] for row in posts.rows(p.root, base)}
+    for pull in sorted(gh.pulls("all"), key=lambda pull: pull["number"]):
+        number = pull["number"]
+        if pull["state"] != "merged" or pull.get("ticket") not in units or str(number) in named:
+            continue
+        head = _locked_head(gh, number)
+        try:
+            if head is None:
+                raise posts.PostsError(f"no LOCK on PR #{number} names its locked head")
+            print(posts.append(p, gh, p.root, units[pull["ticket"]], number, head))
+        except POST_ERRORS as error:
+            print(_unwritten(number, _merge_of(p.root, base, head) if head else "-", error), file=sys.stderr)
+            return 5
     return 0
 
 
@@ -133,6 +196,8 @@ def main(argv):
         gh = github.connect(p.settings)
         if args.apply:
             gh.sync_base(p.root, production.base(p))
+            if backfill(p, gh):
+                return 5
         state = tickets.load(p, gh, p.root)
         if args.apply and state.frozen:
             print("lock: frozen", file=sys.stderr)

@@ -1,0 +1,11 @@
+{
+ "disclosure": {
+  "field": "status.containsSyntheticMedia",
+  "read_at": "2026-11-11",
+  "source": "https://example.invalid/youtube",
+  "value": true
+ },
+ "kinds": {},
+ "platform": "youtube",
+ "policy": []
+}

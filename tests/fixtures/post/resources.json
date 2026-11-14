@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "about": "The register of the post tests: one invented platform, its answers recorded, reached with a key file.",
+  "settings_files": ["production.env", "production.local.env"],
+  "secrets_dir_setting": "SECRETS_DIR",
+  "path_settings": ["FAKE_ANSWER", "SECRETS_DIR", "STATE_DIR"],
+  "check_kinds": {
+    "secret": "`<secrets dir>/<name>` is a non-empty file readable by its owner only",
+    "setting": "setting `name` is not empty"
+  },
+  "resources": [
+    {
+      "id": "platform.fake",
+      "title": "A fake platform that answers an upload with a recorded answer",
+      "class": "distribution",
+      "auth": "key",
+      "holder": "run",
+      "rooms": ["distribution"],
+      "wave": 2,
+      "setup": "agent",
+      "checks": [{"kind": "setting", "name": "FAKE_ANSWER"}, {"kind": "secret", "name": "platform.fake"}]
+    }
+  ]
+}
