@@ -222,6 +222,9 @@ def _default_task(p, state, kind, ticket, pull, judged, blocked=None):
         return _joined(parts)
     if kind == "checker":
         return f"Review pull request #{n} at head {pull['git']['head']}."
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    if entry["blind"] and not tickets.is_locked(state, ticket["room"], ticket["stage"], ticket["unit"]):
+        return f"Judge pull request #{n}. Unit {ticket['unit']} has no locked version: judge its head alone."
     return f"Judge pull request #{n}."
 
 
