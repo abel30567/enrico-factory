@@ -21,3 +21,6 @@ time	role	kit	harness	model	cases	runs	mean	floor	blocked
 2026-11-14T05:59:55Z	script-writer	e3cd554	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
 2026-11-14T06:37:57Z	story-artist	e3cd554	real 2.1.290 (hbar)	opus	5	5	1.0	0.0	0
 2026-11-14T08:03:41Z	story-editor	e3cd554	real 2.1.290 (hbar)	sonnet	9	5	0.9667	0.0746	0
+2026-11-14T08:40:40Z	performance-reviewer	a410093	real 2.1.290 (hbar)	sonnet	9	5	0.6667	0.0	0
+2026-11-14T09:10:25Z	cinematography-reviewer	a410093	real 2.1.290 (hbar)	sonnet	9	5	0.6334	0.0746	0
+2026-11-14T09:39:51Z	render-reviewer	a410093	real 2.1.290 (hbar)	sonnet	9	5	0.6667	0.0	4
