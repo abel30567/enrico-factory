@@ -1,0 +1,14 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/master.md": "adds the master, the old lamplighter",
+    "bible/canon/characters/rin.md": "adds Rin, the apprentice",
+    "bible/canon/ledger.tsv": "adds the rows of Rin and the master"
+  },
+  "why": "the lamp-street episode needs its lamplighters",
+  "evidence": {
+    "bible/canon/characters/master.md": "adds the master, the old lamplighter",
+    "bible/canon/characters/rin.md": "adds Rin, the apprentice",
+    "bible/canon/ledger.tsv": "adds the rows of Rin and the master"
+  }
+}

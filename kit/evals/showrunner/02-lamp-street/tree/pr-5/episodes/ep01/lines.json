@@ -1,0 +1,7 @@
+[
+ {"id": "L1", "scene": "S1", "speaker": "RIN", "text": "Let me do the street tonight."},
+ {"id": "L2", "scene": "S1", "speaker": "MASTER", "text": "Ha! Off you go then, my little firefly, and mind you don't set the whole town alight!"},
+ {"id": "L3", "scene": "S1", "speaker": "RIN", "text": "I won't."},
+ {"id": "L4", "scene": "S2", "speaker": "RIN", "text": "Last one."},
+ {"id": "L5", "scene": "S3", "speaker": "MASTER", "text": "Your hook now."}
+]
