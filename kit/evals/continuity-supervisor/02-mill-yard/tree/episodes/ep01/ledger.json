@@ -1,0 +1,5 @@
+[
+ {"subject": "joss", "attribute": "carries", "value": "a sack", "tag": "invented", "source": "", "scene": "S1"},
+ {"subject": "sack", "attribute": "rests at", "value": "the millstone", "tag": "invented", "source": "", "scene": "S1"},
+ {"subject": "joss", "attribute": "state", "value": "soaked", "tag": "invented", "source": "", "scene": "S2"}
+]

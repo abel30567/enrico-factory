@@ -5,8 +5,8 @@
     {
       "id": "B1",
       "severity": "Blocker",
-      "text": "S4 is in Q1 with S1 and S2, ahead of S3 in Q2: the sequences break story order.",
-      "evidence": "episodes/ep01/sequences/Q1/sequence.json"
+      "text": "S4 has the next hut answer from the south, but the canon ledger puts the next hut to the north of the signal hut.",
+      "evidence": "bible/canon/ledger.tsv:2"
     }
   ]
 }
