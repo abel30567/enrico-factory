@@ -1,6 +1,7 @@
 {
   "class": "canon",
   "changes": {
+    "bible/canon/characters/fox.md": "adds the sheet",
     "bible/canon/characters/hilde.md": "adds the sheet",
     "bible/canon/characters/tam.md": "adds the sheet",
     "bible/canon/places/fox-lane.md": "adds the sheet"
