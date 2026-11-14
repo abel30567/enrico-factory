@@ -1,1 +1,1 @@
-{"kind": "seeded", "catches": ["\\bdax\\b"]}
+{"kind": "seeded", "catches": ["(?i)\\bdax\\b.*\\b(only|missing|absent|no box|out of frame|leaves the frame|frames? 1[2-4])\\b|\\b(no box|frames? 1[4-9]|frames? 2[0-3])\\b.*\\bdax\\b"]}

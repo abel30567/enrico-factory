@@ -5,7 +5,7 @@
     {
       "id": "B1",
       "severity": "Blocker",
-      "text": "The camera trucks 2 m to the right over Q1-2; the shot file asks for a static camera.",
+      "text": "The camera pushes in 0.25 m over Q1-2; the shot file asks for a static camera.",
       "evidence": "production/ep01/Q1-2/layout/state.json"
     }
   ]

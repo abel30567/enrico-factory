@@ -5,6 +5,6 @@
   "duration": 0.5,
   "characters": ["wen", "dax"],
   "set": "lamp-house",
-  "camera": "tight two-shot, eye level, static",
+  "camera": "medium two-shot, eye level, static",
   "action": "Wen steps to Dax and hands him the lantern."
 }

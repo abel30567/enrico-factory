@@ -1,1 +1,1 @@
-{"kind": "seeded", "catches": ["\\bwen\\b"]}
+{"kind": "seeded", "catches": ["(?i)\\bwen\\b.*\\b(edge|lead room|looking room|nose room|crowd(ed|s|ing)?|fac(es|ing) (left|away|out))\\b|\\b(edge|lead room|looking room|nose room)\\b.*\\bwen\\b"]}
