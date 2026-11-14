@@ -1,0 +1,5 @@
+[
+ {"subject": "street lamps", "attribute": "power", "value": "fails", "tag": "invented", "source": "", "scene": "S2"},
+ {"subject": "rin", "attribute": "palm", "value": "burned by the last lamp", "tag": "invented", "source": "", "scene": "S2"},
+ {"subject": "hand lamp", "attribute": "hangs on", "value": "the master's hook", "tag": "invented", "source": "", "scene": "S3"}
+]
