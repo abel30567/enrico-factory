@@ -5,10 +5,9 @@ pool of section 4, the result object of section 5 and the sandbox of section 7, 
 `launch.py`, `finish.py` and `sandbox.py`, and `factory run` of section 8 with its tool interface, in
 `kit/lib/cmd_run.py` and `kit/lib/tools/`, an operator's two launches with the gate and the run of its
 jobs between them (sections 3 and 8), in `kit/lib/jobs.py`, `launch.py`, `steps.py` and `cmd_tick.py`,
-and the knowledge gateway of section 6 for the capabilities `skills`, `memory-read` and `memory-write`,
-in `kit/lib/gateway.py`. Not built: the capabilities `search` and `skills-write` (#282), any tool for
-`factory run` to call (none is installed yet, #93), the lock of a pull request that holds a job (#285),
-and forks of section 9.
+the knowledge gateway of section 6 for all five capabilities, in `kit/lib/gateway.py`, the tools
+`factory run` calls, in `kit/lib/tools/`, and the lock of a pull request that holds a job, in
+`kit/lib/lockrules.py`. Not built: forks of section 9.
 Machine-specific values (paths, account names, hosts) are never in this repository; they live in the
 gitignored `production.local.env` of each production and are named in `docs/resources.md`.
 
@@ -212,8 +211,8 @@ Rules:
   restricts every read to that production's tag plus the shared `studio` tag. It is built
   (`kit/lib/gateway.py`): a server on `127.0.0.1` in a thread of the launch supervisor, reached with a
   token made for the run and named in the run's `mcp.json` as the one server `knowledge`. Its tools
-  are `skill_search` and `skill_load` (`skills`), `memory_recall` (`memory-read`) and `memory_write`
-  (`memory-write`). A role that names only `search` or `skills-write` gets no server yet (#282).
+  are `skill_search` and `skill_load` (`skills`), `memory_recall` (`memory-read`), `memory_write`
+  (`memory-write`), `search` (`search`) and `skill_set` (`skills-write`).
 - **Tags.** The production tag is the setting `REPO` in lower case; the shared tag is `studio`. A
   memory carries its tag in a first line the gateway writes, `[factory:<tag>] <role> #<ticket>`. A
   skill carries it as the keyword `factory:<tag>`. A result in another tag or in none is dropped and
