@@ -22,10 +22,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_gate, gitstate, github, jobs, ledger, production, tickets  # noqa: E402
+from kit.lib import cmd_gate, gitstate, github, jobs, ledger, lockrules, production, steps, tickets  # noqa: E402
 
 GATE = ROOT / "tests" / "fixtures" / "gate"
 FETCHER = ROOT / "tests" / "fixtures" / "jobs" / "fetcher.md"
+KIT = ROOT / "kit"
 NOW = "2026-11-02T09:00:00Z"
 TICKET, PULL, OTHER_PULL = 3, 4, 2
 REQUEST = "frames/ep01/requests/r1.json"
@@ -321,6 +322,119 @@ class OfTest(unittest.TestCase):
         self.assertEqual(self.w.gate()[0], 0)
         [found] = self.w.of()["jobs"]
         self.assertEqual((found["hash"], found["gate"], found["run"]), (digest(retry), "PASS", None))
+
+
+class PlatformTest(unittest.TestCase):
+    """ISSUE-392: at an operator-only stage the operator of a pull is the one whose ``writes`` hold the job of a
+    request on it, and rule 7 takes the request of a ``DONE`` job inside the stage's ``paths``.
+
+    The `render` entry gets the ``maker`` and ``paths`` of the shipped `distribution/post` entry (or of
+    `distribution/window`) and the real channel and telemetry roles."""
+
+    UPLOAD = '{"video": "media:v1", "captions": "media:c1"}\n'
+
+    def world(self, stage="post"):
+        w = World(self)
+        for name in ("channel-youtube", "channel-tiktok", "channel-instagram", "telemetry-puller"):
+            shutil.copy(KIT / "roles" / f"{name}.md", w.root / ".factory" / "roles" / f"{name}.md")
+        shipped = next(e for e in json.loads((KIT / "pipeline.json").read_text())
+                       if e["room"] == "distribution" and e["stage"] == stage)
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "render":
+                entry.update(maker=shipped["maker"], paths=shipped["paths"], after="")
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.git("add", "-A")
+        w.git("commit", "-q", "-m", "an operator-only stage")
+        return w
+
+    def post(self, platform="tiktok", name="upload", stage="post", job=True, run="DONE", text=None):
+        """The world with the request ``distribution/ep01/<platform>/requests/<name>.json`` on pull #4, its job
+        by the platform's channel (by `telemetry-puller` at the window) and the job's run row."""
+        w = self.world(stage)
+        request = f"distribution/ep01/{platform}/requests/{name}.json"
+        caller = "telemetry-puller" if stage == "window" else f"channel-{platform}"
+        text = text or self.UPLOAD
+        files = {request: text}
+        made = job_for(request=request, text=text, caller=caller)
+        if job:
+            files["jobs/" + request] = json.dumps(made)
+        w.on_branch(files)
+        if job and run:
+            w.ran(made, run)
+        return w, request, caller
+
+    def rule7(self, w, role):
+        p, state, ticket, pull = w.load()
+        return lockrules._writes(p, "production", role, pull["git"]["changed"],
+                                 lockrules.operator_paths(p, state, ticket, pull, w.root))
+
+    def test_the_operator_of_a_pull(self):
+        for platform in ("tiktok", "youtube", "instagram"):
+            with self.subTest(platform):
+                w, request, caller = self.post(platform)
+                found = w.of()
+                self.assertEqual((found["operator"], found["requests"], found["uncovered"]),
+                                 (caller, [request], []))
+                self.assertEqual([j["run"] for j in found["jobs"]], ["DONE"])
+
+    def test_a_pull_with_only_a_job_file_has_no_operator(self):
+        w = self.world()
+        w.on_branch({"jobs/distribution/ep01/tiktok/requests/upload.json": json.dumps(job_for())})
+        self.assertIsNone(w.of())
+        p, _, ticket, pull = w.load()
+        entry = production.stage(p, ticket["room"], ticket["stage"])
+        self.assertIsNone(jobs.operator_of(p, w.root, entry, pull))
+
+    def test_a_request_is_for_one_operator(self):
+        w, request, _ = self.post()
+        p, state, ticket, pull = w.load()
+        self.assertIsNone(jobs.of(p, w.root, state, ticket, pull, role="channel-youtube"))
+        self.assertEqual(jobs.requests(p, w.root, pull, "channel-youtube"), [])
+        self.assertEqual(jobs.requests(p, w.root, pull, "channel-tiktok"), [request])
+
+    def test_rule_7_takes_the_covered_request(self):
+        w, _, caller = self.post()
+        self.assertEqual(self.rule7(w, caller), "")
+        w, _, caller = self.post("youtube", "window", "window")
+        self.assertEqual(self.rule7(w, caller), "")
+
+    def test_rule_7_seeded(self):
+        stray = "distribution/ep01/tiktok/requests/stray.json"
+        w, _, _ = self.post()
+        w.on_branch({stray: "{}\n"})
+        self.assertEqual(self.rule7(w, "channel-tiktok"),
+                         f"outside the writes of channel-tiktok: {stray}; outside room production: {stray}")
+        upload = "distribution/ep01/tiktok/requests/upload.json"
+        w, _, _ = self.post(run="FAILED")
+        self.assertEqual(self.rule7(w, "channel-tiktok"), f"outside the writes of channel-tiktok: {upload}")
+        w, _, _ = self.post()
+        w.on_branch({upload: self.UPLOAD.replace("media:v1", "media:v2")})
+        self.assertEqual(self.rule7(w, "channel-tiktok"), f"outside the writes of channel-tiktok: {upload}")
+        public = "distribution/ep01/tiktok/requests/public.json"
+        w, _, _ = self.post(name="public")
+        self.assertEqual([j["run"] for j in w.of()["jobs"]], ["DONE"])
+        self.assertEqual(self.rule7(w, "channel-tiktok"),
+                         f"outside the writes of channel-tiktok: {public}; outside room production: {public}")
+        stray = "distribution/ep01/youtube/requests/stray.json"
+        w, _, _ = self.post("youtube", "window", "window")
+        w.on_branch({stray: "{}\n"})
+        self.assertEqual(self.rule7(w, "telemetry-puller"),
+                         f"outside the writes of telemetry-puller: {stray}; outside room production: {stray}")
+
+    def test_the_tick_launches_the_pulls_operator(self):
+        for platform in ("tiktok", "youtube"):
+            with self.subTest(platform):
+                w, _, caller = self.post(platform, job=False)
+                p, state, ticket, _ = w.load()
+                self.assertEqual(steps.next_step(p, state, ticket, w.root, NOW),
+                                 {"state": "jobs", "step": "launch", "role": caller, "pull": PULL,
+                                  "reason": f"1 request(s) on #{PULL} have no job"})
+        w, _, _ = self.post()
+        p, _, ticket, pull = w.load()
+        entry = production.stage(p, ticket["room"], ticket["stage"])
+        self.assertEqual(steps._maker_of(p, entry, pull, w.root), "channel-tiktok")
 
 
 if __name__ == "__main__":
