@@ -2,9 +2,9 @@
 
 The job has two inputs, in this order: the request, a JSON object with exactly the keys ``caption`` (a
 string), ``captions`` and ``video``, and ``media/manifest.tsv``. ``video`` and ``captions`` are each
-``media:<id>``, an id with exactly one row in the manifest. ``captions`` is true because the captions are
-burned into the uploaded file; no caption track is uploaded. The Reel's bytes are in the media store
-already; the platform fetches them from their public link.
+``media:<id>``, an id with exactly one row in the manifest.
+``captions`` is true because the captions are burned into the uploaded file; no caption track is uploaded.
+The Reel's bytes are in the media store already; the platform fetches them from their public link.
 
 The tool checks the account, the token file, the public base and the API, then the request, then makes
 its calls: it gets the public link, creates a Reels container with ``is_ai_generated=true``, polls the

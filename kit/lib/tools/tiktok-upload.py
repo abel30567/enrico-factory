@@ -3,10 +3,10 @@
 The job has two inputs, in this order: the upload request and ``media/manifest.tsv``. The request is a JSON
 object with exactly the keys ``captions``, ``link``, ``title`` and ``video``: ``video`` and ``captions`` are
 each ``media:<id>``, an id with exactly one row in the manifest, and ``link`` is a media store public link
-ending with ``/`` and the sha256 of the ``video`` row, sent as ``video_url``. ``captions`` is true because the
-captions are burned into the uploaded file; no caption track is uploaded. TikTok pulls the video from that
-link (``PULL_FROM_URL``); the tool never holds the video's bytes. Setting ``TIKTOK_POSTING`` picks the one
-request:
+ending with ``/`` and the sha256 of the ``video`` row, sent as ``video_url``.
+``captions`` is true because the captions are burned into the uploaded file; no caption track is uploaded.
+TikTok pulls the video from that link (``PULL_FROM_URL``); the tool never holds the video's bytes. Setting
+``TIKTOK_POSTING`` picks the one request:
 
 - ``inbox``: the video goes to the account's inbox as a draft. That endpoint takes no ``post_info``, so
   no request can set ``is_aigc``; the owner sets the AI-generated content label when finishing the draft.

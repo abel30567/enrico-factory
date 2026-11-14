@@ -4,8 +4,9 @@ The job has two inputs, in this order: the upload request and ``media/manifest.t
 object with exactly the keys ``captions``, ``description``, ``link``, ``title`` and ``video``: ``video`` and
 ``captions`` are each ``media:<id>``, an id with exactly one row in the manifest, and ``link`` is the video's
 public link in the media store, ending with ``/`` and the sha256 of the ``video`` row, whose bytes are those
-of the row. ``captions`` is true because the captions are burned into the uploaded file; no caption track is
-uploaded. The key file of ``platform.youtube`` holds three lines: client id, client secret, refresh token.
+of the row.
+``captions`` is true because the captions are burned into the uploaded file; no caption track is uploaded.
+The key file of ``platform.youtube`` holds three lines: client id, client secret, refresh token.
 
 The requests, in this order, all through one opener that reads no proxy from the environment and follows
 no redirect: a ``GET`` of the public link into a temporary file, the token refresh, the resumable upload's
