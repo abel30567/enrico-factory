@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "PV6 takes ep02 off the quay, against lesson PB-1, and the ruling does not say why (criterion 5).",
+      "evidence": "playbook/PB-1.md:6"
+    }
+  ]
+}
