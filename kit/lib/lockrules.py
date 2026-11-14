@@ -276,12 +276,14 @@ def _amendment(entry, pull, root):
 
 def operator_paths(p, state, ticket, pull, root) -> set:
     """The paths rule 7 takes from the operator and from ``factory run``: the job file of each ``DONE`` job,
-    and the manifest when it keeps every row of the merge base and adds only rows of those jobs."""
+    its request when it is inside the stage's ``paths``, and the manifest when it keeps every row of the merge base and adds only rows of those jobs."""
     found = jobs.of(p, root, state, ticket, pull)
     if found is None:
         return set()
     done = [job for job in found["jobs"] if job["run"] == "DONE"]
-    accepted = {job["path"] for job in done}
+    paths = production.stage(p, ticket["room"], ticket["stage"])["paths"]
+    accepted = {job["path"] for job in done} | {job["request"] for job in done
+                                                 if production.matches(job["request"], paths)}
     if not done:
         return accepted
     head = pull["git"]["head"]
