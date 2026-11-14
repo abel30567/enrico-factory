@@ -397,6 +397,7 @@ BRIEF_STAGES = [
     ("style", ["structure", "references", "media"]),
     ("board", ["structure", "provenance", "references", "media"]),
     ("reel", SM),
+    ("retro", []),
 ]
 
 
@@ -420,7 +421,7 @@ class ShippedKitTest(unittest.TestCase):
         by_stage = {e["stage"]: e for e in entries}
         self.assertEqual(by_stage["premise"]["pitches"], 3)
         self.assertIs(by_stage["board"]["blind"], True)
-        self.assertEqual([e["stage"] for e in entries if e["blind"]], ["board"])
+        self.assertEqual([e["stage"] for e in entries if e["blind"]], ["board", "reel"])
         self.assertEqual([e["stage"] for e in entries if e["pitches"] != 1], ["premise"])
 
     def test_shipped_kit_validates(self):

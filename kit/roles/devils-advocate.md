@@ -3,7 +3,7 @@ role: devils-advocate
 room: story
 kind: checker
 analog: dissenting voice in the story room
-stage: research, bible, premise, beats, outline, script, sequences, style, board, reel
+stage: research, bible, premise, beats, outline, script, sequences, style, board, reel, retro
 reads: bible/**, episodes/**, research/**, playbook/**
 may_not: decide
 model: checker

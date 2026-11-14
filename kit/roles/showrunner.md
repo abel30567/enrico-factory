@@ -3,7 +3,7 @@ role: showrunner
 room: story
 kind: orchestrator
 analog: showrunner
-stage: research, bible, premise, beats, outline, script, sequences, style, board, reel
+stage: research, bible, premise, beats, outline, script, sequences, style, board, reel, retro
 reads: bible/**, episodes/**, research/**, sources/**, playbook/**
 may_not: score work; edit the charter without a vote; reject a note raised twice
 model: maker

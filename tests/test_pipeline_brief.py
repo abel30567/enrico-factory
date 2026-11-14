@@ -12,7 +12,10 @@ from kit.lib import roles  # noqa: E402
 PIPELINE = ROOT / "kit" / "pipeline.json"
 BRIEF = ROOT / "docs" / "system-brief.md"
 BRIEF_STAGES = ["research", "bible", "premise", "beats", "outline", "script", "sequences", "style",
-                "board", "reel"]
+                "board", "reel", "retro"]
+RETRO = {"room": "story", "stage": "retro", "unit": "episode", "after": "", "maker": "retro-agent", "lint": [],
+         "checker": "", "judge": "held-out-judge", "blind": False, "pitches": 1,
+         "paths": ["playbook/**", "lab/proposals/**"]}
 
 
 def bad_afters(entries):
@@ -112,6 +115,17 @@ class ShippedPipelineTest(unittest.TestCase):
             ("style", "art-director, media-wrangler", "art-director"),
             ("board", "story-artist, media-wrangler", "story-artist"),
             ("reel", "editorial, media-wrangler", "editorial")])
+
+    def test_reel_and_board_are_the_blind_story_stages(self):
+        self.assertEqual([e["stage"] for e in self.entries if e["room"] == "story" and e["blind"]],
+                         ["board", "reel"])
+
+    def test_retro_is_the_entry_the_gaming_monitor_files(self):
+        self.assertEqual(self.by_stage["retro"], RETRO)
+
+    def test_a_story_stage_the_brief_does_not_name(self):
+        brief = re.sub(r"(?m)^\| story \| `retro` \|.*\n", "", BRIEF.read_text(encoding="utf-8"))
+        self.assertEqual(maker_mismatches(self.entries, brief), [("retro", None, "retro-agent")])
 
 
 class ProductionPipelineTest(unittest.TestCase):
