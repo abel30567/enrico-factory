@@ -272,6 +272,16 @@ class GoneOnFailure(Base):
         self.assertFailed("the transcriber failed")
 
 
+def default_signals():
+    """In the job, before exec: SIGINT and SIGTERM back to their defaults.
+
+    A test run started in the background (`&`, `nohup`) inherits SIGINT ignored; the job would
+    inherit it too and never see the group SIGINT this class sends.
+    """
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, signal.SIG_DFL)
+
+
 class GoneWhenKilled(Base):
     """4. A job killed while a tool hangs: the guard kills the tool and deletes the copy."""
 
@@ -282,7 +292,8 @@ class GoneWhenKilled(Base):
         self.w.control["hang"] = step
         self.w.write()
         job = subprocess.Popen(self.w.argv("--analyse", "youtube", "yt-a", LINK, "--apply"), env=self.w.env,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                               preexec_fn=default_signals)
         try:
             deadline = time.monotonic() + 60
             while step not in self.w.steps():
