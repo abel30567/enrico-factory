@@ -1,0 +1,12 @@
+{
+  "marker": "NOTES",
+  "summary": "Notes.",
+  "notes": [
+    {
+      "id": "B1",
+      "severity": "Blocker",
+      "text": "ama pops in shot Q1-1: a step of 47.5 degrees in one frame (criterion 6).",
+      "evidence": "production/ep01/Q1-1/animation/state.json"
+    }
+  ]
+}
