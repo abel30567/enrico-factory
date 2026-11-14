@@ -91,7 +91,7 @@ and `external.tiktok` are in (2026-11-13); `external.provider` is not yet.
 | Id | What | Kind | State | Wave | Note |
 |---|---|---|---|---|---|
 | `local.ocr` | OCR for caption and safe-area checks | none | have | 6 | English only today. |
-| `local.transcribe` | Local speech to text for caption and dialogue checks | none | partly | 6 | The program is installed; no model file is. |
+| `local.transcribe` | Local speech to text for caption and dialogue checks | none | partly | 6 | The program is installed; no model file is. `TRANSCRIBE_CMD` is a whisper.cpp `whisper-cli`. |
 
 ### Distribution room and the lab
 
@@ -152,7 +152,7 @@ Reversible choices are taken here so the build does not wait. The owner can over
 | R6 | Fermi is reached through the local knowledge gateway | it needs no change to the live server | D2 |
 | R7 | Other people's videos are read through the platforms' official APIs only, YouTube first | it is the one complete official route and needs nothing new from the owner | D5, D6 |
 | R8 | Platform data that must expire never enters git. Counts live in the state directory with a read time and are refreshed or deleted within 30 days; the repository keeps the link, our notes and the rank at read time | YouTube's policy allows 30 days, and git history cannot forget | none while the policy stands |
-| R9 | The factory does not fetch other people's video files, frames, audio or thumbnails | no official route delivers them and every other fetch breaks the sites' terms | D5 |
+| R9 | The factory does not fetch other people's video files, frames, audio or thumbnails, except one temporary copy for `factory run --analyse`, fetched anonymously from a machine that holds no posting session and deleted in the same job (D5, option (b), overrides R9 for this item only) | no official route delivers them; the owner allowed this one use | none |
 | R10 | The Meta app is built on Facebook Login with a linked Page | an app has one login type, and only this one reads other accounts | build it on Instagram Login; `external.instagram` is then not available |
 
 These need the owner. Each holds only the item it names.
@@ -163,7 +163,7 @@ These need the owner. Each holds only the item it names.
 | D2 | Add a scoped token to Fermi (memory, skills and search only, with a namespace per production)? | it changes the live Fermi server | nothing. The gateway is used until then |
 | D3 | Which render node? Decided in direction on 2026-11-12 (#212): short-lived cloud GPU nodes in the existing AWS account, started per job; the image is settled by the render node smoke test | money and a new account | nothing now; the render-only key exists (#204); wave 4 renders still need a spend cap (#214) |
 | D4 | Confirm the platform accounts the sample production posts from, and that each may carry AI-disclosed content | accounts and publishing | wave 5 uploads |
-| D5 | May the factory fetch other people's video files to analyse a temporary copy (transcript, cut rate, opening hook, on-screen text) and delete it? | it breaks all three sites' terms, and for YouTube it breaks the developer policies that bind the project the production uploads with | only the analysis of a temporary copy. Until then: links, counts and comments |
+| D5 | May the factory fetch other people's video files to analyse a temporary copy (transcript, cut rate, opening hook, on-screen text) and delete it? | it breaks all three sites' terms, and for YouTube it breaks the developer policies that bind the project the production uploads with | answered on #263 with option (b): only the analysis of a temporary copy, anonymous, never with the YouTube project's data, deleted in the same job. Everything else: links, counts and comments |
 | D6 | Pay a data provider for TikTok and Instagram counts? Under $10 a month at 500 results a week per platform | money, and the data is scraped | per-video counts on those two platforms |
 | D7 | Which works may the sample production draw on, and on what basis (own, licence, permission, public domain)? (#276) | rights are the owner's to state, and only the owner writes `sources/rights.tsv` | only the first public upload of the sample. Until then the material the owner supplied counts as cleared inside the private repository |
 

@@ -600,7 +600,8 @@ Specified in `docs/harness.md` and `docs/resources.md`. The rules:
 - **Other people's videos are read by a program.** `factory tick` asks `factory run` for the reads of
   the locked topics, through the platforms' official APIs only and inside a daily budget set in
   `production.env`. No role holds a platform key, and no video file, frame, audio or thumbnail is
-  fetched (`docs/resources.md`, R7 to R9).
+  fetched, except the temporary copy `factory run --analyse` deletes in the same job (D5, option (b);
+  `docs/resources.md`, R7 to R9).
 - **Only programs write state.** No agent holds the GitHub credential. `factory` commits a worker's
   files, opens the pull request and posts the markers, so a role cannot post another role's verdict.
 
@@ -619,6 +620,7 @@ name, so adding a command edits no shared file. Python 3 standard library, bash,
 | `factory blind <pr>` | prepare a blinded old-against-new pair for a judge and record the key outside the worktree |
 | `factory gate <job-or-pr> [--pull N]` | section 11 |
 | `factory run <job> [--pull N]` | make one gated call with its credential; write the outputs, the manifest rows and the ledger line |
+| `factory run --analyse <platform> <id> <link> [--apply]` | analyse one video from a temporary copy, write the notes, delete the copy in the same job; section 16 |
 | `factory media put <file>` / `link` / `check` | the media store client: store a file's bytes and add its manifest row, print the public link of a row, check that the links serve the manifest's bytes |
 | `factory assets put <file> [--apply]` / `get <sha256> <path>` / `check <sha256> ...` | the asset store client: store or fetch an engine binary under its sha256. Every request is signed and no object or file is overwritten |
 | `factory lock [--room R] [--apply]` | section 9; without `--apply` it only reports |
@@ -734,6 +736,9 @@ a time, because a trend on one platform is not a trend on another.
   time, and the notes a role wrote in its own words.
 - **Who reads.** `researcher` and `trend-scout` get a snapshot of the current reads and rankings of
   their ticket's topic in their working directory at launch, outside git, removed when the run ends.
+- **Analysis.** One video is fetched anonymously into a temporary directory outside the repository, on
+  a machine that holds no production key; the notes go to `<STATE_DIR>/analyses/<platform>/<id>/<stamp>.json`
+  and expire as the reads do; the copy, its audio and its frames are deleted in the same job.
 - **One ranking per platform.** Rankings are computed with no model and are never merged across
   platforms, because a view is not the same thing on each. A trend reaches the show only as a pivot
   proposal (section 7).
