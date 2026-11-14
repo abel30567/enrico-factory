@@ -4,7 +4,7 @@ origin: house A-1
 
 Changed in: A-2
 
-Pell sells fish at the winter market. Her hair is white now; as a child in Harrow it was red.
+Pell sells fish at the winter market. Her hair is white now; as a child it was red.
 
 ## Behaviour
 
