@@ -1,21 +1,41 @@
 # Outline
 
 ## S1 The loft
-beats: B1, B2
+beats: B1
 
-Ros at her nets; the harbour master brings the torn big net.
+Ros mends nets alone in the net loft above the harbour.
 
-## S2 The old loft
-beats: B3, B4
+## S2 The torn net
+beats: B2
 
-Ros climbs to her brother's loft and searches his gear.
+The winter catch has failed. The torn big net hangs in the loft, and the boats need it by the new moon.
 
-## S3 The letter
-beats: B5, B6
+## S3 The upper loft
+beats: B3
 
-In the needle case, a letter. She reads it, then works all night.
+Ros climbs to the old upper loft of the net loft, where Jem kept his tools.
 
-## S4 The new moon
-beats: B7, B8
+## S4 The gear
+beats: B4
 
-The boats go out; Ros writes a letter of her own.
+She searches Jem's gear for his netting needle.
+
+## S5 The needle case
+beats: B5
+
+She finds the needle, and a letter from Jem in its case.
+
+## S6 The night
+beats: B6
+
+Ros reads the letter and works through the night on the big net.
+
+## S7 The new moon
+beats: B7
+
+At the new moon the boats go out with the mended net.
+
+## S8 The answer
+beats: B8
+
+Ros writes back to Jem, for the first time.
