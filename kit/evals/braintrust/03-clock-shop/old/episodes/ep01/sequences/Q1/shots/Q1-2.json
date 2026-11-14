@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "ivo"
+  ],
+  "set": "clock-shop",
+  "camera": "close on the small clocks",
+  "action": "Ivo winds the small clocks one by one."
+}

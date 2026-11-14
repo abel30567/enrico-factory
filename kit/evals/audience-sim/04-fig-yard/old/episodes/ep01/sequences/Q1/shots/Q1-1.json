@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "zeb"
+  ],
+  "set": "fig-yard",
+  "camera": "wide on the yard",
+  "action": "Zeb counts the figs under the tree."
+}

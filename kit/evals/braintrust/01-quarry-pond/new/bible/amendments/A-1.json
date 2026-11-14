@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/tavi.md": "adds Tavi, the boat racer",
+    "bible/canon/places/quarry-pond.md": "adds the quarry pond"
+  },
+  "why": "the quarry-pond episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/quarry-pond.md": "the pond, the far rock and the reeds"
+  }
+}

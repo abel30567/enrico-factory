@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "ivo"
+  ],
+  "set": "clock-shop",
+  "camera": "wide on the shop",
+  "action": "Ivo turns the sign; the tall clock stops."
+}

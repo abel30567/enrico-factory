@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/lio.md": "adds Lio, the diver",
+    "bible/canon/places/kelp-cove.md": "adds the kelp cove"
+  },
+  "why": "the kelp-cove episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/kelp-cove.md": "the kelp and the sand"
+  }
+}

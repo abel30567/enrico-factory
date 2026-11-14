@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/ivo.md": "adds Ivo, the apprentice",
+    "bible/canon/places/clock-shop.md": "adds the clock shop"
+  },
+  "why": "the clock-shop episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/clock-shop.md": "the shop and its tall clock"
+  }
+}

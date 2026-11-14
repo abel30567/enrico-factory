@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "dov"
+  ],
+  "set": "cliff-path",
+  "camera": "close on the edge",
+  "action": "The path ends at a gap."
+}

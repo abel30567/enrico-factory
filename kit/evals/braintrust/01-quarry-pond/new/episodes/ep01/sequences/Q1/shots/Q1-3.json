@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "tavi"
+  ],
+  "set": "quarry-pond",
+  "camera": "low, at the water line",
+  "action": "Tavi wades in and parts the reeds with a stick."
+}

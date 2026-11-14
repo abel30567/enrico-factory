@@ -1,0 +1,5 @@
+[
+ {"id": "L1", "scene": "S1", "speaker": "MELA", "text": "Where are you, singer?"},
+ {"id": "L2", "scene": "S2", "speaker": "MELA", "text": "Oh. There you are."},
+ {"id": "L3", "scene": "S3", "speaker": "MELA", "text": "Home, then."}
+]

@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/wren.md": "adds Wren, the glazier's apprentice",
+    "bible/canon/places/glass-roof.md": "adds the glass roof"
+  },
+  "why": "the glass-roof episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/glass-roof.md": "the greenhouse and its roof"
+  }
+}

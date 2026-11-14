@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/dov.md": "adds Dov, the lighthouse keeper's grandson",
+    "bible/canon/places/cliff-path.md": "adds the cliff path"
+  },
+  "why": "the cliff-path episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/cliff-path.md": "the path and the lighthouse"
+  }
+}

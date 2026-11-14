@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "zeb"
+  ],
+  "set": "fig-yard",
+  "camera": "close on the trough",
+  "action": "Zeb piles figs by the trough."
+}

@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/pim.md": "adds Pim, the drummer",
+    "bible/canon/places/tin-drum.md": "adds the tin drum"
+  },
+  "why": "the tin-drum episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/tin-drum.md": "the street and the band"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/kesh.md": "adds Kesh, the last child aboard",
+    "bible/canon/places/snow-bus.md": "adds the snow bus"
+  },
+  "why": "the snow-bus episode needs its lead and its place",
+  "evidence": {
+    "bible/canon/places/snow-bus.md": "the bus and the hill road"
+  }
+}

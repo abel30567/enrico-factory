@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "bex"
+  ],
+  "set": "night-market",
+  "camera": "close on her hands",
+  "action": "Bex changes the wick and pours fresh oil."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "wren"
+  ],
+  "set": "glass-roof",
+  "camera": "high, on the roof",
+  "action": "Wren climbs in the wind with the pane on her back."
+}

@@ -1,0 +1,12 @@
+{
+  "id": "Q1-2",
+  "scene": "S2",
+  "beat": "B2",
+  "duration": 10,
+  "characters": [
+    "zeb"
+  ],
+  "set": "fig-yard",
+  "camera": "low, behind the trough",
+  "action": "Zeb crouches behind the trough at dawn."
+}

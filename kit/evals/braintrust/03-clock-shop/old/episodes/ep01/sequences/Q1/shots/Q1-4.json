@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "ivo"
+  ],
+  "set": "clock-shop",
+  "camera": "low, by the case",
+  "action": "A cricket climbs out; the pendulum swings."
+}

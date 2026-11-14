@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "tavi"
+  ],
+  "set": "quarry-pond",
+  "camera": "wide, from the far rock",
+  "action": "The boat bumps the rock; Tavi cheers."
+}

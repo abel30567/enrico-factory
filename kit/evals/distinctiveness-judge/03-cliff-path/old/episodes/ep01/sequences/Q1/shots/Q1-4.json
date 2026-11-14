@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "dov"
+  ],
+  "set": "cliff-path",
+  "camera": "medium at the lighthouse",
+  "action": "Dov hands over the lunch tin."
+}

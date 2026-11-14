@@ -1,0 +1,1 @@
+Two versions of the reel of episode ep02 are in A/ and B/; each is a full copy of the production (A/episodes/ep02/reel/edit-list.json and B/episodes/ep02/reel/edit-list.json). Say which version is more its own, or that neither is.

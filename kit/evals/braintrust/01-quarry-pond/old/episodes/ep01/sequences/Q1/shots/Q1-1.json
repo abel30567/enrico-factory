@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 10,
+  "characters": [
+    "tavi"
+  ],
+  "set": "quarry-pond",
+  "camera": "low, at the water line",
+  "action": "Tavi blows the paper boat off the bank."
+}

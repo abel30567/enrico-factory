@@ -1,0 +1,12 @@
+{
+  "id": "Q1-4",
+  "scene": "S3",
+  "beat": "B4",
+  "duration": 10,
+  "characters": [
+    "bex"
+  ],
+  "set": "night-market",
+  "camera": "wide on the square",
+  "action": "The lantern blazes; the crowd turns to look."
+}

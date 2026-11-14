@@ -1,0 +1,12 @@
+{
+  "id": "Q1-3",
+  "scene": "S2",
+  "beat": "B3",
+  "duration": 10,
+  "characters": [
+    "nuri"
+  ],
+  "set": "mill-race",
+  "camera": "close on the lever",
+  "action": "Nuri hauls the sluice lever."
+}
