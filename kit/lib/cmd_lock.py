@@ -8,8 +8,9 @@ the merge. Exit 0 report printed, 2 frozen, usage, or the production or GitHub c
 fails before the read included), 3 merge failed (the LOCK is void), 4 merged and the ticket closed but the
 local base not synced, 5 merged and the ticket closed, but the asset registry row or a stale shot's ticket not
 written, or, beside it, the post registry row of a ``distribution/post`` lock (``registry/posts.tsv``,
-``kit/lib/posts.py``) not written. Each ``--apply``, before its report, first writes that row for every merged
-pull of a ``distribution/post`` ticket that no row names, by pull number; one that fails also exits 5.
+``kit/lib/posts.py``) not written, 6 merged and the ticket closed but the rows of registry/verdicts.tsv not written.
+Each ``--apply``, before its report, first writes that row for every merged pull of a ``distribution/post`` ticket
+that no row names, by pull number; one that fails also exits 5.
 """
 
 import argparse
@@ -21,7 +22,7 @@ import sys
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import github, gitstate, ledger, lockrules, markers, posts, production, registry, tickets  # noqa: E402
+from kit.lib import github, gitstate, ledger, lockrules, markers, posts, production, registry, tickets, verdicts  # noqa: E402
 from kit.lib.gitstate import GitError  # noqa: E402
 from kit.lib.github import GitHubError  # noqa: E402
 from kit.lib.production import ProductionError  # noqa: E402
@@ -125,6 +126,12 @@ def lock(p, gh, state, ticket, pull) -> int:
         except POST_ERRORS as error:
             print(_unwritten(number, merged, error), file=sys.stderr)
             return 5
+    try:
+        for line in verdicts.record(p, gh, p.root, state, ticket, pull):
+            print(line)
+    except (verdicts.VerdictsError, GitError, GitHubError) as error:
+        print("lock: verdicts: " + " ".join(str(error).split()), file=sys.stderr)
+        return 6
     return 0
 
 
