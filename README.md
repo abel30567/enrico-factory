@@ -15,10 +15,11 @@ lint and an independent judge check the exact commit, and a merge is a lock.
 - `docs/resources.md`: every resource a run needs, what exists and what is missing.
 - `docs/design/autonomous-story-studio.html`: the proposal the specification adopts.
 - `docs/research/`: the research behind it.
-- `kit/`: the system itself (roles, formats, pipeline, command line). Not built yet; it is built by
-  agent workers through pull requests.
+- `kit/`: the system itself (roles, formats, pipeline, command line). It is built by agent workers
+  through pull requests.
 - `samples/primal/`: the first sample production.
 - `.agents/orchestrator/`: the software pattern this repository is built with.
 
-Status (2026-11-11): design, with wave 1 of the build in flight. Nothing is measured yet. See
-`docs/system-brief.md` section 17 for the build order and the open issues for what is being built.
+Status (2026-11-14): wave 1 of the build is closed and later waves are being built. Nothing is
+measured yet. See `docs/system-brief.md` section 17 for the build order and the open issues for what
+is being built.
