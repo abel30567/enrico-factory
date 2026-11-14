@@ -1,0 +1,1 @@
+Conform episode ep01 from the locked files in this tree: the final cut, event by event, and its captions, each cue timed to where its line is heard in production/ep01/conform/mix.json. Write only production/ep01/conform/edit-list.json and production/ep01/conform/captions.json.

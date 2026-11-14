@@ -668,6 +668,53 @@ class OperatorLaunch(unittest.TestCase):
         self.assertNotIn("Cite the media", text)
 
 
+class PlatformLaunch(unittest.TestCase):
+    """ISSUE-392: the operator of a pull request is the channel whose ``writes`` hold the job of its request.
+
+    The stage `beats` is made ``["channel-youtube", "channel-tiktok", "channel-instagram"]`` with the real
+    channel roles; the pull #7 of ticket #6 gets the request distribution/ep02/tiktok/requests/upload.json."""
+
+    REQUEST = "distribution/ep02/tiktok/requests/upload.json"
+    JOB = "jobs/distribution/ep02/tiktok/requests/upload.json"
+    CHANNELS = ["channel-youtube", "channel-tiktok", "channel-instagram"]
+
+    def setUp(self):
+        w = self.w = World(self)
+        for name in self.CHANNELS:
+            shutil.copy(ROOT / "kit" / "roles" / f"{name}.md", w.root / ".factory" / "roles" / f"{name}.md")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "beats":
+                entry["maker"] = list(self.CHANNELS)
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("the channels at beats")
+        w.local()
+        w.git("checkout", "-q", OperatorLaunch.BRANCH)
+        (w.root / self.REQUEST).parent.mkdir(parents=True, exist_ok=True)
+        (w.root / self.REQUEST).write_text('{"video": "media:v1", "captions": "media:c1"}\n')
+        w.commit("a request on the pull")
+        w.git("checkout", "-q", "trunk")
+
+    def test_the_pulls_channel_is_launched(self):
+        w = self.w
+        run = w.prepare("channel-tiktok", 7)
+        self.assertEqual((run.meta["kind"], run.meta["pull"]), ("operator", 7))
+        text = (run.dir / "prompt.md").read_text()
+        self.assertIn(f"- {self.REQUEST} -> {self.JOB}\n", text)
+        self.assertIn("Each job names ticket 6 and caller channel-tiktok. The ticket names the tool and the expected "
+                      "cost.", text)
+        self.assertTrue(w.gh.comments(7)[-1]["body"].startswith("[SHOWLEAD] LAUNCH channel-tiktok 7-1"))
+
+    def test_another_channel_is_refused(self):
+        w = self.w
+        before = w.snapshot()
+        with self.assertRaises(LaunchError) as caught:
+            w.prepare("channel-youtube", 7)
+        self.assertEqual(str(caught.exception), "#7 has no request for channel-youtube")
+        self.assertEqual(w.snapshot(), before)
+
+
 class Fence(unittest.TestCase):
     """Criterion 6."""
 

@@ -1,9 +1,10 @@
 """The requests and jobs of a pull request at a stage with an operator.
 
-- The operator of a stage is the first name of its ``maker`` place whose kind is ``operator``.
-- A request of a pull request is a path the pull changes that exists at its head, fully matches
-  ``(?:.+/)?requests/[^/]+\\.json`` and is not inside the operator's ``writes``. Its job path is ``jobs/``
-  followed by the request path.
+- The operator of a stage is the first name of its ``maker`` place whose kind is ``operator``. The operator
+  of a pull request is the first such name that has a request on it.
+- A request of a pull request for an operator is a path the pull changes that exists at its head, fully
+  matches ``(?:.+/)?requests/[^/]+\\.json`` and is not inside the operator's ``writes``, while its job path,
+  ``jobs/`` followed by the request path, is.
 - A request is covered when its job file, read at the head, has the shape ``factory gate`` asks, names
   the pull's ticket and the operator as ``caller``, and its first input is the request with its hash at
   the head.
@@ -39,7 +40,13 @@ def requests(p, root, pull, role) -> list:
     writes = frontmatter.as_list(p.roles[role]["meta"].get("writes"))
     return [path for path in sorted(pull["git"]["changed"])
             if REQUEST.fullmatch(path) and not production.matches(path, writes)
-            and gitstate.show(root, head, path) is not None]
+            and production.matches(job_path(path), writes) and gitstate.show(root, head, path) is not None]
+
+
+def operator_of(p, root, entry, pull) -> str | None:
+    """The first operator of the stage's ``maker`` place with a request on the pull, or None."""
+    return next((r for r in production.stage_roles(entry, "maker")
+                 if p.kinds.get(r) == "operator" and requests(p, root, pull, r)), None)
 
 
 def covering(root, pull, ticket, role, request) -> dict | None:
@@ -86,7 +93,7 @@ def of(p, root, state, ticket, pull, role=None) -> dict | None:
     """``{"operator", "requests", "uncovered", "jobs"}`` for an open pull, the jobs in path order; None at a
     stage with no operator or for a pull with no request."""
     if role is None:
-        role = operator(p, production.stage(p, ticket["room"], ticket["stage"]))
+        role = operator_of(p, root, production.stage(p, ticket["room"], ticket["stage"]), pull)
         if role is None:
             return None
     found = requests(p, root, pull, role)

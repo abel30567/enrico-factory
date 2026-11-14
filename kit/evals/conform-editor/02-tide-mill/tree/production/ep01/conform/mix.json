@@ -1,0 +1,7 @@
+{
+  "loudness_lufs": -13.0,
+  "true_peak_dbtp": -1.0,
+  "lines": [{"line": "L1", "start": 2, "end": 10}, {"line": "L2", "start": 13, "end": 22}, {"line": "L3", "start": 26, "end": 44}],
+  "stems": [{"name": "dialogue", "sha256": "abe0ba24dae6eb854ba26a5f2f34497e2be2df3daaa9acbc4e6d3cf6f05065d7"}, {"name": "music", "sha256": "80f189984e5ca70287d13342f6daa0db45cba3c131c4e46dc81360f3a4c4f690"}, {"name": "effects", "sha256": "888ad3a8bb06276a7824388d9c079bfc7122bb0cbd69a8123332ce6248185557"}],
+  "master": "fc613b4dfd6736a7bd268c8a0e74ed0d1c04a959f59dd74ef2874983fd443fc9"
+}

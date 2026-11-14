@@ -143,10 +143,13 @@ def _ruling_after(p, ticket, comments, comment):
                for c, m in _marked(comments))
 
 
-def _maker_of(p, entry, pull):
-    """The maker, not an operator, whose marker is the pull's latest, else the stage's first such maker."""
+def _maker_of(p, entry, pull, root):
+    """The maker, not an operator, whose marker is the pull's latest, else the stage's first such maker; at a
+    stage whose makers are all operators, the pull's operator, else the place's first name."""
     names = production.stage_roles(entry, "maker")
-    makers = [r for r in names if p.kinds.get(r) != "operator"] or names
+    makers = [r for r in names if p.kinds.get(r) != "operator"]
+    if not makers:
+        return jobs.operator_of(p, root, entry, pull) or names[0]
     found = makers[0]
     for _, m in _marked(pull["comments"]):
         if m.verb in markers.MAKER_VERBS and m.actor.lower() in makers:
@@ -193,7 +196,7 @@ def _reviewer_blocked(p, state, ticket, entry, pull, role):
     return not _ruling_after(p, ticket, comments, blocked)
 
 
-def _job_rows(p, ticket, entry, pull, found):
+def _job_rows(p, ticket, entry, pull, found, root):
     """The rows read before the lint for a pull with a request, or None."""
     n, role = pull["number"], found["operator"]
     for job in found["jobs"]:
@@ -210,7 +213,7 @@ def _job_rows(p, ticket, entry, pull, found):
                for job in found["jobs"]):
             k = len(found["jobs"])
             return _entry("report", "launch", role, n, f"{k} job(s) of #{n} ran and {role} has not reported")
-        maker = _maker_of(p, entry, pull)
+        maker = _maker_of(p, entry, pull, root)
         if maker != role and _operator_left(p, entry, pull, role):
             k = len(found["jobs"])
             return _entry("cite", "launch", maker, n,
@@ -246,7 +249,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         comments = pull["comments"] + state.ticket_comments.get(ticket["number"], [])
         if _ruling_after(p, ticket, comments, blocked):
             actor = summary["maker"]["actor"].lower()
-            role = actor if p.kinds.get(actor) == "operator" else _maker_of(p, entry, pull)
+            role = actor if p.kinds.get(actor) == "operator" else _maker_of(p, entry, pull, root)
             return _entry("blocked", "launch", role, n, f"the maker is BLOCKED on #{n} and has a ruling")
         role = production.orchestrator(p, ticket["room"])
         if _launched(pull["comments"], role):
@@ -262,7 +265,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
             return _entry("ruling", "launch", role, n, why)
     found = jobs.of(p, root, state, ticket, pull)
     if found:
-        row = _job_rows(p, ticket, entry, pull, found)
+        row = _job_rows(p, ticket, entry, pull, found, root)
         if row:
             return row
     lint = summary["lint"]
@@ -274,7 +277,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     noted = sorted(r for r, v in summary["checkers"].items() if v and v["verb"] == "NOTES")
     if lint and lint["verb"] == "FAIL" or noted:
         why = f"[LINT] FAIL on #{n}" if lint and lint["verb"] == "FAIL" else f"{noted[0]} NOTES on #{n}"
-        return _entry("notes", "launch", _maker_of(p, entry, pull), n, why)
+        return _entry("notes", "launch", _maker_of(p, entry, pull, root), n, why)
     stuck = None
     for role, verdict in summary["checkers"].items():
         if verdict is None:
