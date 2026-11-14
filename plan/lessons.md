@@ -28,3 +28,9 @@
   ended the 13:39Z train of #439 and #440 with "main moved while GATES ran", and an earlier docs push did the
   same. Before any push, check `pgrep -f merge-gate.py`; while it runs, keep the commit local and push when
   the tick has ended.
+- **A dependency is a blocker with a name, and blockers go first (2026-11-14).** The owner asked why so few
+  tickets ran and found tickets waiting on a merge, on the next wake, and on dependencies they did not use:
+  #154 waited for a TikTok app review although the four stages behind it use no platform, and a READY pull
+  request in fermi-mcp sat 8 hours without a verifier because that repository has no tick. Work that can
+  start now starts now. A ticket waits only for what it uses, the thing it waits for is an open ticket in
+  its `Depends on` line, and each wake first clears the blockers that unlock the most tickets.
