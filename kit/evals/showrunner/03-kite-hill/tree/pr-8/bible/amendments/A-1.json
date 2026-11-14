@@ -1,0 +1,14 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/gran.md": "adds Gran, Pim's grandmother",
+    "bible/canon/characters/pim.md": "adds Pim",
+    "bible/canon/ledger.tsv": "adds the row of Pim"
+  },
+  "why": "the kite-hill episode needs Pim and her grandmother",
+  "evidence": {
+    "bible/canon/characters/gran.md": "adds Gran, Pim's grandmother",
+    "bible/canon/characters/pim.md": "adds Pim",
+    "bible/canon/ledger.tsv": "adds the row of Pim"
+  }
+}
