@@ -33,6 +33,11 @@ while fewer workers run: one per ``LAUNCH`` on an open ticket or its open pulls 
 (``steps.running``), counted when the tick starts, plus one per launch step this tick takes. Over the cap the
 step is ``WAIT #<n> <state> <k> running, MAX_WORKERS is <cap>``.
 
+A launch step of the state ``blocked`` or ``ruling`` (``kit.lib.steps``) on an open pull whose head does not
+contain the base, and that has no label ``hold``, is taken as ``STEP #<n> sync PR #<m>``: with ``--apply`` the
+base is merged into the pull's branch and the branch is pushed, as before a lock. The launch is taken on a later
+tick. A conflict is ``NEED #<n> conflict with base``. A sync is not counted against ``MAX_WORKERS``.
+
 With ``--apply`` it first brings the local base up to GitHub's (``sync_base``), so its gate, lock rules
 and launches read the base GitHub has. A lock whose merge succeeded but whose sync failed ends the tick:
 one ``FAIL -`` line, no step for any further ticket. Without ``--apply`` it prints the lines, writes
@@ -66,6 +71,7 @@ GATE_RULE, BASE_RULE = 9, 10
 ERRORS = (github.GitHubError, gitstate.GitError, blind.BlindError, lintpost.PostError, tickets.TicketError,
           production.ProductionError, OSError)
 READ_ERRORS = (production.ProductionError, github.GitHubError, tickets.TicketError, gitstate.GitError, OSError)
+SYNCED = ("blocked", "ruling")
 
 
 class Failed(Exception):
@@ -287,6 +293,14 @@ class Tick:
         if step == "lock":
             return self.lock(state, ticket, entry, first)
         if step == "launch":
+            if m is not None and entry["state"] in SYNCED:
+                pull = state.pulls[m]
+                try:
+                    contains = gitstate.contains(self.p.root, pull["head_ref"], pull["base_ref"])
+                except ERRORS as error:
+                    return f"FAIL #{n} read: {_message(error)}"
+                if not contains and tickets.HOLD not in pull["labels"]:
+                    return self.take(n, "sync", f"STEP #{n} sync PR #{m}", lambda: self.sync(n, pull))
             try:
                 found = self.down(role)
             except ERRORS as error:

@@ -41,6 +41,7 @@ from kit.lib import resources  # noqa: E402
 from kit.lib import cmd_lock  # noqa: E402
 from kit.lib import cmd_launch  # noqa: E402
 from kit.lib import steps  # noqa: E402
+from kit.lib import tickets  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "tick"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -1411,6 +1412,8 @@ class Jobs(Case):
         w.steps(fetcher_blocked, keeper_ruling, self.fetcher())
         self.tick(w, ["STEP #5 launch fetcher on PR #6"])
         self.assertEqual(firsts(w.comments(6))[-1], ("fetcher", "[FETCHER] BLOCKED"))
+        # The world committed the operator on the base after the pull's branch: the pull gets the base first.
+        self.tick(w, ["STEP #5 sync PR #6"])
         self.tick(w, ["STEP #5 launch keeper on PR #6"])
         self.assertEqual(firsts(w.comments(6))[-1], ("keeper", "[KEEPER] RULING"))
         self.tick(w, ["STEP #5 launch fetcher on PR #6"])
@@ -1564,3 +1567,112 @@ class Workers(Case):
         w.add(18, later(7), "foreman", "[FOREMAN] RULING\n\nUse the night palette.\n")
         w.add(18, later(8), "foreman", "[FOREMAN] LAUNCH painter 18-2\n")
         self.assertEqual(self.running(w, 18)[0], 1)
+
+
+class SyncBeforeLaunch(Case):
+    """ISSUE-530: a launch on an open pull whose head does not contain the base is a sync first."""
+
+    def blocked(self, *fake):
+        return BlockedMaker.blocked(self, *fake)
+
+    def tick(self, w, expected):
+        self.assertEqual(lines(self.ticked(w, "--apply")), expected)
+
+    def base_moves(self, w, rel="notes/later.md", text="The base moves.\n"):
+        self.assertEqual(w.git("rev-parse", "--abbrev-ref", "HEAD").strip(), "trunk")
+        w.write(rel, text)
+        w.git("add", "-A")
+        w.git("commit", "-q", "-m", "the base moves")
+
+    def launches(self, w, number):
+        return [b for _, b in firsts(w.comments(number)) if " LAUNCH " in b]
+
+    def parents(self, w, ref):
+        return w.git("rev-list", "--parents", "-n", "1", ref).split()[1:]
+
+    def test_a_ruling_syncs_then_launches_the_maker(self):
+        """Behaviour 1."""
+        w = self.blocked(BlockedMaker.KEEPER_RULING)
+        self.tick(w, ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(firsts(w.comments(6))[-1], ("keeper", "[KEEPER] RULING"))
+        self.base_moves(w)
+        old, base, launched = w.head(w.ref(6)), w.head("trunk"), self.launches(w, 6)
+        self.tick(w, ["STEP #5 sync PR #6"])
+        self.assertEqual(self.parents(w, w.ref(6)), [old, base])
+        self.assertEqual(self.launches(w, 6), launched)
+        self.tick(w, ["STEP #5 launch writer on PR #6"])
+        self.assertEqual(w.ops("add_label"), [])
+
+    def test_no_ruling_syncs_then_launches_the_keeper(self):
+        """Behaviour 2."""
+        w = self.blocked()
+        self.base_moves(w)
+        self.tick(w, ["STEP #5 sync PR #6"])
+        self.tick(w, ["STEP #5 launch keeper on PR #6"])
+
+    def test_a_conflict_is_a_need(self):
+        """Behaviour 3."""
+        w = self.blocked()
+        self.base_moves(w, "episodes/ep02/draft.md", "# Draft of episode two\n\nThe ferry has left.\n")
+        head, trees, pushes = w.head(w.ref(6)), w.git("worktree", "list"), w.ops("push")
+        for _ in range(2):
+            self.tick(w, ["NEED #5 conflict with base"])
+        self.assertEqual((w.head(w.ref(6)), w.git("worktree", "list"), w.ops("push")), (head, trees, pushes))
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(5, LABEL)])
+
+    def test_a_held_pull_launches_on_its_head(self):
+        """Behaviour 4."""
+        w = self.blocked()
+        w.set_record("pulls", 6, labels=["hold"])
+        self.base_moves(w)
+        head = w.head(w.ref(6))
+        self.tick(w, ["STEP #5 launch keeper on PR #6"])
+        self.assertEqual(w.ops("push"), [])
+        self.assertEqual(w.head(w.ref(6)), head)
+
+    def test_markers_still_count_after_the_sync(self):
+        """Behaviour 5."""
+        w = self.world((5, 6))
+        self.tick(w, ["STEP #5 lint PR #6"])
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "writer", 6)
+        os.environ["FACTORY_NOW"] = later(251)
+        self.tick(w, ["STEP #5 timeout writer 6-1"])
+        self.base_moves(w)
+        self.tick(w, ["STEP #5 sync PR #6"])
+        found = tickets.load(w.p(), w.gh, w.root).pulls[6]["summary"]
+        self.assertEqual((found["lint"]["verb"], found["maker"]["verb"]), ("PASS", "BLOCKED"))
+        self.assertEqual(lines(self.ticked(w)), ["STEP #5 launch keeper on PR #6"])
+
+    def test_three_rounds_sync_then_launch_the_foreman(self):
+        """Behaviour 6."""
+        w = self.world((22, 23))
+        self.base_moves(w)
+        self.tick(w, ["STEP #22 sync PR #23"])
+        self.tick(w, ["STEP #22 launch foreman on PR #23"])
+
+    def test_a_running_launch_is_not_synced(self):
+        """Behaviour 7."""
+        w = self.world((5, 6))
+        p = w.p()
+        launch.prepare(p, w.gh, p.root, "writer", 6)
+        self.base_moves(w)
+        head = w.head(w.ref(6))
+        self.tick(w, [f"WAIT #5 running writer launched at {NOW}"])
+        self.assertEqual(w.head(w.ref(6)), head)
+        self.assertEqual(w.ops("push"), [])
+
+    def test_another_launch_is_not_synced(self):
+        """Behaviour 8."""
+        w = self.world((19, 20))
+        self.base_moves(w)
+        self.tick(w, ["STEP #19 launch inspector on PR #20"])
+        self.assertEqual(w.ops("push"), [])
+
+    def test_without_apply_nothing_is_synced(self):
+        """Behaviour 9."""
+        w = self.blocked()
+        self.base_moves(w)
+        before = w.snapshot()
+        self.assertEqual(lines(self.ticked(w)), ["STEP #5 sync PR #6"])
+        self.assertEqual(w.snapshot(), before)
