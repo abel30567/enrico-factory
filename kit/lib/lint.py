@@ -251,3 +251,18 @@ def read_tsv(root: Path, rel: str) -> list[tuple[int, list[str]]]:
     """Non-empty lines of a TSV file as (line number, fields), header included."""
     return [(n, row.split("\t")) for n, row in enumerate(read_text(root, rel).splitlines(), 1)
             if row.strip()]
+
+
+def job_files(paths: set[str], scene: str, names: tuple[str, ...]) -> list[Finding]:
+    """Rule `depends` of a production stage, on line 1 of a scene script `<dir>/scene.py`: each of `names`
+    that the stage's job writes beside it is a file of `paths`, unless none is and a request
+    `<dir>/requests/<id>.json` waits for the job (brief section 16, "Production files")."""
+    directory = scene.rsplit("/", 1)[0]
+    missing = [f"{directory}/{name}" for name in names if f"{directory}/{name}" not in paths]
+    request = re.compile(re.escape(directory) + r"/requests/[^/]+\.json")
+    if len(missing) < len(names):
+        return [Finding(scene, 1, "depends", f"{rel} is missing") for rel in missing]
+    if any(request.fullmatch(rel) for rel in paths):
+        return []
+    return [Finding(scene, 1, "depends", f"{rel} is missing and no request is under {directory}/requests/")
+            for rel in missing]

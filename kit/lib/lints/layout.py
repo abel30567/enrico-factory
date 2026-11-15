@@ -1,7 +1,8 @@
 """Layout: a shot's layout state against its shot file and its row of shots.json.
 
 Reads every `production/<ep>/<shot>/layout/state.json`, `production/<ep>/shots.json` and the shot file
-`episodes/<ep>/sequences/<Q>/shots/<shot>.json`. Every finding is on line 1 of the state file.
+`episodes/<ep>/sequences/<Q>/shots/<shot>.json`. Every finding is on line 1 of the state file, except one on
+a scene script.
 
 Rules:
 1. `lens`: the camera's `focal_mm` is within FOCAL_MM.
@@ -10,7 +11,8 @@ Rules:
 4. `line`: `line_flips` is empty.
 5. `duration`: `frames` equals the shot's row of `shots.json`.
 6. `state`: the state holds the keys these rules read, in their shapes.
-7. `depends`: `shots.json`, its row for the shot and the shot file exist.
+7. `depends`: `shots.json`, its row for the shot and the shot file exist, and beside each `layout/scene.py`
+   the files of `JOB_FILES` (`lint.job_files`).
 """
 
 from __future__ import annotations
@@ -18,9 +20,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ..lint import Finding, files, read_json
+from ..lint import Finding, files, job_files, read_json
 
 STATE = re.compile(r"^production/([^/]+)/([^/]+)/layout/state\.json$")
+SCENE = re.compile(r"^production/(?!assets/)[^/]+/[^/]+/layout/scene\.py$")
+JOB_FILES = ("manifest.json", "state.json")
 FOCAL_MM = (18, 135)  # placeholder until measured on the golden levels (#118)
 SAFE_ZONE = (0.342, 0.658)  # the centred 9:16 crop of a 16:9 frame; placeholder until the platform rulebook holds one
 KEYS = ("shot", "stage", "fps", "frames", "actors", "camera", "framing", "line_flips")
@@ -152,9 +156,12 @@ def _check_state(root: Path, rel: str, ep: str, shot: str, paths: list[str]) -> 
 
 def check(root: Path) -> list[Finding]:
     paths = [p.as_posix() for p in files(root)]
+    have = set(paths)
     found = []
     for rel in paths:
         m = STATE.match(rel)
         if m:
             found += _check_state(root, rel, m.group(1), m.group(2), paths)
+        elif SCENE.match(rel):
+            found += job_files(have, rel, JOB_FILES)
     return found
