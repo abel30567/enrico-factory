@@ -795,6 +795,187 @@ class RunOnPullTest(unittest.TestCase):
                          (2, "", f"run: input {self.SCRIPT} does not match its hash on pull #{PULL}\n"))
         self.assertEqual(self.w.fake_calls(), [])
 
+class ManifestInputTest(unittest.TestCase):
+    """ISSUE-480: a job that names the manifest after its request runs after another job of the pull added rows."""
+
+    ROWS = {"ama-ref": f"ama-ref\t{'a' * 64}\t2048\tsources/ama.png",
+            "tide-ref": f"tide-ref\t{'b' * 64}\t4096\tsources/tide.png",
+            "kite-ref": f"kite-ref\t{'d' * 64}\t512\tsources/kite.png",
+            "wick-ref": f"wick-ref\t{'e' * 64}\t1\tsources/wickabel.png"}
+    NOT_OURS = "name\tholder\tlink\nWickabel\tthe makers of Skarrowfen\thttps://example.invalid/1\n"
+    REFS = {"r1": ["media:ama-ref"], "r2": ["media:ama-ref", "media:tide-ref"]}
+    NAMES = "'Wickabel' (research/not-ours.tsv:2)"
+
+    def world(self, rows=("ama-ref", "tide-ref"), not_ours=False, jobs=("r1", "r2")):
+        """A fresh world whose branch holds the manifest with ``rows`` and the jobs ``jobs`` of ``REFS``."""
+        self.w, self.count = World(self), 0
+        if not_ours:
+            self.w.commit("research/not-ours.tsv", self.NOT_OURS)
+        manifest = MANIFEST_HEADER + "".join(self.ROWS[r] + "\n" for r in rows)
+        files = {gitstate.MANIFEST: manifest}
+        for name in jobs:
+            files.update(self.request(name, self.REFS[name], manifest))
+        self.on_branch(files)
+
+    def on_branch(self, files):
+        """Commit ``files`` on the pull's branch and record a fresh lint and checker verdict on its head and manifest."""
+        w = self.w
+        w.git("checkout", "-q", BRANCH)
+        for rel, text in files.items():
+            w.write(rel, text)
+        w.git("add", "-A")
+        w.git("commit", "-q", "-m", "files on the pull")
+        w.git("checkout", "-q", "trunk")
+        head, manifest = w.head(BRANCH), gitstate.manifest(w.root, "trunk", BRANCH)
+        for role, body in (("program:lint", "[LINT] PASS\nstructure: PASS\n"), ("inspector", "[INSPECTOR] APPROVED\nfine\n")):
+            self.count += 1
+            w.record(PULL, {"body": f"{body}reviewed head {head} manifest {manifest}\n",
+                            "created_at": f"2026-11-01T13:{self.count:02d}:00Z", "id": 200 + self.count, "role": role})
+
+    def request(self, name, refs, manifest, second=gitstate.MANIFEST, only=False):
+        """The files of request ``name`` (a fake script with ``refs``) and of its job, whose inputs are the request
+        and ``second`` with ``manifest`` as its text (only ``second`` when ``only``)."""
+        script = json.dumps({"outputs": {f"{name}.png": f"{name}\n"}, "usd": 1, "compute_min": 1, "refs": refs}) + "\n"
+        rel = f"shots/requests/{name}.json"
+        inputs = [{"path": rel, "sha256": hashlib.sha256(script.encode()).hexdigest()}] * (not only)
+        inputs.append({"path": second, "sha256": hashlib.sha256(manifest.encode()).hexdigest()})
+        job = json.loads((self.w.root / CLEAN_JOB).read_text())
+        job["inputs"] = inputs
+        return {rel: script, self.job(name): json.dumps(job, indent=1)}
+
+    def job(self, name):
+        return f"jobs/shots/requests/{name}.json"
+
+    def digest(self, name):
+        text = gitstate.show(self.w.root, BRANCH, self.job(name))
+        return hashlib.sha256(json.dumps(json.loads(text), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    def command(self, main, name):
+        return self.w._main(main, [self.job(name), "--pull", str(PULL), "--root", str(self.w.root), "--apply"], None)
+
+    def gate(self, name):
+        code, out, err = self.command(cmd_gate.main, name)
+        self.assertEqual((code, err), (0, ""), out)
+
+    def assert_done(self, name):
+        self.assertEqual(self.command(cmd_run.main, name), (0, line(self.digest(name), "DONE", "1", "1") + "\n", ""))
+
+    def change_manifest(self, change):
+        self.on_branch({gitstate.MANIFEST: change(self.w.manifest())})
+
+    def gate_both_run_r1(self):
+        self.gate("r1")
+        self.gate("r2")
+        self.assert_done("r1")
+
+    def test_both_jobs_run_in_either_order(self):
+        for order in (("r1", "r2"), ("r2", "r1")):
+            with self.subTest(order=order):
+                self.world()
+                self.gate("r1")
+                self.gate("r2")
+                for name in order:
+                    self.assert_done(name)
+                self.assertEqual(self.w.fake_calls(), [self.digest(n) for n in order])
+
+    def test_a_named_row_changed(self):
+        tide, ama = self.ROWS["tide-ref"], self.ROWS["ama-ref"]
+        defects = {"tide sha256": ("tide-ref", lambda t: t.replace("b" * 64, "c" * 64)),
+                   "tide bytes": ("tide-ref", lambda t: t.replace("\t4096\t", "\t4097\t")),
+                   "tide removed": ("tide-ref", lambda t: t.replace(tide + "\n", "")),
+                   "tide twice": ("tide-ref", lambda t: t + tide + "\n"),
+                   "ama bytes": ("ama-ref", lambda t: t.replace(ama, ama.replace("\t2048\t", "\t2049\t")))}
+        for defect, (name, change) in defects.items():
+            with self.subTest(defect=defect):
+                self.world()
+                self.gate_both_run_r1()
+                self.change_manifest(change)
+                self.assertEqual(self.command(cmd_run.main, "r2"),
+                                 (2, "", f"run: input {gitstate.MANIFEST} changed the rows of media:{name} on pull #{PULL}\n"))
+                self.assertEqual(self.w.fake_calls(), [self.digest("r1")])
+
+    def test_clean_twin_other_rows_added(self):
+        self.world()
+        self.gate_both_run_r1()
+        self.change_manifest(lambda t: t + self.ROWS["kite-ref"] + "\n")
+        self.assert_done("r2")
+        comments = json.loads((self.w.dir / "comments" / f"{TICKET}.json").read_text())
+        self.assertEqual(sum(c["body"].startswith("[PRODUCER] GATE PASS\n") for c in comments), 2)
+        one, two = self.digest("r1"), self.digest("r2")
+        self.assertEqual(sorted((r["kind"], r["hash"], r["verdict"]) for r in self.w.rows()),
+                         sorted([("job", one, "PASS"), ("job", two, "PASS"), ("run", one, "DONE"), ("run", two, "DONE")]))
+
+    def test_whole_file_for_every_other_input(self):
+        def header(t):
+            return t.replace(MANIFEST_HEADER, MANIFEST_HEADER.replace("source", "origin"), 1)
+
+        def kite(t):
+            return {"shots/notes.tsv": t + self.ROWS["kite-ref"] + "\n"}
+
+        cases = {"header changed": (dict(refs=["media:ama-ref"]), gitstate.MANIFEST, header),
+                 "manifest first and only": (dict(refs=["media:ama-ref"], only=True), gitstate.MANIFEST, None),
+                 "refs empty": (dict(refs=[]), gitstate.MANIFEST, None),
+                 "ref without media:": (dict(refs=["ama-ref"]), gitstate.MANIFEST, None),
+                 "another input": (dict(refs=["media:ama-ref"], second="shots/notes.tsv"), "shots/notes.tsv", kite)}
+        for case, (args, path, after) in cases.items():
+            with self.subTest(case=case):
+                self.world(jobs=("r1",))
+                self.gate("r1")
+                manifest = self.w.manifest()
+                files = self.request("r2", manifest=manifest, **args)
+                if path != gitstate.MANIFEST:
+                    files[path] = manifest
+                self.on_branch(files)
+                self.gate("r2")
+                self.assert_done("r1")
+                if after is header:
+                    self.change_manifest(header)
+                elif after is not None:
+                    self.on_branch(after(manifest))
+                self.assertEqual(self.command(cmd_run.main, "r2"),
+                                 (2, "", f"run: input {path} does not match its hash on pull #{PULL}\n"))
+                self.assertEqual(self.w.fake_calls(), [self.digest("r1")])
+
+    def test_gated_version_not_found(self):
+        self.world()
+        self.gate_both_run_r1()
+        with mock.patch.object(cmd_gate, "MANIFEST_VERSIONS", 1):
+            self.assertEqual(self.command(cmd_run.main, "r2"),
+                             (2, "", f"run: input {gitstate.MANIFEST} does not match its hash on pull #{PULL}\n"))
+        with mock.patch.object(cmd_gate, "MANIFEST_VERSIONS", 2):
+            self.assert_done("r2")
+        files = self.request("r3", self.REFS["r1"], self.w.manifest() + "never committed\n")
+        self.on_branch(files)
+        self.assertEqual(self.command(cmd_gate.main, "r3"),
+                         (2, "", f"gate: input {gitstate.MANIFEST} does not match its hash on pull #{PULL}\n"))
+
+    def test_not_ours_name_in_a_row_the_job_does_not_use(self):
+        with self.subTest(case="before the gate"):
+            self.world(rows=("ama-ref", "tide-ref", "wick-ref"), not_ours=True)
+            self.gate_both_run_r1()
+            self.assert_done("r2")
+        with self.subTest(case="after the first job ran"):
+            self.world(not_ours=True)
+            self.gate_both_run_r1()
+            self.change_manifest(lambda t: t + self.ROWS["wick-ref"] + "\n")
+            self.assert_done("r2")
+
+    def test_not_ours_name_in_a_row_the_job_uses(self):
+        self.world(rows=("ama-ref", "tide-ref", "wick-ref"), not_ours=True, jobs=("r1",))
+        self.on_branch(self.request("r2", ["media:ama-ref", "media:wick-ref"], self.w.manifest()))
+        self.gate("r1")
+        self.assertEqual(self.command(cmd_gate.main, "r2"),
+                         (2, "", f"gate: input {gitstate.MANIFEST} names {self.NAMES}\n"))
+
+    def test_not_ours_name_when_the_whole_file_is_read(self):
+        for refs in ([], ["ama-ref"]):
+            with self.subTest(refs=refs):
+                self.world(rows=("ama-ref", "tide-ref", "wick-ref"), not_ours=True, jobs=())
+                self.on_branch(self.request("r2", refs, self.w.manifest()))
+                self.assertEqual(self.command(cmd_gate.main, "r2"),
+                                 (2, "", f"gate: input {gitstate.MANIFEST} names {self.NAMES}\n"))
+
+
 class AttemptShapeTest(unittest.TestCase):
     def setUp(self):
         self.w = World(self)
