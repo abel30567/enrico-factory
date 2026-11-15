@@ -34,3 +34,9 @@
   request in fermi-mcp sat 8 hours without a verifier because that repository has no tick. Work that can
   start now starts now. A ticket waits only for what it uses, the thing it waits for is an open ticket in
   its `Depends on` line, and each wake first clears the blockers that unlock the most tickets.
+- **Before asking the owner for a key, measure whether a held key already reaches the service (2026-11-15).**
+  #218 asked the owner to choose a rigging service, buy a plan and store its key, and it stood as the top
+  blocker (28 tickets). The owner answered that rigging is the production house's work and part of the
+  system under test. The rigging model was already hosted on the queue API of the key in `gen.model3d`: one
+  real call rigged a sample model in 27 s. The ask came from the tool's hard-coded address, not from a need.
+  An owner ask is only for what he alone can do: a decision, a consent, a payment no held account covers.
