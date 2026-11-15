@@ -5,7 +5,8 @@ temporary directory, with one branch per recorded pull. GitHub is a copy of test
 A comment body's ``{head:N}`` stands for the head commit of pull N's branch, filled in when it is copied.
 The tools are tests/fixtures/run/tools and the register tests/fixtures/run/resources.json. The world
 writes ``production.local.env`` with ``STATE_DIR``, ``SECRETS_DIR`` and ``FAKE_LOG`` in temporary
-directories and a key file of mode 0600. A PASS is made by the real gate. Nothing reaches the network.
+directories and a key file of mode 0600. A PASS is made by the real gate. Nothing reaches the network. The previewer
+of the preview comment is the stand-in ``test_handoff.StubPreviews``.
 """
 
 import contextlib
@@ -46,6 +47,13 @@ def digest_of(path):
     return hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def stub_previews():
+    """The previewer the preview comment uses (``kit/lib/handoff.py``): a stand-in, so a run is the same
+    whether or not ``kit.lib.preview`` is installed."""
+    from test_handoff import StubPreviews
+    return StubPreviews()
+
+
 class FlakyPush(github.Recorded):
     """``Recorded`` whose pushes numbered in ``fails`` (counting from 1) raise."""
 
@@ -80,7 +88,8 @@ class World:
         for patch in (mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
                                                    "FACTORY_GITHUB": str(self.dir), "FACTORY_NOW": NOW}),
                       mock.patch.object(cmd_run, "TOOLS_DIR", FIX / "tools"),
-                      mock.patch.object(resources, "REGISTER", FIX / "resources.json")):
+                      mock.patch.object(resources, "REGISTER", FIX / "resources.json"),
+                      mock.patch.dict(sys.modules, {"kit.lib.preview": stub_previews()})):
             patch.start()
             test.addCleanup(patch.stop)
         shutil.copytree(FIX / "production", self.root)
