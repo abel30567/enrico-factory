@@ -226,7 +226,7 @@ rule 2, which only a checker opens.
 | production | `rigging` | asset | rigger, render-wrangler | range of motion, limits, interpenetration, rig hash, a character's skeleton; reads `rigging/state.json`, the `skeleton` of `rigging/manifest.json`, the `kind` of `assets/state.json` | deformation-reviewer |
 | production | `layout` | shot | layout-artist, render-wrangler | focal length, framing, duration, 180° line, 9:16 safe zones; reads `layout/state.json`, the shot file, `shots.json` | cinematography-reviewer |
 | production | `animation` | shot | animator, render-wrangler | foot slide, pops, interpenetration, lip sync within one frame; reads `animation/state.json` | performance-reviewer (blind against the last take) |
-| production | `simulation` | shot | sim-artist, render-wrangler | run twice, cache hashes match; velocity and energy in bounds; reads `simulation/state.json`, `simulation/rerun.json` | none: deterministic only |
+| production | `simulation` | shot | sim-artist, render-wrangler | run twice, the two states equal and cache hashes match; velocity and energy in bounds; reads `simulation/state.json`, `simulation/rerun.json` | none: deterministic only |
 | production | `lighting` | shot | lighter, render-wrangler | exposure and color against the sequence key, clipping, time of day; reads `lighting/state.json`, `lighting/render.json` | look-reviewer |
 | production | `render` | shot | lighter, render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance; reads `render/render.json`, `shots.json` | dailies-reviewer |
 | production | `conform` | episode | sound-mixer, conform-editor, render-wrangler | loudness, true peak, captions aligned, edit list frame-exact; reads `conform/`, `reel/edit-list.json` | mix-reviewer |
@@ -244,11 +244,16 @@ Production stages lock cheapest first: no final render until layout, animation, 
 lighting are locked on previews. A simulation is locked as a cache; renders only read caches. A new
 version of a locked asset marks every shot that uses it stale at that shot's earliest broken stage.
 A shot stage locks only when `assets` is locked for the characters and the set of its shot file and
-`rigging` is locked for its characters.
+`rigging` is locked for its characters, and a `rigging` ticket is filed for a character only.
 
 A ticket is a GitHub issue titled `[KEY] summary` with labels `tracked`, `room:<room>`,
 `stage:<stage>` and `unit:<unit-id>`. One ticket, one maker, one branch, one pull request, except a
 pitched stage, where each pitch has its own pull request.
+
+The body of a ticket for `assets`, `rigging` or a shot stage from `layout` to `render` names the tool,
+the expected cost and the inputs of its job in order, and for an asset its kind and the shot file that
+names it. A `cross-shot` ticket is filed once for a sequence, from the lowest numbered ticket of the
+stage before it, when every shot of the sequence in `shots.json` has locked that stage.
 
 ### Formats
 
@@ -448,7 +453,7 @@ commits the files on the pull request's branch.
 - **Caps** live in `production.env`: per episode and per season, for money, compute minutes,
   iterations per ticket and wall-clock time. The owner sets them once.
 - **A gated job** (render, generation, voice, upload, public switch) is requested by an operator as a
-  job file: a JSON object with exactly the keys `ticket`, `tool`, `inputs` (each a path and its sha256),
+  job file: a JSON object with exactly the keys `ticket`, `tool`, `inputs` (each a path and its sha256, or `asset:<id>` and the sha256 of the asset's locked state),
   `expected` (`usd` and `compute_min`) and `caller`. A request (section 16) is a file
   `requests/<id>.json`, in any directory, that a pull request adds or changes, outside the operator's
   `writes`. Its job file is `jobs/` followed by the request's path, committed on the same pull request.
@@ -463,7 +468,7 @@ commits the files on the pull request's branch.
   call with the credential, and refuses a job without a counting PASS:
   `run: job <hash> has no counting GATE PASS`. With `--pull N` both commands read the job file and its
   inputs at the head of pull request N, which must be the open pull request of the job's ticket. Without
-  it they read the job file from disk and its inputs on the base. The credential does not enter the
+  it they read the job file from disk and its inputs on the base. An input `asset:<id>` is never read as a file: the gate refuses it unless the asset's state is on the base with that sha256, with `--pull` too. The credential does not enter the
   operator's session (`docs/harness.md`, section 8). The tools are the files under `kit/lib/tools/`. A pull
   request that holds a job can be locked: beside the maker's `writes`, rule 7 of section 9 takes the job
   file of each `DONE` job, its request when it is inside the stage's `paths`, the files of its tool's
@@ -618,7 +623,7 @@ name, so adding a command edits no shared file. Python 3 standard library, bash,
 |---|---|
 | `factory roles [--check]` | list roles by room; `--check` validates every role file, format and the pipeline |
 | `factory doctor` | check every resource in `kit/resources.json` the installed rooms need; prints names and states, never values |
-| `factory launch <role> <ticket-or-pr> [task-file]` | make a worktree, render the prompt, post `LAUNCH`, start one detached worker with that role's tools, knowledge and secrets; when it exits, commit its files inside the role's `writes` globs and post its result as the role's marker |
+| `factory launch <role> <ticket-or-pr> [task-file]` | make a worktree, render the prompt, post `LAUNCH`, start one detached worker with that role's tools, knowledge and secrets (for a checker whose stage has a job, the job's output files are in `review/` of the worktree, not committed); when it exits, commit its files inside the role's `writes` globs and post its result as the role's marker |
 | `factory status [--room R]` | every open ticket and pull request: room, unit, stage, state, next step |
 | `factory lint [paths]` | section 10; `--post <pr>` posts the `[LINT]` marker |
 | `factory blind <pr>` | prepare a blinded old-against-new pair for a judge and record the key outside the worktree |
@@ -849,7 +854,7 @@ after the stage. The paths below that start with a stage are in the unit's direc
 the files the table gives it (the scene script; at `conform`, the edit list and the captions) and
 nothing else. The stage's gated job writes the other files (section 10). The file `sound-mixer` writes
 for the mix job is not ruled here; no check reads it. In every shape below each key named is required.
-A check reads only the keys its row names and ignores any other key; a named key that is missing or of
+A check reads only the keys its row names and ignores any other key (`simulation` also reads every key of the scene state but `caches` in both runs); a named key that is missing or of
 another type is a finding. A stage's state is the whole scene after the scene scripts of that stage and of
 every cheaper stage have run, so a check reads one file. Lengths are metres (the engine's centimetres
 divided by 100), angles degrees, and times frames of the episode at the edit list's `fps`: every frame number below is a whole number
@@ -905,7 +910,7 @@ it.
 | `rigging`, `animation` | no joint-limit violation; penetration and float at most 5 mm | 04 section 5: "penetration and float at or under 5 mm, zero joint-limit violations" |
 | `animation` | foot slide at most 5 mm; `max_step_deg` at most 30; `offset_frames` from -1 to 1 | foot slide and step: placeholder until measured on the golden levels (#118); lip sync: section 6, "within one frame" |
 | `layout` | focal length 18 to 135 mm; every character the shot file names has a `framing` box; every character's box inside the centred 9:16 crop of a 16:9 frame (left 0.342, right 0.658); `line_flips` empty | lens: placeholder until measured on the golden levels (#118); safe zone: placeholder until the platform rulebook holds one (#123); the rest: section 6 |
-| `simulation` | equal cache sha256 in both runs; `max_speed_m_s` at most 30; `energy_j.last` at most 1.1 times `first`; `gravity_m_s2` within 10% of 9.81 | hashes: section 6; 10% and 9.81: 04 section 5, "free-fall acceleration fitted against 9.81 m/s²"; speed: placeholder until measured on the golden levels (#118) |
+| `simulation` | every key of the scene state but `caches` equal in both runs; equal cache sha256 in both runs; `max_speed_m_s` at most 30; `energy_j.last` at most 1.1 times `first`; `gravity_m_s2` within 10% of 9.81 | hashes: section 6; 10% and 9.81: 04 section 5, "free-fall acceleration fitted against 9.81 m/s²"; speed: placeholder until measured on the golden levels (#118) |
 | `lighting` | per sample: `luma` within 10% of the key's, delta-E 2000 of `color` at most 1, `clipped` at most 0.001 | delta-E: 04 section 5 ("about 1" is noticeable); the rest: placeholder until #130 measures the spread. The key is `bible/style/keys/<ep>/<Q>.json` ("Bible sheets" above) |
 | `render` | `count` as above; `black`, `nan` and `text` empty; every `rerender` score at least 9.9 (ColorVideoVDP, JOD) | 04 section 5: "within 0.1 JOD of an approved golden render (ColorVideoVDP at or above 9.9)"; #130 measures the real spread |
 | `conform` | integrated loudness -14 ± 1 LUFS; true peak at most -1 dBTP; each cue within 2 frames of its line in `mix.json`; the conformed edit list equal to the locked one, event by event | loudness, peak and cues: placeholder, no document gives a number; edit list: section 6 |

@@ -137,7 +137,8 @@ the directory of the last one); the shot's row of the input `shots.json`; `RENDE
    scale and bounds in centimetres; the camera; the lights; the console variables the scripts set),
    makes the level sequence with the shot's frame range and a camera cut to the actor `camera`
    (measured from Python), makes the Movie Render Graph job, and saves the level, the sequence and the
-   queue manifest.
+   queue manifest. At `simulation` the build runs a second time on the same inputs; its raw scene is
+   `rerun-scene.json`, and the kit assembles `rerun.json` from it as it does `state.json`.
 2. **Exit.** Measured: the first build exited with signal 11 in the Python teardown after the files
    were saved; the second, which dropped its subsystem references and ran `gc.collect()` at the end,
    exited 0. The build script ends that way: it deletes each scene namespace and every engine object
@@ -159,9 +160,8 @@ the directory of the last one); the shot's row of the input `shots.json`; `RENDE
 `state.json` is assembled by the kit on the machine that runs `factory run`, from `scene.json` and the
 inputs, so its rules are tested offline: centimetres to metres, rounded to 0.1 mm and 0.001 degrees so
 two runs of a static scene give equal states (`kit/lib/reproduce.py` compares the whole state);
-`framing` and `line_flips` by projecting the bounds through the camera; `kind` from the asset registry
-or, for a golden level, its `LEVEL`; `asset` and `sha256` null for engine primitives. `motion`,
-`lipsync` and `caches` stay empty in this version, and a scene naming `asset:<id>` fails the job.
+`framing` and `line_flips` by projecting the bounds through the camera; `kind` from the asset's locked state for an actor labelled as a job asset, else, for a golden level, its `LEVEL`; `asset` and `sha256` from that state, null for engine primitives. `motion`,
+`lipsync` and `caches` stay empty in this version. A job asset with no locked state, or with no actor of its label, fails the job; `factory run` does not yet carry a job's assets to the state, so a scene naming `asset:<id>` still fails there.
 
 ## The frame measurement
 
@@ -195,11 +195,18 @@ Tests never call the cloud. The orchestrator records a session against the real 
 on 127.0.0.1 replays it. One file per exchange, in order,
 `tests/fixtures/render/<session>/<nn>-<action>.json`: `{"request": {"method", "path", "params"},
 "response": {"status", "body"}}`, `params` the form or query fields without the signature fields,
-`body` the answer's text. Before it is committed, instance, reservation, account, image, network and
-request ids become fixed invented ones, the store's host becomes `store.invalid`, and the start
-script's token is replaced. Error answers no real call can provoke (no capacity, quota) are written in
-the documented shape and marked `"source": "written"`. The first real job is recorded the same way,
-with its `out.tar` cut to three frames, and becomes the end-to-end fixture.
+`body` the answer's text. The record mode of `kit/lib/ec2.py` records the EC2 calls only, so a
+recording holds no store exchange and the test writes its own store. Before it is committed, instance,
+reservation, account, image, network and request ids become fixed invented ones, and the start script
+is kept as its sha256. A recording must not hold the public DNS name of an instance, the MAC address
+of its network interface or the id of that interface's attachment: they become `ec2-192-0-2-2...`,
+`02:00:00:00:00:01` and `eni-attach-1234567890abcdef0`. Error answers no real call can provoke (no
+capacity, quota) are written in the documented shape and marked `"source": "written"`. The first real
+job is recorded the same way, in `tests/fixtures/render/session-lit-render/`, with its `out.tar` cut to
+three frames (0, 11 and 23 of 24). The replay in `tests/test_render_session.py` runs the driver from
+`start()` to `stop()` and stops before the frame measurement: `renderjob.finish` is replaced by a
+stand-in, because the measurement reads every frame and runs `ffmpeg` and `tesseract`. The recording
+does not prove that `finish` writes the recorded `out` from the 24 frames.
 
 ## To measure on the first real job
 
