@@ -871,9 +871,9 @@ caches, stems, the master and every engine binary go to the asset store under th
 | `conform/captions.json` | conform-editor | a list of `{line, text, start, end}`: one cue per `L<n>` of `lines.json`, with its text, `start` and `end` in frames |
 | `conform/mix.json` | the job | `{loudness_lufs, true_peak_dbtp, lines, stems, master}`: integrated loudness and true peak by `ebur128`; `lines` a list of `{line, start, end}`, the frames where each `L<n>` is heard in the mix; `stems` a list of `{name, sha256}`; `master` its sha256 |
 
-A production lint (`layout`, `animation`, `simulation`, `lighting`) holds each `<stage>/scene.py` to the
-files its job writes beside it, and a request `<stage>/requests/<id>.json` holds the finding back until
-one of them exists.
+A production lint (`assets`, `rigging`, `layout`, `animation`, `simulation`, `lighting`) holds each
+`<stage>/scene.py` to the files its job writes beside it (at `rigging`, the state alone), and a request
+`<stage>/requests/<id>.json` holds the finding back until one of them exists.
 
 The scene state, `state.json`. Every key is present from `layout` on; one that no stage has filled yet
 is an empty list or null.
