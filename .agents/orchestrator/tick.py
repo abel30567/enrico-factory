@@ -44,6 +44,7 @@ MAX_AGENTS = int(os.environ.get("TICK_MAX_AGENTS", 6))
 LIMIT_WINDOW_S = 3600        # hold after a rejection that names no reset time
 LIMIT_MAX_HOLD_S = 8 * 86400 # never hold longer than this, whatever the reset time says
 LIMIT_RE = re.compile(r"You've hit your [^\n]*limit|usage limit reached|out of extra usage|rate_limit[^\n]*\bresets\s|\"rate_limit_event\"[^\n]*\"rejected\"")
+STAMP_RE = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ) === ", re.M)   # wake.sh's start/end lines
 ALL_STATE = STATE.parent     # ~/.agent-orch: one state dir per repository on this machine
 TRANSCRIPTS = (Path.home() / ".hbar/projects", Path.home() / ".claude/projects")
 TLOG = STATE / "state" / "transitions.log"
@@ -181,15 +182,19 @@ def limit_hit():
                     fh.seek(max(0, f.stat().st_size - 65536)); text = fh.read().decode(errors="replace")
         except (OSError, ValueError):
             continue
-        m = LIMIT_RE.search(text)
-        if not m:
-            continue
-        written = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc)
-        line = text[text.rfind("\n", 0, m.start()) + 1:].split("\n", 1)[0]
-        until = reset_at(line, written) or written + dt.timedelta(seconds=LIMIT_WINDOW_S)
-        until = min(until, written + dt.timedelta(seconds=LIMIT_MAX_HOLD_S))
-        if until > NOW and (hold is None or until > hold[1]):
-            hold = (f.name, until)
+        mtime = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc)
+        for m in LIMIT_RE.finditer(text):
+            # A log that is appended to (wake.log) outlives its rejections: date each one by the last dated
+            # "=== " line before it, not by the file, or every later append re-arms a hold that was cleared.
+            stamps = STAMP_RE.findall(text, 0, m.start())
+            written = min(mtime, dt.datetime.strptime(stamps[-1], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=dt.timezone.utc)) if stamps else mtime
+            if written.timestamp() < since:
+                continue
+            line = text[text.rfind("\n", 0, m.start()) + 1:].split("\n", 1)[0]
+            until = reset_at(line, written) or written + dt.timedelta(seconds=LIMIT_WINDOW_S)
+            until = min(until, written + dt.timedelta(seconds=LIMIT_MAX_HOLD_S))
+            if until > NOW and (hold is None or until > hold[1]):
+                hold = (f.name, until)
     return hold
 
 
