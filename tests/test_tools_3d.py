@@ -5,8 +5,10 @@ tools and register. The asset store is `AssetStore` of tests/test_assets.py. The
 127.0.0.1 that answers by method and path from tests/fixtures/tools_3d, each fixture an answer written by
 hand from the vendor's public API reference (`model/`) or recorded from a real session (`rig/`), its
 `{base}` replaced by the fake's URL. The asset is the
-invented `lamp-keeper` and its image `media:lamp-keeper-ref`. Nothing reaches a host other than 127.0.0.1,
-and every poll is 0 seconds apart.
+invented `lamp-keeper` and its image `media:lamp-keeper-ref`. The World's pipeline gains the asset stages
+`assets` and `rigging`, and its ticket 3 is at `stage:assets` of `unit:lamp-keeper`. The GLBs the vendors
+serve are built by `make_glb` of tests/test_glb.py. Nothing reaches a host other than 127.0.0.1, and every
+poll is 0 seconds apart.
 """
 
 import base64
@@ -31,6 +33,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import cmd_doctor, cmd_gate, cmd_run, gitstate, resources, vendor  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
+from test_glb import Builder, make_glb, png  # noqa: E402
 from test_media import free_port  # noqa: E402
 from test_run import BRANCH, World, digest_of  # noqa: E402
 
@@ -40,8 +43,45 @@ MODEL_KEY, RIG_KEY = "model-key-6b2e91d4", "rig-key-0c7a53f8"
 STORE_KEY = f"{KEY_ID}\n{SECRET}\n{REGION}\n"
 PUBLIC = "https://media.invalid/pub"
 IMAGE = b"invented reference image of the lamp keeper\x89\x00"
-MODEL = b"glTF invented lamp keeper model\x00\x01\x02"
-RIG = b"glTF invented lamp keeper rig\x00\x03\x04\x05"
+
+
+def lamp_keeper(skin):
+    """One triangle 1.7 m high, one material and one 2048 by 1024 PNG; with ``skin``, the joints `root`,
+    `spine` and `head`, each the parent of the next, and float weights that sum to 1."""
+    b = Builder()
+    attributes = {"POSITION": b.position(3)}
+    if skin:
+        attributes["JOINTS_0"] = b.accessor(bufferView=b.view(bytes([0, 1, 2, 0] * 3)), componentType=5121,
+                                            count=3, type="VEC4")
+        attributes["WEIGHTS_0"] = b.weights([(1, 0, 0, 0), (0.5, 0.5, 0, 0), (0.25, 0.25, 0.5, 0)])
+        b.skin("root", "spine", "head")
+    b.mesh({"attributes": attributes, "material": 0})
+    b.doc["materials"] = [{"name": "lamp_keeper_body"}]
+    b.image(png(2048, 1024), "lamp_keeper_body")
+    return b
+
+
+MODEL = lamp_keeper(skin=False).glb()
+RIG = lamp_keeper(skin=True).glb()
+UNSKINNED = lamp_keeper(skin=True)
+UNSKINNED.doc.pop("skins")
+UNSKINNED = UNSKINNED.glb()
+OLD_MODEL = b"glTF invented lamp keeper model\x00\x01\x02"
+BROKEN = {"a JSON byte changed": MODEL[:20] + b"x" + MODEL[21:],
+          "no meshes": make_glb({"asset": {"version": "2.0"}}),
+          "not a GLB": OLD_MODEL}
+ASSET_DIR = "production/assets/lamp-keeper"
+STATE = f"{ASSET_DIR}/assets/state.json"
+MODEL_MANIFEST = f"{ASSET_DIR}/assets/manifest.json"
+RIG_MANIFEST = f"{ASSET_DIR}/rigging/manifest.json"
+SHEET = "bible/canon/characters/lamp-keeper.md"
+PLACE = "bible/canon/places/lamp-keeper.md"
+LABELS = ["room:production", "stage:assets", "tracked", "unit:lamp-keeper"]
+STAGES = [{"room": "production", "stage": stage, "unit": "asset", "after": "", "maker": "renderer",
+           "lint": ["structure"], "checker": "inspector", "judge": "", "blind": False, "pitches": 1,
+           "paths": [f"production/assets/*/{stage}/**"]} for stage in ("assets", "rigging")]
+SKELETON = {"bones": [{"name": "root", "parent": None}, {"name": "spine", "parent": "root"},
+                      {"name": "head", "parent": "spine"}], "weights_normalised": True}
 MODEL_EXPECTED, RIG_EXPECTED = {"usd": 0.3, "compute_min": 5}, {"usd": 0.5, "compute_min": 5}
 SUBMIT = json.loads((FIX / "model" / "submit.json").read_text())["body"]
 REQUEST = "/requests/" + SUBMIT["request_id"]
@@ -57,6 +97,14 @@ def sha(data):
 
 def line(digest, verdict, usd, compute_min):
     return f"run job {digest}: {verdict} usd {usd} compute_min {compute_min}\n"
+
+
+def stage_json(data):
+    return json.dumps(data, indent=1, sort_keys=True) + "\n"
+
+
+def output(name, data):
+    return {"bytes": len(data), "name": name, "sha256": sha(data)}
 
 
 class Vendor:
@@ -141,45 +189,49 @@ class Tools3dTest(unittest.TestCase):
         self.w.set_env("RIG_VENDOR", vendor.RIG_ID)
         self.w.commit(vendor.MANIFEST, "id\tsha256\tbytes\tsource\n"
                       f"lamp-keeper-ref\t{sha(IMAGE)}\t{len(IMAGE)}\tupload\n")
+        pipeline = ".factory/pipeline.json"
+        stages = json.loads((self.w.root / pipeline).read_text()) + STAGES
+        self.w.commit(pipeline, json.dumps(stages, indent=1) + "\n")
+        self.w.edit("issues", 3, labels=LABELS)
+        self.w.commit(SHEET, "# The lamp keeper\n\nAn invented keeper of an invented lamp.\n")
         self.printed = []
 
     # -- jobs
 
-    def job(self, tool, ref, expected, prompt="the lamp keeper, as drawn", **changes):
-        """A request for ``ref`` committed on `trunk`, a job of ``tool`` on it and the manifest, passed by the
-        gate; ``(job file, hash)``."""
+    def job(self, tool, ref, expected, prompt="the lamp keeper, as drawn", paths=(vendor.MANIFEST,), **changes):
+        """A request for ``ref`` committed on `trunk`, a job of ``tool`` on it and on ``paths`` of `trunk`, passed
+        by the gate with the pull's verdicts at its head; ``(job file, hash)``."""
+        reviewed = f"{self.w.head(BRANCH)} manifest {gitstate.manifest(self.w.root, 'trunk', BRANCH)}"
+        text = (RUN_FIX / "github" / "comments" / "4.json").read_text().replace("{head:4} manifest none", reviewed)
+        (self.w.dir / "comments" / "4.json").write_text(text)
         request = {"for": "lamp-keeper", "prompt": prompt, "refs": [ref], **changes}
         text = json.dumps(request, indent=1) + "\n"
         rel = f"requests/lamp-keeper-{sha(text.encode())[:12]}.json"
         self.w.commit(rel, text)
-        manifest = gitstate.show(self.w.root, "trunk", vendor.MANIFEST)
-        inputs = [{"path": rel, "sha256": cmd_gate.sha256(text)},
-                  {"path": vendor.MANIFEST, "sha256": cmd_gate.sha256(manifest)}]
+        inputs = [{"path": rel, "sha256": cmd_gate.sha256(text)}]
+        inputs += [{"path": p, "sha256": cmd_gate.sha256(gitstate.show(self.w.root, "trunk", p))} for p in paths]
         path = self.w.job(f"{tool}-{sha(text.encode())[:12]}.json", tool=tool, expected=expected, inputs=inputs)
         digest = self.w.passed(path)
         self.assertEqual(digest, digest_of(path))
         return path, digest
 
-    def model_job(self, prompt="the lamp keeper, as drawn", **changes):
-        return self.job("model3d", "media:lamp-keeper-ref", MODEL_EXPECTED, prompt, **changes)
+    def model_job(self, prompt="the lamp keeper, as drawn", paths=(vendor.MANIFEST, SHEET), **changes):
+        return self.job("model3d", "media:lamp-keeper-ref", MODEL_EXPECTED, prompt, paths, **changes)
 
-    def rig_job(self, model_digest, prompt="the lamp keeper, rigged", **changes):
-        """The model job's manifest committed on `trunk`, the pull's verdicts at its new head, and a rig job."""
-        self.w.commit(vendor.MANIFEST, self.w.manifest())
-        reviewed = f"{self.w.head(BRANCH)} manifest {gitstate.manifest(self.w.root, 'trunk', BRANCH)}"
-        text = (RUN_FIX / "github" / "comments" / "4.json").read_text().replace("{head:4} manifest none", reviewed)
-        (self.w.dir / "comments" / "4.json").write_text(text)
-        return self.job("rig", f"media:{model_digest[:16]}-model.glb", RIG_EXPECTED, prompt, **changes)
+    def rig_job(self, prompt="the lamp keeper, rigged", paths=(STATE,), **changes):
+        """The model job's `assets/state.json` copied from the pull's branch onto `trunk`, the ticket at
+        `stage:rigging` and a rig job of ``refs: ["asset:lamp-keeper"]`` on the state."""
+        state = gitstate.show(self.w.root, BRANCH, STATE)
+        self.assertIsNotNone(state)
+        if gitstate.show(self.w.root, "trunk", STATE) != state:
+            self.w.commit(STATE, state)
+        self.w.edit("issues", 3, labels=[l.replace("stage:assets", "stage:rigging") for l in LABELS])
+        return self.job("rig", "asset:lamp-keeper", RIG_EXPECTED, prompt, paths, **changes)
 
     def factory_run(self, job):
         found = self.w.run(job)
         self.printed.append(found)
         return found
-
-    def clean_model(self):
-        job, digest = self.model_job()
-        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
-        return digest
 
     def assert_failed(self, job, digest, tool, reason, usd, compute_min="5"):
         self.assertEqual(self.factory_run(job), (1, line(digest, "FAILED", usd, compute_min),
@@ -198,11 +250,32 @@ class Tools3dTest(unittest.TestCase):
 
     # -- the behaviours
 
+    def assert_stage_commit(self, digest, paths):
+        """The pull's branch got one commit by `factory`, adding exactly ``paths``; their texts."""
+        w = self.w
+        self.assertEqual(w.git("rev-list", f"{self.branch_head}..{BRANCH}").split(), [w.head(BRANCH)])
+        self.assertEqual(w.git("log", "-1", "--format=%an|%s|%P", BRANCH).strip(),
+                         f"factory|stage files: job {digest[:12]}|{self.branch_head}")
+        self.assertEqual(w.git("diff", "--name-only", self.branch_head, BRANCH).split(), sorted(paths))
+        return {rel: gitstate.show(w.root, BRANCH, rel) for rel in paths}
+
+    def clean_model(self):
+        self.branch_head = self.w.head(BRANCH)
+        job, digest = self.model_job()
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
+        return digest
+
+    def model_state(self, kind="character"):
+        return {"asset": "lamp-keeper", "kind": kind, "sha256": sha(MODEL), "triangles": 1, "materials": 1,
+                "textures": [{"height": 1024, "name": "lamp_keeper_body", "width": 2048}], "height_m": 1.7,
+                "skeleton": None}
+
     def test_model_job_clean(self):
         digest = self.clean_model()
-        self.assertEqual(self.store.objects[sha(MODEL)], MODEL)
-        self.assertIn(f"{digest[:16]}-model.glb\t{sha(MODEL)}\t{len(MODEL)}\tjob {digest}",
-                      self.w.manifest().splitlines())
+        files = self.assert_stage_commit(digest, [MODEL_MANIFEST, STATE])
+        self.assertEqual(files[STATE], stage_json(self.model_state()))
+        self.assertEqual(self.store.objects, {sha(MODEL): MODEL})
+        self.assertIsNone(self.w.manifest())
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d"])
         [post] = self.vendor.made("POST")
         self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
@@ -213,13 +286,67 @@ class Tools3dTest(unittest.TestCase):
         self.assertNotIn("authorization", self.vendor.made()[-1]["headers"])
         self.assertEqual(os.listdir(self.tmp), [])
 
+    def test_model_manifest(self):
+        self.branch_head = self.w.head(BRANCH)
+        job, digest = self.model_job()
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
+        files = self.assert_stage_commit(digest, [MODEL_MANIFEST, STATE])
+        manifest = json.loads(files[MODEL_MANIFEST])
+        self.assertEqual(files[MODEL_MANIFEST], stage_json(manifest))
+        inputs = json.loads(Path(job).read_text())["inputs"]
+        self.assertEqual([i["path"] for i in inputs][1:], [vendor.MANIFEST, SHEET])
+        self.assertEqual(manifest, {
+            "job": digest, "engine": vendor.MODEL_PATH, "flags": [], "inputs": inputs, "seeds": {},
+            "outputs": [output("model.glb", MODEL), output("state.json", files[STATE].encode())]})
+
+    def test_model_kind(self):
+        self.w.commit(PLACE, "# The lamp keeper's lamp\n")
+        for kind, paths in (("prop", (vendor.MANIFEST,)), ("set", (vendor.MANIFEST, PLACE)),
+                            ("character", (vendor.MANIFEST, PLACE, SHEET))):
+            with self.subTest(kind):
+                job, digest = self.model_job(f"the lamp keeper as a {kind}", paths)
+                self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
+                self.assertEqual(json.loads(gitstate.show(self.w.root, BRANCH, STATE)), self.model_state(kind))
+
+    def test_model_state_is_deterministic(self):
+        first = self.clean_model()
+        job, second = self.model_job("the lamp keeper, again")
+        self.assertEqual(self.factory_run(job), (0, line(second, "DONE", "0.3", "5"), ""))
+        texts = [(self.w.job_dir(d) / "out" / "state.json").read_bytes() for d in (first, second)]
+        self.assertEqual(texts[0], texts[1])
+        self.assertEqual(texts[0], gitstate.show(self.w.root, BRANCH, STATE).encode())
+
+    def test_broken_model(self):
+        for name, data in BROKEN.items():
+            with self.subTest(name):
+                self.vendor.answer("GET", "/files/model.glb", (200, data))
+                head = self.w.head(BRANCH)
+                job, digest = self.model_job(f"the model is {name}")
+                self.assert_failed(job, digest, "model3d", vendor.NOT_A_GLB, "0.3")
+                self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
+                self.assertEqual(self.store.objects, {})
+                self.assertEqual(self.w.head(BRANCH), head)
+        self.vendor.answer("GET", "/files/model.glb", (200, MODEL))
+        self.clean_model()
+        self.assertEqual(list(self.store.objects), [sha(MODEL)])
+
     def test_rig_job_clean(self):
-        model = self.clean_model()
+        self.clean_model()
         self.vendor.requests.clear()
-        job, digest = self.rig_job(model)
+        job, digest = self.rig_job()
+        self.branch_head = self.w.head(BRANCH)
         self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.5", "5"), ""))
-        self.assertEqual(self.store.objects[sha(RIG)], RIG)
-        self.assertIn(f"{digest[:16]}-rig.glb\t{sha(RIG)}\t{len(RIG)}\tjob {digest}", self.w.manifest().splitlines())
+        files = self.assert_stage_commit(digest, [RIG_MANIFEST])
+        self.assertEqual(self.store.objects, {sha(MODEL): MODEL, sha(RIG): RIG})
+        self.assertIsNone(self.w.manifest())
+        manifest = json.loads(files[RIG_MANIFEST])
+        self.assertEqual(files[RIG_MANIFEST], stage_json(manifest))
+        inputs = json.loads(Path(job).read_text())["inputs"]
+        state = gitstate.show(self.w.root, "trunk", STATE).encode()
+        self.assertEqual(inputs[1:], [{"path": STATE, "sha256": sha(state)}])
+        self.assertEqual(manifest, {
+            "job": digest, "engine": vendor.RIG_PATH, "flags": [], "inputs": inputs, "seeds": {},
+            "outputs": [output("rig.glb", RIG)], "skeleton": SKELETON})
         [post] = self.vendor.made("POST")
         self.assertEqual(post["path"], "/" + vendor.RIG_PATH)
         model_url = json.loads(post["body"])["model_url"]
@@ -235,17 +362,51 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d", "rig"])
         self.assertEqual(os.listdir(self.tmp), [])
 
+    def test_rig_without_skin(self):
+        self.clean_model()
+        self.vendor.answer("GET", RIG_FILE, (200, UNSKINNED))
+        job, digest = self.rig_job("a rig with no skin")
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.5", "5"), ""))
+        manifest = json.loads(gitstate.show(self.w.root, BRANCH, RIG_MANIFEST))
+        self.assertIsNone(manifest["skeleton"])
+        self.assertEqual(manifest["outputs"], [output("rig.glb", UNSKINNED)])
+
+    def test_broken_rig(self):
+        self.clean_model()
+        for name, data in BROKEN.items():
+            with self.subTest(name):
+                self.vendor.answer("GET", RIG_FILE, (200, data))
+                head = self.w.head(BRANCH)
+                job, digest = self.rig_job(f"the rig is {name}")
+                self.assert_failed(job, digest, "rig", vendor.NOT_A_GLB, "0.5")
+                self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
+                self.assertEqual(list(self.store.objects), [sha(MODEL)])
+                self.assertEqual(self.w.head(BRANCH), head)
+                self.assertIsNone(gitstate.show(self.w.root, BRANCH, RIG_MANIFEST))
+
     def test_request_defects(self):
-        for tool, ref, expected in (("model3d", "media:lamp-keeper-ref", MODEL_EXPECTED),
-                                    ("rig", "media:lamp-keeper-ref", RIG_EXPECTED)):
-            for reason, changes in ((vendor.NOT_A_REQUEST, {"size": "tall"}),
-                                    (vendor.NO_REFERENCE, {"refs": []}),
-                                    (vendor.NOT_IN_MANIFEST, {"refs": ["media:lamp-keeper-sketch"]})):
-                with self.subTest(tool=tool, reason=reason):
-                    job, digest = self.job(tool, ref, expected, f"{tool}: {reason}", **changes)
-                    self.assert_failed(job, digest, tool, reason, "0", "0")
-                    self.assertEqual(self.vendor.requests, [])
-        self.assertEqual(len(self.w.rows("run")), 6)
+        for reason, changes in ((vendor.NOT_A_REQUEST, {"size": "tall"}),
+                                (vendor.NOT_A_REQUEST, {"for": ""}),
+                                (vendor.NO_REFERENCE, {"refs": []}),
+                                (vendor.NOT_IN_MANIFEST, {"refs": ["media:lamp-keeper-sketch"]})):
+            with self.subTest(tool="model3d", reason=reason, changes=changes):
+                job, digest = self.model_job(f"model3d: {reason} {changes}", **changes)
+                self.assert_failed(job, digest, "model3d", reason, "0", "0")
+                self.assertEqual(self.vendor.requests, [])
+        self.clean_model()
+        self.vendor.requests.clear()
+        for reason, paths, changes in ((vendor.NOT_A_REQUEST, (STATE,), {"size": "tall"}),
+                                       (vendor.NOT_A_REQUEST, (STATE,), {"for": 7}),
+                                       (vendor.NO_MODEL, (STATE,), {"refs": []}),
+                                       (vendor.NO_MODEL, (STATE,), {"refs": ["media:lamp-keeper-ref"]}),
+                                       (vendor.NO_MODEL, (STATE,), {"refs": ["asset:lamp-keeper", "asset:lamp"]}),
+                                       (vendor.NO_STATE, (), {}),
+                                       (vendor.NO_STATE, (vendor.MANIFEST,), {})):
+            with self.subTest(tool="rig", reason=reason, changes=changes, paths=paths):
+                job, digest = self.rig_job(f"rig: {reason} {changes} {paths}", paths, **changes)
+                self.assert_failed(job, digest, "rig", reason, "0", "0")
+                self.assertEqual(self.vendor.requests, [])
+        self.assertEqual(len(self.w.rows("run")), 12)
 
     def test_key_refused_is_down(self):
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, (401, b'{"detail": "unauthorized"}'))
@@ -270,37 +431,37 @@ class Tools3dTest(unittest.TestCase):
         self.assert_failed(job, digest, "model3d", vendor.VENDOR_FAILED, "0.3")
         self.assertNotIn(REQUEST + "/status", [r["path"] for r in self.vendor.made()])
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, self.vendor.fixture("model/submit"))
-        model = self.clean_model()
+        self.clean_model()
         self.vendor.answer("GET", RIG_REQUEST + "/status", self.vendor.fixture("rig/status-completed", status="FAILED"))
-        job, digest = self.rig_job(model)
+        job, digest = self.rig_job()
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d"] * 3 + ["rig"])
 
     def test_rig_vendor_cannot_rig(self):
-        model = self.clean_model()
+        self.clean_model()
         self.vendor.answer("GET", RIG_REQUEST, self.vendor.fixture("rig/result-invalid"))
-        job, digest = self.rig_job(model, "not a valid GLB")
+        job, digest = self.rig_job("not a valid GLB")
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertIn(("GET", RIG_REQUEST), [(r["method"], r["path"]) for r in self.vendor.made()])
         self.assertNotIn(RIG_FILE, [r["path"] for r in self.vendor.made()])
         self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
         self.assertEqual(list(self.store.objects), [sha(MODEL)])
-        self.assertNotIn("-rig.glb", self.w.manifest())
+        self.assertIsNone(gitstate.show(self.w.root, BRANCH, RIG_MANIFEST))
         self.assertEqual(os.listdir(self.tmp), [])
 
     def test_rig_result_without_glb(self):
-        model = self.clean_model()
+        self.clean_model()
         status, body = self.vendor.fixture("rig/result")
         body = json.loads(body)
         del body["rigged_character_glb"]
         self.vendor.answer("GET", RIG_REQUEST, (status, json.dumps(body).encode()))
-        job, digest = self.rig_job(model, "no rigged GLB")
+        job, digest = self.rig_job("no rigged GLB")
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertEqual([r["path"] for r in self.vendor.made()][-1], RIG_REQUEST)
         self.assertEqual(list(self.store.objects), [sha(MODEL)])
 
     def test_rig_urls_outside_the_api(self):
-        model = self.clean_model()
+        self.clean_model()
         outside = "https://elsewhere.invalid/fal-ai/meshy/requests/x"
         for name, url, path in (("status_url", outside + "/status", RIG_REQUEST + "/status"),
                                 ("response_url", outside, RIG_REQUEST),
@@ -310,8 +471,7 @@ class Tools3dTest(unittest.TestCase):
                 self.vendor.answer("POST", "/" + vendor.RIG_PATH, self.vendor.fixture("rig/submit", **{name: url}))
                 self.vendor.requests.clear()
                 prompt = f"{name} {url}"
-                job, digest = (self.job("rig", f"media:{model[:16]}-model.glb", RIG_EXPECTED, prompt)
-                               if self.w.rows("run")[1:] else self.rig_job(model, prompt))
+                job, digest = self.rig_job(prompt)
                 self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
                 self.assertEqual([r["path"] for r in self.vendor.made()], ["/" + vendor.RIG_PATH])
                 self.assertNotIn(path, [r["path"] for r in self.vendor.made()])
@@ -344,16 +504,17 @@ class Tools3dTest(unittest.TestCase):
         job, digest = self.model_job()
         self.assert_failed(job, digest, "model3d", vendor.NOT_STORED, "0.3")
         self.assertIsNone(self.w.manifest())
+        self.assertIsNone(gitstate.show(self.w.root, BRANCH, STATE))
         self.assertEqual(self.store.objects, {})
 
     def test_rig_input(self):
-        model = self.clean_model()
+        self.clean_model()
         self.vendor.requests.clear()
         with mock.patch.object(vendor, "DATA_URI_BYTES", len(MODEL) - 1):
-            job, digest = self.rig_job(model, "too large")
+            job, digest = self.rig_job("too large")
             self.assert_failed(job, digest, "rig", vendor.TOO_LARGE, "0", "0")
         self.store.objects.clear()
-        job, digest = self.job("rig", f"media:{model[:16]}-model.glb", RIG_EXPECTED, "not in the store")
+        job, digest = self.rig_job("not in the store")
         self.assert_failed(job, digest, "rig", vendor.NOT_IN_STORE, "0", "0")
         self.assertEqual(self.vendor.requests, [])
         self.assertEqual(os.listdir(self.tmp), [])
@@ -366,7 +527,7 @@ class Tools3dTest(unittest.TestCase):
         self.w.edit("issues", 5, state="closed")
         self.assertEqual(self.factory_run(job), (0, line(model, "DONE", "0.3", "5"), ""))
         self.vendor.answer("GET", RIG_REQUEST + "/status", self.vendor.fixture("rig/status-completed", status="FAILED"))
-        job, digest = self.rig_job(model)
+        job, digest = self.rig_job()
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertEqual(len(self.printed), 3)
         self.assert_no_leak()

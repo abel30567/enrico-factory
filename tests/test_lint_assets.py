@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from test_lint import LintCase, lint  # noqa: E402
 
+from kit.lib.lints import assets as assets_lint  # noqa: E402
+
 FIX = Path(__file__).resolve().parent / "fixtures" / "lint_assets"
 STATE = "production/assets/ama/assets/state.json"
 LEDGER = "bible/canon/ledger.tsv"
@@ -135,8 +137,8 @@ class Assets(LintCase):
         self.assertPasses(self.variant({harbour: body}, base=FIX / "clean"))
 
     def test_8_skeleton(self):
+        self.assertPasses(self.variant({STATE: state(skeleton=None)}, base=FIX / "clean"))
         cases = [
-            (state(skeleton=None), "a character has no skeleton"),
             (state(skeleton=bones(("root", None), ("spine", "root"), ("head", "spine"), ("spine", "root"))),
              "bone name spine repeats"),
             (state(skeleton=bones(("root", "head"), ("spine", "root"), ("head", "spine"))),
@@ -150,6 +152,13 @@ class Assets(LintCase):
         lamp = "production/assets/lamp/assets/state.json"
         self.assertPasses(self.variant({lamp: state(asset="lamp", kind="prop", triangles=100, skeleton=None)},
                                        base=FIX / "clean"))
+
+    def test_8_skeleton_problems(self):
+        self.assertEqual(assets_lint.skeleton_problems(CLEAN["skeleton"]), [])
+        two = bones(("b", None), ("a", None), ("a", "b"), ("b", "a"))
+        self.assertEqual(assets_lint.skeleton_problems(dict(two, weights_normalised=False)),
+                         ["skeleton has 2 roots, not one", "bone name a repeats", "bone name b repeats",
+                          "skin weights are not normalised"])
 
     def test_9_other_files(self):
         root = self.variant({"production/assets/ama/rigging/state.json": "{",

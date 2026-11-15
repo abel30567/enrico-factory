@@ -1,4 +1,4 @@
-"""rigging: rules shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5)."""
+"""rigging: rules shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5), skeleton (6)."""
 
 import json
 import sys
@@ -17,6 +17,27 @@ SHAPE_OF = "not {asset, rig_sha256, joints, rom}"
 JOINTS_SHAPE = "joints is not a list of {name, min, max}, each [x, y, z] degrees"
 OUTPUTS_SHAPE = "outputs is not a list of {name, sha256, bytes}"
 NOT_AN_OUTPUT = f"rig_sha256 is not the sha256 of an output of {MANIFEST}"
+ASSET_STATE = "production/assets/ama/assets/state.json"
+NO_SKELETON = "a character has no skeleton"
+
+
+def bones(*pairs, normalised=True):
+    return {"bones": [{"name": n, "parent": p} for n, p in pairs], "weights_normalised": normalised}
+
+
+SKELETON = bones(("pelvis", None), ("spine_01", "pelvis"), ("head", "spine_01"))
+
+
+def asset_state(kind="character", asset="ama"):
+    """An asset state of ``kind``; the rigging lint reads only its ``kind``."""
+    return dump({"asset": asset, "kind": kind, "sha256": "2" * 64, "triangles": 1, "materials": 1, "textures": [],
+                 "height_m": 1.62, "skeleton": None})
+
+
+def manifest(rel=MANIFEST, **changes):
+    """The clean manifest with ``changes`` set over it, a key set to `...` removed."""
+    data = dict(clean(MANIFEST), **changes)
+    return dump({k: v for k, v in data.items() if v is not ...})
 
 
 def dump(data):
@@ -185,6 +206,52 @@ class Rigging(LintCase):
         self.assertEqual({f.rule for f in result.findings},
                          {"range-of-motion", "limits", "interpenetration", "rig-hash"})
         self.assertEqual({f.path for f in result.findings}, {STATE, tobi})
+        first = lint.text(lint.run(root, only=["rigging"]))
+        self.assertEqual(lint.text(lint.run(root, only=["rigging"])), first)
+
+    def test_10_skeleton(self):
+        cases = [
+            ("no skeleton key", manifest(skeleton=...), [NO_SKELETON]),
+            ("null", manifest(skeleton=None), [NO_SKELETON]),
+            ("not an object", dump([clean(MANIFEST)]), [NO_SKELETON]),
+            ("shape", manifest(skeleton={"bones": []}), ["skeleton is not null or {bones, weights_normalised}"]),
+            ("two roots", manifest(skeleton=bones(("pelvis", None), ("head", None))),
+             ["skeleton has 2 roots, not one"]),
+            ("a repeated bone", manifest(skeleton=bones(("pelvis", None), ("head", "pelvis"), ("head", "pelvis"))),
+             ["bone name head repeats"]),
+            ("weights", manifest(skeleton=dict(SKELETON, weights_normalised=False)),
+             ["skin weights are not normalised"]),
+        ]
+        for name, body, messages in cases:
+            with self.subTest(name):
+                root = self.variant({ASSET_STATE: asset_state(), MANIFEST: body}, base=FIX / "clean")
+                also = [(MANIFEST, 1, "rig-hash", OUTPUTS_SHAPE)] if name == "not an object" else []
+                self.assertEqual(self.found(root), also + [(MANIFEST, 1, "skeleton", m) for m in messages])
+
+    def test_11_skeleton_passes(self):
+        self.assertPasses(self.variant({ASSET_STATE: asset_state(), MANIFEST: manifest(skeleton=SKELETON)},
+                                       base=FIX / "clean"))
+        self.assertPasses(self.variant({ASSET_STATE: asset_state("set")}, base=FIX / "clean"))
+        self.assertPasses(self.variant({ASSET_STATE: "[]\n"}, base=FIX / "clean"))
+        self.assertPasses(self.variant({MANIFEST: manifest(skeleton=None)}, base=FIX / "clean"))
+        self.assertPasses(FIX / "clean")
+
+    def test_12_skeleton_needs_no_rigging_state(self):
+        root = self.variant({ASSET_STATE: asset_state()}, base=FIX / "clean")
+        (root / STATE).unlink()
+        self.assertEqual(self.found(root), [(MANIFEST, 1, "skeleton", NO_SKELETON)])
+
+    def test_13_two_assets_skeleton_deterministic(self):
+        tobi = "production/assets/tobi/rigging/manifest.json"
+        tobi_state = "production/assets/tobi/rigging/state.json"
+        body = (FIX / "clean" / STATE).read_text(encoding="utf-8").replace('"ama"', '"tobi"')
+        root = self.variant({ASSET_STATE: asset_state(), MANIFEST: manifest(skeleton=SKELETON),
+                             "production/assets/tobi/assets/state.json": asset_state(asset="tobi"),
+                             tobi: manifest(skeleton=bones(("a", None), ("b", None), normalised=False)),
+                             tobi_state: body}, base=FIX / "clean")
+        expected = [(tobi, 1, "skeleton", "skeleton has 2 roots, not one"),
+                    (tobi, 1, "skeleton", "skin weights are not normalised")]
+        self.assertEqual(self.found(root), expected)
         first = lint.text(lint.run(root, only=["rigging"]))
         self.assertEqual(lint.text(lint.run(root, only=["rigging"])), first)
 
