@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from kit.lib import filing, gitstate, production, tickets
-from kit.lib.lints.assets import ASSET_ID, SHA256
+from kit.lib.lints.assets import ASSET_ID, KINDS, SHA256
 
 PATH = "registry/assets.tsv"
 COLUMNS = ("time", "asset", "version", "ticket", "pull", "stale")
@@ -41,6 +41,15 @@ def version(root, base, asset: str) -> str | None:
     data = _json(root, base, STATE.format(asset))
     value = data.get("sha256") if isinstance(data, dict) else None
     return value if isinstance(value, str) and SHA256.fullmatch(value) else None
+
+
+def locked(root, base, asset: str) -> dict | None:
+    """The asset's state on ``base`` when it names ``asset``, a kind of ``KINDS`` and a ``sha256``; else None."""
+    data = _json(root, base, STATE.format(asset)) if ASSET_ID.fullmatch(asset) else None
+    if (not isinstance(data, dict) or data.get("asset") != asset or data.get("kind") not in KINDS
+            or not isinstance(data.get("sha256"), str) or not SHA256.fullmatch(data["sha256"])):
+        return None
+    return data
 
 
 def stale(p, root, base, room: str, asset: str, new: str) -> list:

@@ -10,7 +10,8 @@ recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or ref
 
 Each input must have its hash where it is read, except `media/manifest.tsv` after a first input whose `refs` are all
 `media:<id>`: then one of the last 200 versions of the file there has that hash, with the same header and the same
-lines for each id; and the not-ours check reads of that file its header and those lines only.
+lines for each id; and the not-ours check reads of that file its header and those lines only. An input `asset:<id>` is not read as a
+file: it must carry the `sha256` of the asset's locked state on the base.
 
 A number that is an issue labelled harness-fork is checked by kit/lib/harnessfork.py against
 docs/harness.md section 9: no ledger line; with --apply, the marker is posted on the issue.
@@ -29,7 +30,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import gitstate, github, harnessfork, ledger, production, tickets  # noqa: E402
+from kit.lib import gitstate, github, harnessfork, ledger, production, registry, tickets  # noqa: E402
 from kit.lib.lints import rights  # noqa: E402
 
 JOB_KEYS = ("caller", "expected", "inputs", "ticket", "tool")
@@ -37,6 +38,7 @@ EXPECTED_KEYS = ("compute_min", "usd")
 INPUT_KEYS = ("path", "sha256")
 ATTEMPT = "attempt"
 REF_PREFIX = "media:"
+ASSET = "asset:"
 MANIFEST_VERSIONS = 200
 ERRORS = (ledger.LedgerError, production.ProductionError, github.GitHubError, gitstate.GitError,
           tickets.TicketError)
@@ -140,9 +142,21 @@ def _named(p, job, ref, path):
     return None if text is None else _refs(text)
 
 
+def _check_asset(p, path, digest):
+    """``Refused`` unless the asset ``path`` names has a locked state on the base with the ``sha256`` ``digest``."""
+    state = registry.locked(p.root, production.base(p), path[len(ASSET):])
+    if state is None:
+        raise Refused(f"input {path} has no locked state on the base")
+    if state["sha256"] != digest:
+        raise Refused(f"input {path} does not match the sha256 of its locked state")
+
+
 def _check_inputs(p, job, ref=None, where="the base"):
     ref = ref or production.base(p)
     for item in job["inputs"]:
+        if item["path"].startswith(ASSET):
+            _check_asset(p, item["path"], item["sha256"])
+            continue
         text = gitstate.show(p.root, ref, item["path"]) if item["path"] else None
         found = None if text is None else sha256(text)
         if found == item["sha256"]:
