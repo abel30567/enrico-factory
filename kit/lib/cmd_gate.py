@@ -6,7 +6,8 @@ open pull; without it the job file is read from disk and its inputs on the base.
 Prints one line: `gate <job|lock|fork> <hash>: <PASS|STOP> cap <name or -> reason <reason>`. Without
 `--apply` it writes nothing. With it, it appends the ledger line on the base, pushes it, and posts
 `[PRODUCER] GATE PASS` or `GATE STOP` on the ticket (a job) or the pull (a lock). A decision already
-recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or refused.
+recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or refused. A job of a shot stage is
+refused while a cheaper stage of its shot is not locked (`lockrules.cheaper_stages`, section 9 rule 4).
 
 Each input must have its hash where it is read, except `media/manifest.tsv` after a first input whose `refs` are all
 `media:<id>`: then one of the last 200 versions of the file there has that hash, with the same header and the same
@@ -222,6 +223,10 @@ def _job_request(p, state, path_text, number=None, rows=None):
     if (p.kinds.get(caller) != "operator" or p.roles[caller]["meta"].get("gated") != "yes"
             or caller not in production.stage_roles(entry, "maker")):
         raise Refused(f"caller {caller} is not a gated operator of stage {ticket['room']}/{ticket['stage']}")
+    from kit.lib import lockrules  # lockrules imports cmd_run, which imports this module
+    held = lockrules.cheaper_stages(p, state, ticket, p.root)
+    if held:
+        raise Refused(held)
     # At a stage whose makers are all operators the check runs on what the job uploads: no lint comes first.
     operators_only = all(p.kinds.get(role) == "operator" for role in production.stage_roles(entry, "maker"))
     # The checkers and judges read what the job makes: they count only for a job that has a run row.

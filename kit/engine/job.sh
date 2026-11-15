@@ -1,8 +1,9 @@
 #!/bin/bash
 # The engine side of one render job (docs/design/render-job.md, "The engine side of a job").
-# Reads WORK, IMAGE, LINKS, NODE_LOG and UE_EDITOR only. Builds the level with build.py (twice at
-# `simulation`), renders the frames, re-renders the sampled frames at `render`, packs out.tar and puts
-# out.tar, log.txt and status.json last. bash 3.2: no bash 4 feature. Not `set -e`: a failed step still uploads.
+# Reads WORK, IMAGE, LINKS, NODE_LOG and UE_EDITOR only. Fetches each asset binary links.txt names, then builds the
+# level with build.py (twice at `simulation`), renders the frames, re-renders the sampled frames at `render`, packs
+# out.tar and puts out.tar, log.txt and status.json last. bash 3.2: no bash 4 feature. Not `set -e`: a failed step
+# still uploads.
 set -u
 export LC_ALL=C
 UE_EDITOR="${UE_EDITOR:-/home/ue4/UnrealEngine/Engine/Binaries/Linux/UnrealEditor-Cmd}"
@@ -59,6 +60,19 @@ frames(){
     mv "$f" "$O/$prefix-$(printf '%06d' $((10#$d))).$e"
   done
 }
+
+# get: each line `GET <sha256> <url>` of links.txt to job/assets/<sha256>.glb, kept only on http 200.
+# build.py checks each binary against the sha256 of its job asset.
+mkdir -p "$WORK/job/assets"
+while read -r m n u; do
+  [ "$m" = GET ] && [ ${#n} -eq 64 ] || continue
+  case "$n" in *[!0-9a-f]*) continue ;; esac
+  f="$WORK/job/assets/$n.glb"
+  h=$(curl -s -o "$f.part" -w '%{http_code}' "$u")
+  [ "$h" = 200 ] && mv "$f.part" "$f"
+  rm -f "$f.part"
+  say get "$n" http=$h
+done < "$LINKS"
 
 : > "$O/engine-build.log"
 ue build 900 "$O/engine-build.log" -ExecutePythonScript=/work/job/build.py -RenderOffscreen

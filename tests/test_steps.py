@@ -658,6 +658,63 @@ class OperatorRowsTest(ChainCase):
         self.post("program:lint", "[LINT] FAIL\nstructure: fail\nreviewed head {head:5} manifest none\n")
         self.check(("notes", "launch", "writer", 5), "[LINT] FAIL on #5")
 
+    def stopped(self, digest, cap, reason):
+        body = f"[PRODUCER] GATE STOP\ncovers: job {digest}\ncap: {cap}  reason: {reason}\nledger: -\n"
+        self.post("program:gate", body, number=3)
+        self.ledger(digest, "job", "STOP", cap)
+
+    def set_caps(self, **caps):
+        self.w.p = dataclasses.replace(self.w.p, settings={**self.w.p.settings, **caps})
+
+    def down_issue(self, state="open"):
+        self.w.apply({"issue": {"number": 40, "title": "[DOWN] render.node", "body": "", "state": state,
+                                "labels": ["resource:down"], "created_at": "2026-11-11T10:30:00Z"}})
+
+    def render_job(self, tool="render"):
+        """``written`` with the job's tool ``tool``, then gated."""
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        digest = self.write_job({**self.job(), "tool": tool})
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.verdicts()
+        self.gated(digest)
+        return digest
+
+    def test_a_stop_on_an_unset_cap_is_gated_again(self):
+        # ISSUE-491 behaviour 1.
+        self.stopped(self.written(), "CAP_EPISODE_USD", "cap not set")
+        self.check(("job-stopped", "wake", "chief", 5))
+        self.set_caps(CAP_EPISODE_USD="10")
+        entry = self.check(("gate", "gate", None, 5),
+                           f"job {self.JOB} stopped at the gate on CAP_EPISODE_USD, which is set now")
+        self.assertEqual(entry["job"], self.JOB)
+
+    def test_another_unset_cap_still_wakes(self):
+        self.stopped(self.written(), "CAP_EPISODE_USD", "cap not set")
+        self.set_caps(CAP_SEASON_USD="100")
+        self.check(("job-stopped", "wake", "chief", 5))
+
+    def test_over_cap_still_wakes(self):
+        self.stopped(self.written(), "CAP_EPISODE_USD", "over cap")
+        self.set_caps(CAP_EPISODE_USD="10")
+        self.check(("job-stopped", "wake", "chief", 5))
+
+    def test_a_down_resource_waits(self):
+        # ISSUE-491 behaviour 3.
+        self.render_job()
+        self.down_issue()
+        self.check(("run", "none", None, 5), "resource render.node is down (#40)")
+
+    def test_a_closed_down_issue_runs(self):
+        self.render_job()
+        self.down_issue("closed")
+        self.check(("run", "run", None, 5))
+
+    def test_a_down_resource_of_another_tool_runs(self):
+        self.render_job("renderbox")
+        self.down_issue()
+        self.check(("run", "run", None, 5))
+
 
 class PitchesChainTest(ChainCase):
     FIXTURE, TICKET = "pitches", 1

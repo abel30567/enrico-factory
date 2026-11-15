@@ -132,9 +132,22 @@ class StaticMesh:
         return f"StaticMesh({self.path})"
 
 
+class SkeletalMesh(StaticMesh):
+    def __repr__(self):
+        return f"SkeletalMesh({self.path})"
+
+
 def load_asset(path):
     _call("load_asset", path)
     return StaticMesh(path)
+
+
+class AssetImportTask:
+    def __init__(self):
+        self.filename, self.destination_path, self.destination_name = "", "", ""
+        self.automated, self.replace_existing, self.save = False, False, False
+        self.imported_object_paths = []
+        _hand("import", self)
 
 
 class _Properties:
@@ -305,6 +318,15 @@ class EditorActorSubsystem:
     def spawn_actor_from_class(self, actor_class, location, rotation=None, transient=False):
         _call("EditorActorSubsystem.spawn_actor_from_class", actor_class.__name__, location, rotation)
         actor = actor_class(Vector(location.x, location.y, location.z), rotation or Rotator())
+        WORLD.append(actor)
+        return actor
+
+    def spawn_actor_from_object(self, obj, location, rotation=None, transient=False):
+        _call("EditorActorSubsystem.spawn_actor_from_object", obj, location, rotation)
+        if not isinstance(obj, StaticMesh):
+            return None
+        actor = StaticMeshActor(Vector(location.x, location.y, location.z), rotation or Rotator())
+        actor.static_mesh_component._props["static_mesh"] = obj
         WORLD.append(actor)
         return actor
 
@@ -530,6 +552,15 @@ class AssetTools:
     def create_asset(self, asset_name, package_path, asset_class, factory):
         _call("AssetTools.create_asset", asset_name, package_path, asset_class.__name__, type(factory).__name__)
         return _hand("sequence", asset_class(asset_name, package_path))
+
+    def import_asset_tasks(self, tasks):
+        for task in tasks:
+            _call("AssetTools.import_asset_tasks", task.filename, task.destination_path, task.destination_name,
+                  task.automated, task.replace_existing, task.save)
+            with open(task.filename, "rb") as handle:
+                glb = handle.read(4) == b"glTF"
+            name = task.destination_name
+            task.imported_object_paths = [f"{task.destination_path}/{name}.{name}"] if glb else []
 
 
 class AssetToolsHelpers:
