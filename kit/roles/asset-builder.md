@@ -4,7 +4,7 @@ room: production
 kind: maker
 analog: asset modeller
 stage: assets
-writes: production/assets/*/assets/scene.py
+writes: production/assets/*/assets/scene.py, production/assets/*/assets/requests/*.json
 reads: bible/**, episodes/**, production/**
 checked_by: look-reviewer
 may_not: change the locked story package
@@ -35,9 +35,10 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/assets/*/assets/scene.py`. Files elsewhere are dropped
-by the launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher
-commits your files and posts your result.
+Write only inside your `writes`: `production/assets/*/assets/scene.py` and
+`production/assets/*/assets/requests/*.json`. Files elsewhere are dropped by the launcher. Do not
+commit, push or open pull requests, and do not run `gh`: the launcher commits your files and posts
+your result.
 
 ## What you produce
 
@@ -46,6 +47,10 @@ commits your files and posts your result.
   as `asset:<id>` and any other object only by its sha256 in the asset store, and holds no
   Blueprint, no path outside the job's directory, no network call, no clock read and no random
   number without a seed. It never writes the state.
+- **request** `production/assets/<asset>/assets/requests/*.json`: one file per job the task
+  names, named after its tool (`model3d.json`): a JSON object with exactly the keys `for` (the
+  asset id), `prompt` (what the model shows, in one paragraph) and `refs` (a list; first the
+  asset's reference image as `media:<id>`, from its model sheet or the production's own art).
 - The job writes `assets/state.json` (`triangles`, `materials`, `textures`, `height_m`, `skeleton`)
   and `assets/manifest.json`. Build the asset to the size of its canon sheet; a character has a
   skeleton.

@@ -4,7 +4,7 @@ room: production
 kind: maker
 analog: character animator
 stage: animation
-writes: production/*/*/animation/scene.py
+writes: production/*/*/animation/scene.py, production/*/*/animation/requests/*.json
 reads: bible/**, episodes/**, production/**
 checked_by: performance-reviewer
 may_not: change the locked story package
@@ -37,9 +37,10 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/*/*/animation/scene.py`. Files elsewhere are dropped by
-the launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher commits
-your files and posts your result.
+Write only inside your `writes`: `production/*/*/animation/scene.py` and
+`production/*/*/animation/requests/*.json`. Files elsewhere are dropped by the launcher. Do
+not commit, push or open pull requests, and do not run `gh`: the launcher commits your files and
+posts your result.
 
 ## What you produce
 
@@ -48,6 +49,10 @@ your files and posts your result.
   as `asset:<id>` and any other object only by its sha256 in the asset store, and holds no
   Blueprint, no path outside the job's directory, no network call, no clock read and no random
   number without a seed. It never writes the state.
+- **request** `production/<ep>/<shot>/animation/requests/*.json`: one per job the task names,
+  named after its tool (`render.json`): a JSON object with exactly the keys `for` (the ticket's
+  unit), `prompt` (what the job makes, in one sentence) and `refs` (as `media:<id>`, the reference
+  image of each character and of the set the shot file names; empty only when it names none).
 - The job writes `animation/state.json` (`motion`, `lipsync`) and `animation/manifest.json`. Keep
   every joint inside its limit and every mouth on its line.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the

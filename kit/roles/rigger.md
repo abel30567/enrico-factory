@@ -4,7 +4,7 @@ room: production
 kind: maker
 analog: character rigger
 stage: rigging
-writes: production/assets/*/rigging/scene.py
+writes: production/assets/*/rigging/scene.py, production/assets/*/rigging/requests/*.json
 reads: bible/**, episodes/**, production/**
 checked_by: deformation-reviewer
 may_not: change the locked story package
@@ -34,9 +34,10 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/assets/*/rigging/scene.py`. Files elsewhere are dropped
-by the launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher
-commits your files and posts your result.
+Write only inside your `writes`: `production/assets/*/rigging/scene.py` and
+`production/assets/*/rigging/requests/*.json`. Files elsewhere are dropped by the launcher. Do not
+commit, push or open pull requests, and do not run `gh`: the launcher commits your files and posts
+your result.
 
 ## What you produce
 
@@ -45,6 +46,10 @@ commits your files and posts your result.
   as `asset:<id>` and any other object only by its sha256 in the asset store, and holds no
   Blueprint, no path outside the job's directory, no network call, no clock read and no random
   number without a seed. It never writes the state.
+- **request** `production/assets/<asset>/rigging/requests/*.json`: one file per job the task
+  names, named after its tool (`rig.json`): a JSON object with exactly the keys `for` (the asset
+  id), `prompt` (what the rig must do, in one paragraph) and `refs` (a list of exactly one entry,
+  `asset:<id>`, the asset's own id: the rig takes its model from the asset's locked state).
 - The job writes `rigging/state.json` (`rig_sha256`, `joints`, `rom`) and `rigging/manifest.json`.
   Give every joint a limit and test every pose the task names.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the

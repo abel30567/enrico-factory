@@ -4,7 +4,7 @@ room: production
 kind: maker
 analog: layout artist
 stage: layout
-writes: production/*/*/layout/scene.py
+writes: production/*/*/layout/scene.py, production/*/*/layout/requests/*.json
 reads: bible/**, episodes/**, production/**
 checked_by: cinematography-reviewer
 may_not: change the locked story package
@@ -36,9 +36,10 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/*/*/layout/scene.py`. Files elsewhere are dropped by
-the launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher commits
-your files and posts your result.
+Write only inside your `writes`: `production/*/*/layout/scene.py` and
+`production/*/*/layout/requests/*.json`. Files elsewhere are dropped by the launcher. Do
+not commit, push or open pull requests, and do not run `gh`: the launcher commits your files and
+posts your result.
 
 ## What you produce
 
@@ -47,6 +48,10 @@ your files and posts your result.
   `asset:<id>` and any other object only by its sha256 in the asset store, and holds no Blueprint,
   no path outside the job's directory, no network call, no clock read and no random number without a
   seed. It never writes the state.
+- **request** `production/<ep>/<shot>/layout/requests/*.json`: one per job the task names,
+  named after its tool (`render.json`): a JSON object with exactly the keys `for` (the ticket's
+  unit), `prompt` (what the job makes, in one sentence) and `refs` (as `media:<id>`, the reference
+  image of each character and of the set the shot file names; empty only when it names none).
 - The job writes `layout/state.json` (`frames`, `actors`, `camera`, `framing`, `line_flips`) and
   `layout/manifest.json`. Keep every character in frame and the camera on one side of the line.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the
