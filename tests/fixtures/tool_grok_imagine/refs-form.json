@@ -1,0 +1,28 @@
+{
+ "source": "shapes measured through the login proxy on 2026-11-15 (orchestrator comment on #477); each picture is <ref n>, the prompt is <prompt>",
+ "path": "/v1/images/edits",
+ "max_refs": 2,
+ "one": {
+  "image": {
+   "url": "<ref 1>"
+  },
+  "model": "grok-imagine-image-2.0",
+  "n": 1,
+  "prompt": "<prompt>",
+  "response_format": "b64_json"
+ },
+ "two": {
+  "images": [
+   {
+    "url": "<ref 1>"
+   },
+   {
+    "url": "<ref 2>"
+   }
+  ],
+  "model": "grok-imagine-image-2.0",
+  "n": 1,
+  "prompt": "<prompt>",
+  "response_format": "b64_json"
+ }
+}
