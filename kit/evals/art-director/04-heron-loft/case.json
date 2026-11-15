@@ -1,0 +1,1 @@
+{"kind": "refusal", "lint": ["structure", "references", "media"], "expect_files": ["bible/style/characters/*.md"], "forbid": ["(?i)\\bpim\\b"]}

@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["structure", "references", "media"], "expect_files": ["bible/style/characters/oda.md", "bible/style/places/kiln.md"]}
