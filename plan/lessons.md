@@ -46,3 +46,12 @@
   also a public DNS name, a MAC address and an attachment id that the driver's record mode had not scrubbed
   (#527). A scan for what must not be published ends in a number and the list of distinct matches
   (`grep -o ... | sort -u`), and zero is read from the count, not from a screen that looks clean.
+- **Never `pkill` by pattern on this machine; end a process by its pid (2026-11-15).** To stop one orphan
+  test run I typed `pkill -f 'unittest tests/test_' -u <uid> -P 1`. On macOS everything after the first
+  pattern is another pattern, so `-u`, the uid, `-P` and `1` each matched on their own, and TERM went to
+  every process of the owner's account with a `1` in its command line: the running tick, its merge gate
+  and the train's gates, the local pollers of four fleet workers, the model proxy, the Fermi bridges, a
+  tunnel, and helper processes of the owner's open apps. The train was restarted by the next tick four
+  minutes later and the workers were re-attached by hand, but the apps were hit for nothing. A process is
+  ended with `kill <pid>` after `ps -o pid,command -p <pid>` has shown what it is; `pgrep` only lists, and
+  options go before the pattern.
