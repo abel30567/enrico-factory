@@ -1,12 +1,14 @@
 #!/bin/bash
-# Fake curl for job.sh: a PUT logs "PUT <url>" to $FAKE/curl.log, copies the file to $FAKE/put/<last path
-# part of the url> and prints the http code ($FAKE_PUT_OUT for the url ending in /out, else 200).
-method=GET file="" url=""
+# Fake curl for job.sh. Every call logs "<method> <url>" to $FAKE/curl.log. A GET copies $FAKE/store/<last path part>
+# of the url to the -o file and prints 200, or writes a NoSuchKey error there and prints 404. A PUT copies the file
+# to $FAKE/put/<last path part> and prints the http code ($FAKE_PUT_OUT for the url ending in /out, else 200).
+method=GET file="" url="" out=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -X) method=$2; shift ;;
     --upload-file) file=$2; shift ;;
-    -o|-w) shift ;;
+    -o) out=$2; shift ;;
+    -w) shift ;;
     -*) ;;
     *) url=$1 ;;
   esac
@@ -14,6 +16,11 @@ while [ $# -gt 0 ]; do
 done
 echo "$method $url" >> "$FAKE/curl.log"
 name=${url##*/}
+if [ "$method" = GET ]; then
+  if [ -f "$FAKE/store/$name" ]; then cp "$FAKE/store/$name" "$out"; printf '200'
+  else printf '<Error><Code>NoSuchKey</Code></Error>' > "$out"; printf '404'; fi
+  exit 0
+fi
 mkdir -p "$FAKE/put"
 [ -n "$file" ] && cp "$file" "$FAKE/put/$name" 2>/dev/null
 if [ "$name" = out ]; then printf '%s' "${FAKE_PUT_OUT:-200}"; else printf '200'; fi

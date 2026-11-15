@@ -1,15 +1,17 @@
 """The build step of a render job, run by the editor with `-ExecutePythonScript` (docs/design/render-job.md).
 
-Reads `job/job.json`, makes a new level, runs each scene script in its own namespace, in order, then writes
-the raw scene to `out/scene.json` (centimetres and degrees) and the six values `job.sh` reads to
-`Job/job.env`, makes the level sequence with a camera cut to the actor `camera`, the Movie Render Queue
-queues (the re-render queue first, saved as `Rerender.utxt`, at `render`; the main queue last, as
-`QueueManifest.utxt`) and saves them. It ends clean, as measured on #115: every scene namespace and engine
-object is dropped and collected, and only then is the ok marker logged; the job trusts that line and
+Reads `job/job.json`, makes a new level, places each job asset (its binary `job/assets/<sha256>.glb`, imported
+and spawned at the origin as an actor labelled with the asset id), runs each scene script in its own
+namespace, in order, then writes the raw scene to `out/scene.json` (centimetres and degrees) and the six
+values `job.sh` reads to `Job/job.env`, makes the level sequence with a camera cut to the actor `camera`, the
+Movie Render Queue queues (the re-render queue first, saved as `Rerender.utxt`, at `render`; the main queue
+last, as `QueueManifest.utxt`) and saves them. It ends clean, as measured on #115: every scene namespace and
+engine object is dropped and collected, and only then is the ok marker logged; the job trusts that line and
 the saved files, not the exit code. Imports only `unreal` and the standard library.
 """
 
 import gc
+import hashlib
 import json
 import os
 import runpy
@@ -24,6 +26,10 @@ LEVEL = "/Game/Job/L_job"
 SEQUENCE = "/Game/Job/Seq_job"
 CVARS = ("r.DynamicGlobalIlluminationMethod", "r.ReflectionMethod", "r.AntiAliasingMethod")
 RENDER = {"spatial_samples": 1, "temporal_samples": 1, "warmup_frames": 0}
+ASSETS = "/Game/Job/Assets"
+NOT_STORED = "asset:{}: the asset store gave no binary"
+OTHER_BINARY = "asset:{}: the binary's sha256 is not its state's"
+NOT_PLACED = "asset:{}: the engine placed no actor for its binary"
 
 
 def _vector(v):
@@ -132,6 +138,42 @@ def _queues(job, scene, held):
     unreal.MoviePipelineEditorLibrary.save_queue_to_manifest_file(queue)
 
 
+def _sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _place(job, held):
+    """Imports each job asset's binary and spawns it at the origin, labelled with its id; None, else what failed."""
+    assets = job.get("assets") or {}
+    if assets:
+        held["actors"] = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    for name, sha256 in sorted(assets.items()):
+        path = os.path.join(ROOT, "job", "assets", sha256 + ".glb")
+        if not os.path.isfile(path):
+            return NOT_STORED.format(name)
+        if _sha256(path) != sha256:
+            return OTHER_BINARY.format(name)
+        task = unreal.AssetImportTask()
+        task.filename = path
+        task.destination_path = ASSETS
+        task.destination_name = name
+        task.automated = True
+        task.replace_existing = True
+        task.save = True
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+        meshes = (unreal.load_asset(p) for p in sorted(task.imported_object_paths))
+        mesh = next((m for m in meshes if isinstance(m, (unreal.StaticMesh, unreal.SkeletalMesh))), None)
+        actor = None if mesh is None else held["actors"].spawn_actor_from_object(mesh, unreal.Vector(0, 0, 0))
+        if actor is None:
+            return NOT_PLACED.format(name)
+        actor.set_actor_label(name)
+    return None
+
+
 def _write(path, text):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
@@ -144,6 +186,9 @@ def _build(namespaces, held):
         job = json.load(handle)
     held["levels"] = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     held["levels"].new_level(LEVEL)
+    failed = _place(job, held)
+    if failed:
+        return failed
     for script in job["scripts"]:
         try:
             namespaces.append(runpy.run_path(os.path.join(ROOT, "job", script)))
