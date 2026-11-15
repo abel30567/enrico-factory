@@ -91,7 +91,7 @@ class Ec2Replay:
     is read and the connection closed without a status line; its exchange answers the next request.
     ``requests`` holds the fields of every request."""
 
-    def __init__(self, test, exchanges, key, loose=("ClientToken",)):
+    def __init__(self, test, exchanges, key, loose=("ClientToken", "UserData")):
         self.exchanges, self.key, self.loose = list(exchanges), key, tuple(loose)
         self.mismatches, self.requests, self.cut, self.next = [], [], set(), 0
         replay = self
@@ -398,8 +398,8 @@ class B6Request(Case):
         self.assertEqual(launch["MetadataOptions.HttpTokens"], "required")
         self.assertEqual(launch["BlockDeviceMapping.1.DeviceName"], "/dev/sda1")
         self.assertEqual(launch["BlockDeviceMapping.1.Ebs.DeleteOnTermination"], "true")
-        self.assertEqual(base64.b64decode(launch["UserData"]), b"#!/bin/bash\nshutdown -h +75\n")
-        self.assertEqual(driver.user_data(), "#!/bin/bash\nshutdown -h +75\n")
+        self.assertEqual(base64.b64decode(launch["UserData"]).decode("utf-8"), driver.user_data())
+        self.assertEqual(driver.user_data().splitlines()[:3], ["#!/bin/bash", driver.user_data().splitlines()[1], "shutdown -h +75"])
 
     def test_another_tag_mismatches(self):
         replay = self.replay(session("start-stop"))
@@ -544,13 +544,14 @@ class B8Imports(unittest.TestCase):
 class B9Interface(unittest.TestCase):
     def test_names(self):
         self.assertEqual(ec2.Node.NEEDS, ("RENDER_INSTANCE_TYPE", "RENDER_MACHINE_IMAGE", "RENDER_TAG",
-                                          "RENDER_USD_HOUR", "RENDER_MAX_MIN"))
-        self.assertEqual(ec2.Node.PROGRAMS, ())
+                                          "RENDER_USD_HOUR", "RENDER_MAX_MIN", "RENDER_RESOLUTION", "UNREAL_IMAGE",
+                                          "ASSET_STORE", "engine.unreal", "store.assets"))
+        self.assertEqual(ec2.Node.PROGRAMS, ("ffmpeg", "ffprobe", "tesseract"))
         self.assertEqual(str(ec2.Refused("user data too large")), "user data too large")
 
     def test_init_stores_and_run_is_later(self):
         driver = ec2.Node(None, None)
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(ec2.Refused):
             driver.run({})
         self.assertEqual(driver.stop(), NOTHING)
         self.assertIsNotNone(ec2.Node.now().tzinfo)
