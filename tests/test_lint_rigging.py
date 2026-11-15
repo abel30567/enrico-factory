@@ -12,6 +12,9 @@ from test_lint import LintCase, lint  # noqa: E402
 FIX = Path(__file__).resolve().parent / "fixtures" / "lint_rigging"
 STATE = "production/assets/ama/rigging/state.json"
 MANIFEST = "production/assets/ama/rigging/manifest.json"
+SCENE = "production/assets/ama/rigging/scene.py"
+REQUEST = "production/assets/ama/rigging/requests/job.json"
+NO_STATE = f"{STATE} is missing and no request is under production/assets/ama/rigging/requests/"
 CLEAN_SHA = "4c38cd80ea7201eafbd6956768ae36543fe77b3f32e09069e73adc45f70bf5e0"
 SHAPE_OF = "not {asset, rig_sha256, joints, rom}"
 JOINTS_SHAPE = "joints is not a list of {name, min, max}, each [x, y, z] degrees"
@@ -183,7 +186,7 @@ class Rigging(LintCase):
     def test_8_other_files(self):
         self.assertPasses(self.variant({"production/ep01/s01/rigging/state.json": "{",
                                         "assets/ama/rigging/state.json": "{"}, base=FIX / "clean"))
-        self.assertPasses(self.without(STATE))
+        self.assertPasses(self.without(STATE, SCENE))
         for rel in (STATE, MANIFEST):
             with self.subTest(rel):
                 result = self.rigging(self.variant({rel: "{"}, base=FIX / "clean"))
@@ -239,6 +242,7 @@ class Rigging(LintCase):
     def test_12_skeleton_needs_no_rigging_state(self):
         root = self.variant({ASSET_STATE: asset_state()}, base=FIX / "clean")
         (root / STATE).unlink()
+        (root / SCENE).unlink()
         self.assertEqual(self.found(root), [(MANIFEST, 1, "skeleton", NO_SKELETON)])
 
     def test_13_two_assets_skeleton_deterministic(self):
@@ -255,6 +259,49 @@ class Rigging(LintCase):
         first = lint.text(lint.run(root, only=["rigging"]))
         self.assertEqual(lint.text(lint.run(root, only=["rigging"])), first)
 
+
+    def put(self, root, *rels):
+        """`root` with each of `rels` written as a new file."""
+        for rel in rels:
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text("import unreal\n" if rel.endswith(".py") else "{}\n", encoding="utf-8")
+        return root
+
+    def test_job_files_1_scene_alone(self):
+        self.assertEqual(self.found(self.without(STATE, MANIFEST)), [(SCENE, 1, "depends", NO_STATE)])
+
+    def test_job_files_2_request(self):
+        self.assertPasses(self.put(self.without(STATE, MANIFEST), REQUEST))
+        for request in ("production/assets/ama/rigging/requests/job.txt",
+                        "production/assets/ama/rigging/requests/old/job.json",
+                        "production/assets/lamp/rigging/requests/job.json"):
+            with self.subTest(request):
+                self.assertEqual(self.found(self.put(self.without(STATE, MANIFEST), request)),
+                                 [(SCENE, 1, "depends", NO_STATE)])
+
+    def test_job_files_3_after_a_run(self):
+        self.assertEqual(self.found(self.without(STATE)), [(SCENE, 1, "depends", NO_STATE)])
+        self.assertPasses(self.put(self.without(STATE), REQUEST))
+        self.assertEqual(self.found(self.without(MANIFEST)), [(STATE, 1, "rig-hash", f"{MANIFEST} is missing")])
+
+    def test_job_files_4_complete(self):
+        for name in ("clean", "r2_no_poses", "r3_limit_violation", "r4_penetration", "r5_rig_hash"):
+            with self.subTest(name):
+                self.assertEqual([f for f in self.found(FIX / name) if f[2] == "depends"], [])
+
+    def test_job_files_5_other_directories(self):
+        for rel in ("production/assets/tobi/assets/scene.py", "production/assets/tobi/rigging/old/scene.py",
+                    "production/ep01/Q1-9/rigging/scene.py", "assets/tobi/rigging/scene.py"):
+            with self.subTest(rel):
+                self.assertPasses(self.variant({rel: "import unreal\n"}, base=FIX / "clean"))
+
+    def test_job_files_6_deterministic(self):
+        bo = "production/assets/bo/rigging/scene.py"
+        root = self.put(self.without(STATE, MANIFEST), bo)
+        found = self.found(root)
+        self.assertEqual(found, [(SCENE, 1, "depends", NO_STATE),
+                                 (bo, 1, "depends", NO_STATE.replace("/ama/", "/bo/"))])
+        self.assertEqual(self.found(root), found)
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,13 +1,15 @@
 """Assets: every asset state has its shape, its id, its canon sheet, its budgets, its height and its
 skeleton (brief section 6, row `assets`, and section 16).
 
-Rule ids: shape (1), naming (2), references (3), budgets (4), scale (5), skeleton (6). The check reads
-every `production/assets/<asset>/assets/state.json` of the tree, the canon sheets and
-`bible/canon/ledger.tsv`. Every finding is on line 1 of the state. A state with a `shape` finding gets
-no other finding, and one with a `naming` finding none of rules 3 to 6. A character needs its canon
-sheet under `bible/canon/characters/`, a set its sheet under `bible/canon/places/`. A character's height
-is the ledger row `height` of its id, written `<number> m`; a set's is checked where it has such a row,
-a prop's never. A character's skeleton is checked when it is not null; rigging requires one.
+Rule ids: shape (1), naming (2), references (3), budgets (4), scale (5), skeleton (6), depends (7). The
+check reads every `production/assets/<asset>/assets/state.json` of the tree, the canon sheets and
+`bible/canon/ledger.tsv`. Every finding is on line 1 of the state, except one on a scene script. A state
+with a `shape` finding gets no other finding, and one with a `naming` finding none of rules 3 to 6. A
+character needs its canon sheet under `bible/canon/characters/`, a set its sheet under
+`bible/canon/places/`. A character's height is the ledger row `height` of its id, written `<number> m`;
+a set's is checked where it has such a row, a prop's never. A character's skeleton is checked when it is
+not null; rigging requires one. Rule 7 holds each `assets/scene.py` to `JOB_FILES` (`lint.job_files`),
+on line 1 of the script.
 """
 
 from __future__ import annotations
@@ -16,9 +18,11 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
-from ..lint import Finding, files, read_json, read_tsv
+from ..lint import Finding, files, job_files, read_json, read_tsv
 
 STATE = re.compile(r"^production/assets/([^/]+)/assets/state\.json$")
+SCENE = re.compile(r"^production/assets/[^/]+/assets/scene\.py$")
+JOB_FILES = ("manifest.json", "state.json")
 CANON_LEDGER = "bible/canon/ledger.tsv"
 KEY_COLUMNS = ("subject", "attribute", "value")
 KEYS = ("asset", "kind", "sha256", "triangles", "materials", "textures", "height_m", "skeleton")
@@ -153,10 +157,10 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
 def check(root: Path) -> list[Finding]:
     present = {p.as_posix() for p in files(root)}
     states = sorted((rel, m.group(1)) for rel in present if (m := STATE.match(rel)))
+    found = [f for rel in sorted(present) if SCENE.match(rel) for f in job_files(present, rel, JOB_FILES)]
     if not states:
-        return []
+        return found
     heights = _heights(root, present)
-    found = []
     for rel, directory in states:
         _, data = read_json(root, rel)
         found += [Finding(rel, 1, rule, message)
