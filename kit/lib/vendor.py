@@ -1,7 +1,8 @@
 """What the 3D tools share: the vendors' addresses, the reasons, the job's reference image and every HTTP request.
 
 The model tool (`kit/lib/tools/model3d.py`) asks the model vendor's queue API for a model of one reference
-image; the rig tool (`kit/lib/tools/rig.py`) asks the rig vendor to rig a model held in the asset store.
+image; the rig tool (`kit/lib/tools/rig.py`) asks the rig vendor, on the same queue API, to rig a model held
+in the asset store.
 A tool module is loaded fresh for each call, so every constant a test patches is here, and the tools read
 them as ``vendor.<NAME>`` at call time.
 
@@ -26,19 +27,19 @@ from kit.lib.tools import Down, Failed
 
 MODEL_API = "https://queue.fal.run"
 MODEL_PATH = "tripo3d/tripo/v2.5/image-to-3d"
-RIG_API = "https://api.meshy.ai"
+RIG_API = "https://queue.fal.run"
+RIG_PATH = "fal-ai/meshy/rigging"
 RIG_ID = "meshy"
 POLL_SECONDS = 5
 POLLS = 360
 TIMEOUT = 60
-DATA_URI_BYTES = 100 * 1000 * 1000
+DATA_URI_BYTES = 30 * 1000 * 1000
 
 MANIFEST = "media/manifest.tsv"
 REQUEST_KEYS = ["for", "prompt", "refs"]
 REF_PREFIX = "media:"
 DATA_URI_PREFIX = "data:application/octet-stream;base64,"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_TASK_ID = re.compile(r"[A-Za-z0-9-]+")
 
 NOT_A_REQUEST = "request is not {for, prompt, refs}"
 NO_REFERENCE = "request names no reference image"
@@ -196,12 +197,6 @@ def under(url, api):
     if not isinstance(url, str) or not url.startswith(api + "/"):
         raise Failed(VENDOR_FAILED)
     return url
-
-
-def task_id(value):
-    if not isinstance(value, str) or not _TASK_ID.fullmatch(value):
-        raise Failed(VENDOR_FAILED)
-    return value
 
 
 def download_url(value):
