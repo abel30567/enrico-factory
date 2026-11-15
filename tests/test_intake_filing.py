@@ -21,7 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_init, cmd_tick, gitstate  # noqa: E402
+from kit.lib import cmd_init, cmd_tick, gitstate, production, tickets  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "intake_filing"
 NOW = "2026-11-13T09:00:00Z"
@@ -39,6 +39,10 @@ TITLES = ["[ASSETS-AMA] assets for ama", "[ASSETS-HARBOUR] assets for harbour",
 PACKET = "STEP #1 file intent-packet ep01"
 SHOT_LIST = [{"shot": "Q1-1", "first": 0, "last": 59}, {"shot": "Q1-2", "first": 60, "last": 131},
              {"shot": "Q2-1", "first": 132, "last": 233}]
+WRITE = "STEP #1 write production/ep01/shots.json"
+SHOTS = "production/ep01/shots.json"
+WAITS = [f"WAIT #{n} waiting upstream stage intake is not locked for {unit}"
+         for n, (_, unit) in zip(range(3, 10), UNITS)]
 
 
 def file_lines(out):
@@ -122,18 +126,33 @@ class World(unittest.TestCase):
             code = cmd_tick.main(["--root", str(self.root), *args])
         return code, out.getvalue()
 
+    def on_main(self, rel):
+        return gitstate.show(self.root, "main", rel)
+
+    def pushes(self):
+        log = self.github / "log.jsonl"
+        lines = log.read_text().splitlines() if log.is_file() else []
+        return [line for line in lines if json.loads(line).get("op") == "push"]
+
 
 class IntakeFiling(World):
     def test_dry_tick_prints_the_filings(self):
         code, out = self.tick()
         self.assertEqual(code, 0, out)
-        self.assertEqual(out.splitlines(), [*SEVEN, PACKET, "tick: 8 steps, 0 need, 0 wait, 0 failed"])
+        self.assertEqual(out.splitlines(), [WRITE, *SEVEN, PACKET, "tick: 9 steps, 0 need, 0 wait, 0 failed"])
         self.assertEqual(self.issues(), [1])
+        self.assertIsNone(self.on_main(SHOTS))
+        self.assertFalse((self.root / SHOTS).exists())
 
     def test_apply_files_the_tickets(self):
         code, out = self.tick("--apply")
         self.assertEqual(code, 0, out)
-        self.assertEqual(out.splitlines(), [*SEVEN, PACKET, "tick: 8 steps, 0 need, 0 wait, 0 failed"])
+        self.assertEqual(out.splitlines(), [WRITE, *SEVEN, PACKET, "tick: 9 steps, 0 need, 0 wait, 0 failed"])
+        self.assertEqual(self.on_main(SHOTS), dump(SHOT_LIST))
+        self.assertEqual(self.git("log", "-1", "--format=%an %s", "main").strip(),
+                         "factory intake: production/ep01/shots.json from PR #2")
+        self.assertEqual(self.git("status", "--short"), "")
+        self.assertEqual(len(self.pushes()), 1)
         self.assertEqual(self.issues(), [1, *range(3, 11)])
         for number, (stage, unit), title in zip(range(3, 10), UNITS, TITLES):
             issue = self.record("issues", number)
@@ -148,12 +167,70 @@ class IntakeFiling(World):
 
     def test_never_twice(self):
         self.tick("--apply")
+        commits = self.git("rev-list", "--count", "main")
+        code, out = self.tick()
+        self.assertEqual(code, 0, out)
+        launches = [f"STEP #{n} launch {'asset-builder' if n < 7 else 'layout-artist'} on #{n}" for n in range(3, 10)]
+        self.assertEqual(out.splitlines(), [*launches, "tick: 7 steps, 0 need, 0 wait, 0 failed"])
+        for n in range(3, 10):
+            issue = self.record("issues", n)
+            self.set_record("issues", n, {**issue, "labels": sorted([*issue["labels"], "hold"])})
         code, out = self.tick("--apply")
         self.assertEqual(code, 0, out)
         self.assertEqual(self.issues(), [1, *range(3, 11)])
-        waits = [f"WAIT #{n} waiting upstream stage intake is not locked for {unit}"
-                 for n, (_, unit) in zip(range(3, 10), UNITS)]
-        self.assertEqual(out.splitlines(), [*waits, "tick: 0 steps, 0 need, 7 wait, 0 failed"])
+        held = [f"WAIT #{n} held ticket #{n} has the label hold" for n in range(3, 10)]
+        self.assertEqual(out.splitlines(), [*held, "tick: 0 steps, 0 need, 7 wait, 0 failed"])
+        self.assertEqual(self.git("rev-list", "--count", "main"), commits)
+        self.assertEqual(len(self.pushes()), 1)
+
+    def test_shot_list_not_on_the_base(self):
+        self.tick("--apply")
+        self.commit(removed=[SHOTS])
+        code, out = self.tick()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out.splitlines(), [WRITE, *WAITS, "tick: 1 steps, 0 need, 7 wait, 0 failed"])
+
+    def test_upstream_held(self):
+        self.tick("--apply")
+
+        def upstream():
+            p = production.load(self.root)
+            state = tickets.load(p, cmd_tick.github.connect(p.settings), self.root)
+            return [tickets.upstream(p, state, state.tickets[n], self.root) for n in (3, 7)]
+        self.assertEqual(upstream(), [
+            (True, "upstream stage intake is held for ama: production/ep01/shots.json is on the base"),
+            (True, "upstream stage intake is held for ep01/Q1-1: production/ep01/shots.json is on the base")])
+        self.set_record("pulls", 2, {**self.record("pulls", 2), "state": "closed", "merged_at": None})
+        self.assertIsNotNone(self.on_main(SHOTS))
+        self.assertEqual(upstream(), [(False, "upstream stage intake is not locked for ama"),
+                                      (False, "upstream stage intake is not locked for ep01/Q1-1")])
+
+    def test_write_refused(self):
+        self.git("checkout", "-q", "-b", "elsewhere")
+        code, out = self.tick("--apply")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[0], "FAIL #1 write: the checkout is not on main with a clean index")
+        self.assertEqual(file_lines(out), SEVEN)
+        self.assertIsNone(self.on_main(SHOTS))
+        self.git("checkout", "-q", "main")
+        self.write({SHOTS: dump(SHOT_LIST)})
+        code, out = self.tick("--apply")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines()[0],
+                         "FAIL #1 write: production/ep01/shots.json is in the checkout and not on main")
+        self.assertIsNone(self.on_main(SHOTS))
+
+    def test_edit_list_not_whole_frames(self):
+        edit_list = json.loads((self.root / EDIT_LIST).read_text())
+        edit_list["events"][1]["start"] = 2.51
+        self.commit({EDIT_LIST: dump(edit_list)})
+        code, out = self.tick()
+        self.assertEqual(code, 0, out)
+        lines = out.splitlines()
+        self.assertEqual(lines[0], "NEED #1 intake ep01: episodes/ep01/reel/edit-list.json: event 2: start 2.51 s "
+                                   "at 24 fps is not a whole frame")
+        self.assertEqual(lines[1:8], SEVEN)
+        self.assertEqual(lines[-1], "tick: 8 steps, 1 need, 0 wait, 0 failed")
 
     def test_reel_not_locked(self):
         self.set_record("pulls", 2, {**self.record("pulls", 2), "state": "closed", "merged_at": None})
@@ -188,7 +265,8 @@ class IntakeFiling(World):
         self.assertEqual(code, 0, out)
         self.assertEqual(file_lines(out), [*SEVEN, "STEP #3 file assets nell", "STEP #3 file layout ep02/Q1-1"])
         lines = out.splitlines()
-        self.assertEqual(lines[9:11], [PACKET, "STEP #3 file intent-packet ep02"])
+        self.assertEqual(lines[:2], [WRITE, "STEP #3 write production/ep02/shots.json"])
+        self.assertEqual(lines[11:13], [PACKET, "STEP #3 file intent-packet ep02"])
 
     def test_existing_ticket(self):
         labels = ["room:production", "stage:assets", "tracked", "unit:ama"]
@@ -202,8 +280,10 @@ class IntakeFiling(World):
     def test_rooms(self):
         out = self.tick("--room", "story")[1]
         self.assertEqual((file_lines(out), packet_lines(out)), ([], [PACKET]))
+        self.assertNotIn(" write ", out)
         out = self.tick("--room", "production")[1]
         self.assertEqual((file_lines(out), packet_lines(out)), (SEVEN, []))
+        self.assertEqual(out.splitlines()[0], WRITE)
         self.make([])
         code, out = self.tick()
         self.assertEqual(code, 0, out)
@@ -211,12 +291,14 @@ class IntakeFiling(World):
 
     def test_unreadable_inputs(self):
         edit_list = (self.root / EDIT_LIST).read_text()
-        for change in ({"removed": [EDIT_LIST]}, {"files": {EDIT_LIST: "{\n"}}):
+        for change, reason in (({"removed": [EDIT_LIST]}, "is not on the base"),
+                               ({"files": {EDIT_LIST: "{\n"}}, "is not JSON")):
             with self.subTest(change=change):
                 self.commit(**change)
                 code, out = self.tick()
                 self.assertEqual(code, 0, out)
-                self.assertEqual(out.splitlines(), [PACKET, "tick: 1 steps, 0 need, 0 wait, 0 failed"])
+                self.assertEqual(out.splitlines(), [f"NEED #1 intake ep01: {EDIT_LIST} {reason}", PACKET,
+                                                    "tick: 1 steps, 1 need, 0 wait, 0 failed"])
         events = json.loads(edit_list)
         events["events"][1]["shot"] = "Q1/2"
         events["events"][2]["take"] = events["events"][2].pop("shot")
