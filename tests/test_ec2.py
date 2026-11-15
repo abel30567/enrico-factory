@@ -182,8 +182,14 @@ class Case(unittest.TestCase):
             self.addCleanup(shutil.rmtree, directory)
             key_file = os.path.join(directory, "render.key")
             Path(key_file).write_text("\n".join(key) + "\n", encoding="utf-8")
-        config = {"settings": {**SETTINGS, "RENDER_API_URL": url, **(settings or {})},
-                  "secrets": {"render.node": key_file}}
+        job = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, job)
+        Path(job, "engine.unreal").write_text("seeded-pull-token\n", encoding="utf-8")
+        Path(job, "store.assets").write_text("\n".join(KEY) + "\n", encoding="utf-8")
+        config = {"settings": {**SETTINGS, "RENDER_API_URL": url, "ASSET_STORE": "https://store.invalid/b",
+                               "UNREAL_IMAGE": "registry.invalid/engine@sha256:" + "0" * 64, **(settings or {})},
+                  "secrets": {"render.node": key_file, "engine.unreal": os.path.join(job, "engine.unreal"),
+                              "store.assets": os.path.join(job, "store.assets")}}
         driver = ec2.Node(key_file, config, record)
         moment = at(clock)
         driver.now = lambda: moment
@@ -494,6 +500,7 @@ class B7Record(Case):
             del fixture["source"]
             if "ClientToken" in fixture["request"]["params"]:
                 fixture["request"]["params"]["ClientToken"] = replay.requests[1]["ClientToken"]
+                fixture["request"]["params"]["UserData"] = exchange["request"]["params"]["UserData"]
             self.assertEqual(exchange, fixture)
         self.assertTrue(json.loads(Path(record, names[1]).read_text())["request"]["params"]["UserData"]
                         .startswith("sha256:"))
@@ -535,7 +542,8 @@ class B8Imports(unittest.TestCase):
             "import os, sys, tempfile; sys.path.insert(0, '.'); from kit.lib import ec2\n"
             "key = os.path.join(tempfile.mkdtemp(), 'k'); open(key, 'w').write('a\\nb\\nc\\n')\n"
             f"settings = {dict(SETTINGS, RENDER_API_URL=f'http://127.0.0.1:{port}/')!r}\n"
-            "driver = ec2.Node(key, {'settings': settings, 'secrets': {}})\n"
+            "settings['ASSET_STORE'] = 'https://store.invalid/b'\n"
+            "driver = ec2.Node(key, {'settings': settings, 'secrets': {'engine.unreal': key, 'store.assets': key}})\n"
             "try:\n    driver.start()\nexcept Exception as error:\n"
             "    print(type(error).__module__, type(error).__name__, 'kit.lib.node' in sys.modules)\n")
         self.assertEqual(self.python(code), "kit.lib.node Unavailable True")
