@@ -22,7 +22,8 @@ STAGE_FILES = ("manifest.json", "state.json")
 SHEETS = (("character", "bible/canon/characters"), ("set", "bible/canon/places"))
 
 
-def kind(call, asset):
+def asset_kind(call, asset):
+    """`character` or `set` when the asset's canon sheet is an input, else `prop`."""
     paths = {item["path"] for item in call["inputs"]}
     return next((kind for kind, folder in SHEETS if f"{folder}/{asset}.md" in paths), "prop")
 
@@ -44,6 +45,7 @@ def run(call):
     vendor.store(call, path)
     with open(path, "rb") as handle:
         digest = hashlib.sha256(handle.read()).hexdigest()
-    vendor.stage_file(call["out"], STATE, {"asset": asset, "kind": kind(call, asset), "sha256": digest, **summary})
+    state = {"asset": asset, "kind": asset_kind(call, asset), "sha256": digest, **summary}
+    vendor.stage_file(call["out"], STATE, state)
     vendor.stage_file(call["out"], MANIFEST, vendor.manifest(call, vendor.MODEL_PATH, (OUTPUT, STATE)))
     return vendor.spent(call)
