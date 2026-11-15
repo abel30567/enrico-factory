@@ -251,22 +251,49 @@ def _voted(entry, pull):
     return True, markers.reviewed_reason(vote[0], pull["git"])
 
 
-def _amendment(entry, pull, root):
-    changed = pull["git"]["changed"]
-    if not needs_amendment(entry, changed):
-        return ""
-    head = pull["git"]["head"]
-    base = gitstate.merge_base(root, pull["base_ref"], head)
-    added = [path for path in changed if _AMENDMENT.fullmatch(path) and gitstate.show(root, base, path) is None]
-    if len(added) != 1:
-        return f"adds {len(added)} amendment file(s) bible/amendments/A-<n>.json, not 1"
-    path = added[0]
-    text = gitstate.show(root, head, path)
+def added_amendments(pull, root) -> list[str]:
+    """The amendment files ``bible/amendments/A-<n>.json`` the pull changes and its merge base lacks, in the
+    order of ``changed``."""
+    base = gitstate.merge_base(root, pull["base_ref"], pull["git"]["head"])
+    return [path for path in pull["git"]["changed"]
+            if _AMENDMENT.fullmatch(path) and gitstate.show(root, base, path) is None]
+
+
+def amendment_class(pull, root, path):
+    """The ``class`` of the JSON object at ``path`` on the head, or None when the file is missing, is not JSON
+    or is not an object."""
+    text = gitstate.show(root, pull["git"]["head"], path)
     try:
         doc = json.loads(text) if text is not None else None
     except ValueError:
         doc = None
-    kind = doc.get("class") if isinstance(doc, dict) else None
+    return doc.get("class") if isinstance(doc, dict) else None
+
+
+def vote_amendment(entry, pull, root):
+    """The path of the one amendment the pull adds when rule 6 wants a ``[BRAINTRUST] VOTE`` on it (its class
+    is in ``VOTE_CLASSES`` or the pull changes ``CHARTER``), else None. It reads no checker verdict."""
+    changed = pull["git"]["changed"]
+    if not needs_amendment(entry, changed):
+        return None
+    added = added_amendments(pull, root)
+    if len(added) != 1:
+        return None
+    kind = amendment_class(pull, root, added[0])
+    if kind not in AMENDMENT_CLASSES:
+        return None
+    return added[0] if kind in VOTE_CLASSES or CHARTER in changed else None
+
+
+def _amendment(entry, pull, root):
+    changed = pull["git"]["changed"]
+    if not needs_amendment(entry, changed):
+        return ""
+    added = added_amendments(pull, root)
+    if len(added) != 1:
+        return f"adds {len(added)} amendment file(s) bible/amendments/A-<n>.json, not 1"
+    path = added[0]
+    kind = amendment_class(pull, root, path)
     if kind not in AMENDMENT_CLASSES:
         return f"{path} has no class among {', '.join(AMENDMENT_CLASSES)}"
     approved = pull["summary"]["checkers"].get(CANON_REVIEWER)

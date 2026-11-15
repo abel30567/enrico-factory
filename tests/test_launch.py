@@ -510,6 +510,74 @@ class JudgeLaunch(unittest.TestCase):
         launch.cleanup(self.w.root, run)
 
 
+class AmendmentJudgeLaunch(unittest.TestCase):
+    """The judge of a stage whose unit is an amendment: a vote when rule 6 wants one, else the head alone."""
+
+    BRANCH = "beats/BT-2-drafter-1"
+    ALONE = "Task: Judge pull request #7. Unit ep02 has no locked version: judge its head alone."
+    VOTE = ("Task: Judge pull request #7. Put the amendment bible/amendments/A-1.json to a vote: each seat votes "
+            "for or against it, and the marker is VOTE <for>-<against>.")
+
+    def setUp(self):
+        self.w = World(self)
+        self.pipeline('"stage": "beats", "unit": "episode"', '"stage": "beats", "unit": "amendment"')
+
+    def pipeline(self, old, new):
+        path = self.w.root / ".factory" / "pipeline.json"
+        text = path.read_text()
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new))
+        self.w.commit("the stage")
+        self.w.local()
+
+    def on_branch(self, files):
+        w = self.w
+        w.git("checkout", "-q", self.BRANCH)
+        for rel, text in files.items():
+            (w.root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (w.root / rel).write_text(text)
+        w.commit("files on the pull")
+        w.git("checkout", "-q", "trunk")
+
+    def task(self):
+        run = self.w.prepare("assessor", 7)
+        text = (run.dir / "prompt.md").read_text()
+        launch.cleanup(self.w.root, run)
+        return next(line for line in text.splitlines() if line.startswith("Task: "))
+
+    def test_vote_by_class_arc(self):
+        self.on_branch({"bible/amendments/A-1.json": '{"class": "arc"}\n'})
+        self.assertEqual(self.task(), self.VOTE)
+
+    def test_vote_by_class_charter(self):
+        self.on_branch({"bible/amendments/A-1.json": '{"class": "charter"}\n'})
+        self.assertEqual(self.task(), self.VOTE)
+
+    def test_vote_by_the_charter(self):
+        self.on_branch({"bible/amendments/A-1.json": '{"class": "canon"}\n', "bible/charter.md": "Rule 2.\n"})
+        self.assertEqual(self.task(), self.VOTE)
+
+    def test_canon_alone(self):
+        self.on_branch({"bible/amendments/A-1.json": '{"class": "canon"}\n'})
+        line = self.task()
+        self.assertEqual(line, self.ALONE)
+        self.assertNotIn("vote", line)
+        self.assertNotIn("VOTE", line)
+
+    def test_no_amendment(self):
+        self.assertEqual(self.task(), self.ALONE)
+
+    def test_amendment_with_no_class(self):
+        self.on_branch({"bible/amendments/A-1.json": '{"summary": "Add rule 2."}\n'})
+        self.assertEqual(self.task(), self.ALONE)
+
+    def test_blind_first(self):
+        self.pipeline('"blind": false, "pitches": 1, "paths": ["episodes/*/beats.md"]',
+                      '"blind": true, "pitches": 1, "paths": ["episodes/*/beats.md"]')
+        self.on_branch({"bible/amendments/A-1.json": '{"class": "arc"}\n'})
+        self.assertEqual(self.task(), self.ALONE)
+
+
 class MakerRelaunch(unittest.TestCase):
     """Criterion 5."""
 
