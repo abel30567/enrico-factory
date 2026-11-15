@@ -268,6 +268,11 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         row = _job_rows(p, ticket, entry, pull, found, root)
         if row:
             return row
+        # Section 12, step 5: once a gated job has run, the other jobs run before the review is made again.
+        if all(job["gate"] == "PASS" for job in found["jobs"]) and any(job["run"] for job in found["jobs"]):
+            row = _job_steps(p, ticket, pull, found)
+            if row:
+                return row
     lint = summary["lint"]
     if entry.get("lint"):
         if lint is None:

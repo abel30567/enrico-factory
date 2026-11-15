@@ -1175,6 +1175,37 @@ class OperatorJob(Case):
         self.assertEqual(len(self.launched("media-wrangler")), 2)
         self.assertEqual(self.fake_log.read_text().split(), [self.digest])
 
+    def test_two_jobs_run_before_the_review_again(self):
+        # ISSUE-495 behaviour 5: the second job runs before the lint and the story editor come again.
+        w = self.w
+        other = "episodes/ep01/reel/requests/r2.json"
+        text = '{"outputs": {"frame.txt": "the bell at dusk\\n"}, "usd": 1, "compute_min": 2}\n'
+        job = {**self.job, "inputs": [{"path": other, "sha256": hashlib.sha256(text.encode()).hexdigest()}]}
+        digest = hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        w.script(step("You are editorial", "READY", {self.REQUEST: self.request, other: text}, evidence=EVIDENCE),
+                 step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n",
+                                                              "jobs/" + other: json.dumps(job, indent=1) + "\n"},
+                      evidence=EVIDENCE),
+                 editor_approved(),
+                 step("You are the media wrangler", "READY", evidence=EVIDENCE),
+                 step("You are editorial", "READY", evidence=EVIDENCE),
+                 editor_approved())
+        lines = []
+        for _ in range(16):
+            lines += self.ticked(w, True)
+            if lines[-1] == "STEP #3 lock PR #4":
+                break
+        r1, r2 = self.JOB, "jobs/" + other
+        self.assertEqual(lines, ["STEP #3 launch editorial on #3", "STEP #3 launch media-wrangler on PR #4",
+                                 "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+                                 f"STEP #3 gate {r1} PR #4", f"STEP #3 gate {r2} PR #4",
+                                 f"STEP #3 run {r1} PR #4", f"STEP #3 run {r2} PR #4",
+                                 "STEP #3 launch media-wrangler on PR #4", "STEP #3 launch editorial on PR #4",
+                                 "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4", "STEP #3 gate PR #4",
+                                 "STEP #3 sync PR #4", "STEP #3 lock PR #4"])
+        self.assertEqual(len(self.launched("story-editor")), 2)
+        self.assertEqual(self.fake_log.read_text().split(), [self.digest, digest])
+
     def test_the_report_needs_a_counting_pass(self):
         w = self.w
         self.tick_line(w, ["STEP #3 launch editorial on #3"], apply=True)

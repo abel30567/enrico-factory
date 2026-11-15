@@ -239,6 +239,7 @@ class OperatorRowsTest(ChainCase):
     REF = "feat/BT-1-ep01"
     REQUEST = "episodes/ep01/requests/r1.json"
     JOB = "jobs/" + REQUEST
+    OTHER = "episodes/ep01/requests/r2.json"
     REQUEST_TEXT = '{"for": "beat 2", "prompt": "the harbour at flood", "refs": []}\n'
 
     def setUp(self):
@@ -282,10 +283,13 @@ class OperatorRowsTest(ChainCase):
         self.on_branch({path or self.JOB: json.dumps(job, indent=1) + "\n"})
         return self.digest(job)
 
-    def verdicts(self):
-        self.post("program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
-        self.post("editor", "[EDITOR] APPROVED\nall criteria met\nreviewed head {head:5} manifest none\n")
-        self.post("critic", "[CRITIC] PREFERS A\npanel 2\nreviewed head {head:5} manifest none\n")
+    VERDICTS = {"program:lint": "[LINT] PASS\nstructure: pass", "editor": "[EDITOR] APPROVED\nall criteria met",
+                "critic": "[CRITIC] PREFERS A\npanel 2"}
+
+    def verdicts(self, *roles):
+        manifest = self.w.load().pulls[5]["git"]["manifest"]
+        for role in roles or self.VERDICTS:
+            self.post(role, f"{self.VERDICTS[role]}\nreviewed head {{head:5}} manifest {manifest}\n")
 
     def gated(self, digest, verdict="PASS"):
         self.post("program:gate", f"[PRODUCER] GATE {verdict}\ncovers: job {digest}\ncap: -\nledger: -\n", number=3)
@@ -298,6 +302,24 @@ class OperatorRowsTest(ChainCase):
                "tool": "renderbox", "usd": "1", "compute_min": "5", "caller": "fetcher", "verdict": verdict,
                "cap": cap}
         self.w.commit_file(ledger.PATH, text + ledger.line(row) + "\n")
+
+    def ran(self, digest):
+        """The job ran DONE and its manifest row is committed on the branch, as cmd_run writes it."""
+        self.ledger(digest, "run", "DONE")
+        path = self.w.root / "media" / "manifest.tsv"
+        self.w.git("checkout", "-q", self.REF)
+        text = path.read_text() if path.is_file() else "id\tsha256\tbytes\tsource\n"
+        self.w.commit_file("media/manifest.tsv", text + f"{digest[:16]}-frame.png\t{digest}\t2048\tjob {digest}\n")
+        self.w.git("checkout", "-q", "trunk")
+
+    def two_jobs(self):
+        """The requests REQUEST and OTHER with their jobs; lint and every verdict count."""
+        self.on_branch({self.OTHER: self.REQUEST_TEXT})
+        first = self.written()
+        second = self.write_job(self.job(self.OTHER), "jobs/" + self.OTHER)
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.verdicts()
+        return first, second
 
     def requested(self):
         """Pull #5 open with the writer's READY and the request."""
@@ -402,6 +424,59 @@ class OperatorRowsTest(ChainCase):
         self.verdicts()
         self.gated(digest)
         self.check(("gate", "gate", None, 5), f"job jobs/{other} has no gate decision")
+
+    def test_every_job_runs_before_the_review_again(self):
+        # ISSUE-495 behaviour 1: one review before the gates and one after the report, not one per run.
+        digests = dict(zip((self.JOB, "jobs/" + self.OTHER), self.two_jobs()))
+        walked, k = [], 0
+        for _ in range(20):
+            entry = self.next()
+            walked.append(" ".join(x for x in (entry["step"], entry["role"], entry.get("job")) if x))
+            if entry["step"] == "lock":
+                break
+            if entry["step"] == "lint":
+                self.verdicts("program:lint")
+            elif entry["step"] == "gate":
+                self.gated(digests[entry["job"]])
+            elif entry["step"] == "run":
+                self.ran(digests[entry["job"]])
+            elif entry["step"] == "launch":
+                k += 1
+                role = entry["role"]
+                self.post("chief", f"[CHIEF] LAUNCH {role} 5-{k}\n")
+                if role in self.VERDICTS:
+                    self.verdicts(role)
+                else:
+                    self.post(role, f"[{role.upper()}] READY\nhead {{head:5}}\n")
+            else:
+                self.fail(entry)
+        self.assertEqual(walked, [f"gate {self.JOB}", f"gate jobs/{self.OTHER}", f"run {self.JOB}",
+                                  f"run jobs/{self.OTHER}", "launch fetcher", "launch writer", "lint",
+                                  "launch editor", "launch critic", "lock"])
+
+    def test_a_stop_after_a_run_reviews_first(self):
+        first, second = self.two_jobs()
+        self.gated(first)
+        self.ran(first)
+        self.gated(second, "STOP")
+        self.check(("lint", "lint", None, 5), "no counting [LINT] verdict on #5")
+        self.verdicts()
+        self.check(("job-stopped", "wake", "chief", 5), f"job jobs/{self.OTHER} stopped at the gate on #5")
+
+    def test_a_job_without_a_gate_after_a_run_reviews_first(self):
+        first, _ = self.two_jobs()
+        self.gated(first)
+        self.ran(first)
+        self.check(("lint", "lint", None, 5))
+        self.verdicts()
+        self.check(("gate", "gate", None, 5), f"job jobs/{self.OTHER} has no gate decision")
+
+    def test_passes_and_no_run_review_first(self):
+        first, second = self.two_jobs()
+        self.gated(first)
+        self.gated(second)
+        self.on_branch({"episodes/ep01/notes.md": "a note\n"})
+        self.check(("lint", "lint", None, 5), "no counting [LINT] verdict on #5")
 
     def test_a_run_reports(self):
         digest = self.written()
