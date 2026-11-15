@@ -1,0 +1,8 @@
+subject	attribute	value	tag	source
+nell	job	fires the big kiln	text	sources/kiln-night.md K1
+orrin	job	night watchman	text	sources/kiln-night.md K2
+kiln-yard	location	behind the pottery	text	sources/kiln-night.md K3
+drying-shed	location	beside the kiln-yard	text	sources/kiln-night.md K4
+drying-shed	lamp	none	text	sources/kiln-night.md K5
+drying-shed	door	faces the kiln-yard	text	sources/kiln-night.md K6
+kiln-cat	sleeps	on the warm kiln roof	invented	A-3

@@ -1,0 +1,13 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/kiln-cat.md": "adds the kiln cat, origin house A-3",
+    "bible/canon/ledger.tsv": "keeps the three rows of A-2 and adds one row for each of K4 to K6 and the row kiln-cat / sleeps",
+    "bible/canon/places/drying-shed.md": "adds the drying shed, from K4 to K6"
+  },
+  "why": "K4 to K6 of the owner's approved draft become canon. The kiln cat is designed here, in this production, from charter statement C2: it sleeps on the kiln roof, where the night shift walks. This amendment clears it, and it comes from no other work.",
+  "evidence": {
+    "bible/charter.md": "C2: every new place is one the night shift can walk to",
+    "sources/kiln-night.md": "statements K4 to K6"
+  }
+}

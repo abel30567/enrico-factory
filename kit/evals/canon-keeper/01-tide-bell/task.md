@@ -1,0 +1,1 @@
+Write amendment A-1, class charter: the owner's charter in sources/charter.md enters bible/charter.md. Carry statements C1 to C5 as list items, each with its id and the tag [text](sources/charter.md), and state as not set what the owner did not decide. Write only bible/charter.md and the amendment file.

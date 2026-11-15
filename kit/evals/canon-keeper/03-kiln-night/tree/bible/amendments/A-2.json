@@ -1,0 +1,14 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/nell.md": "adds Nell, from K1",
+    "bible/canon/characters/orrin.md": "adds Orrin, from K2",
+    "bible/canon/ledger.tsv": "adds one row for each of K1 to K3",
+    "bible/canon/places/kiln-yard.md": "adds the kiln-yard, from K3"
+  },
+  "why": "the owner approved the draft; its statements K1 to K3 become canon",
+  "evidence": {
+    "sources/kiln-night.md": "statements K1 to K3",
+    "sources/rights.tsv": "the draft is the owner's own"
+  }
+}
