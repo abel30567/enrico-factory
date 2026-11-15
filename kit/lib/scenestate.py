@@ -4,7 +4,10 @@ Assembled on the machine that runs `factory run` (docs/design/render-job.md, "Th
 so its rules are tested offline. `scene.json` is in centimetres and degrees; the state is in metres and
 degrees, rounded so that two builds of one static scene give equal states: metres to 4 decimals, degrees
 into (-180, 180] to 3, `scale`, `color` and `box` to 4, `focal_mm`, `sensor_mm` and `intensity` to 3,
-`temperature_k` to 1; a rounded integral value is an integer. Nothing moves in this version, so each
+`temperature_k` to 1; a rounded integral value is an integer. `sun` is the direction toward the one
+directional light, `elevation_deg` above the horizon and `azimuth_deg` from +X toward +Y in [0, 360), or
+null when the scene has none. A light with no temperature gets the correlated colour temperature of its
+`color` (McCamy, on CIE xy). Nothing moves in this version, so each
 transform's `start` equals its `end` and `motion`, `lipsync`, `caches` and `line_flips` are empty.
 `framing` projects the 8 corners of each actor's bounds through the camera on every frame; an actor with a
 corner behind the camera, or whose box is empty on the frame, has no row.
@@ -14,6 +17,8 @@ from __future__ import annotations
 
 import json
 import math
+
+from kit.lib.lints.lighting import RGB_TO_XYZ
 
 LIGHT_KINDS = {"DirectionalLight": "directional", "PointLight": "point", "SpotLight": "spot",
                "RectLight": "rect"}
@@ -102,9 +107,38 @@ def _light(row: dict) -> dict:
     else:
         raise SceneError(f"light {label} intensity is in {row.get('units')}, not lux or cd")
     temperature = row.get("temperature_k")
+    if not isinstance(temperature, (int, float)) or isinstance(temperature, bool):
+        temperature = _temperature(label, row["color"])
     return {"id": label, "kind": kind, "intensity": _num(row["intensity"], 3), "unit": unit,
-            "color": [_num(v, 4) for v in row["color"]],
-            "temperature_k": None if temperature is None else _num(temperature, 1)}
+            "color": [_num(v, 4) for v in row["color"]], "temperature_k": _num(temperature, 1)}
+
+
+def _temperature(label: str, color) -> float:
+    """The correlated colour temperature of a linear `[r, g, b]` by McCamy's formula on CIE xy."""
+    big_x, big_y, big_z = (sum(m * float(c) for m, c in zip(row, color)) for row in RGB_TO_XYZ)
+    total = big_x + big_y + big_z
+    kelvin = 0.0
+    if total != 0:
+        x, y = big_x / total, big_y / total
+        if y != 0.1858:
+            n = (x - 0.3320) / (0.1858 - y)
+            kelvin = 449 * n ** 3 + 3525 * n ** 2 + 6823.3 * n + 5520.33
+    if not kelvin > 0:
+        raise SceneError(f"light {label} has no temperature and its color {[_num(v, 4) for v in color]} has none")
+    return kelvin
+
+
+def _sun(lights: list):
+    """`{elevation_deg, azimuth_deg}` toward the one directional light of the sorted rows, or None."""
+    suns = [row for row in lights if row.get("class") == "DirectionalLight"]
+    if not suns:
+        return None
+    if len(suns) > 1:
+        raise SceneError(f"lights {suns[0]['label']} and {suns[1]['label']} are both directional; a scene has one sun")
+    x, y, z = (-v for v in _axes(suns[0]["rotation"])[0])
+    azimuth = _num(math.degrees(math.atan2(y, x)) % 360, 3)
+    return {"elevation_deg": _num(math.degrees(math.asin(min(1.0, max(-1.0, z)))), 3),
+            "azimuth_deg": 0 if azimuth == 360 else azimuth}
 
 
 def state(scene: dict, job: dict, level: dict | None = None) -> dict:
@@ -147,7 +181,7 @@ def state(scene: dict, job: dict, level: dict | None = None) -> dict:
         "camera": {"focal_mm": {"min": focal, "max": focal}, "sensor_mm": [_num(v, 3) for v in camera["sensor_mm"]],
                    "start": view, "end": dict(view)},
         "framing": framing, "line_flips": [], "motion": [], "lipsync": [], "caches": [],
-        "lights": [_light(row) for row in lights], "sun": None,
+        "lights": [_light(row) for row in lights], "sun": _sun(lights),
         "render": {"lumen": cvars.get(CVAR_GI) == 1, "tsr": cvars.get(CVAR_AA) == 4,
                    "spatial_samples": render["spatial_samples"], "temporal_samples": render["temporal_samples"],
                    "warmup_frames": render["warmup_frames"], "width": job["width"], "height": job["height"]},

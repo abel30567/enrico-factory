@@ -213,7 +213,8 @@ SPECIFIC = {
     "audience-analyst": ("never says what to change",),
     "art-director": ("`bible/style/requests/<id>.json`", "`{for, prompt, refs}`", "`for` the sheet",
                      *REQUEST, "A model sheet or a design image of a new subject",
-                     "cite its `media:<id>` in the sheet", "Until then, write no model sheet of that subject."),
+                     "cite its `media:<id>` in the sheet", "Until then, write no model sheet of that subject.",
+                     "`bible/style/keys/<ep>/<Q>.json`", "`{min_elevation_deg, max_elevation_deg}`"),
     "story-artist": ("`episodes/<ep>/sequences/<Q>/shots/requests/<id>.json`", "`{for, prompt, refs}`",
                      "`for` the shot id", *REQUEST,
                      "A panel is only an image already in `media/manifest.tsv`.",
@@ -540,6 +541,11 @@ class MakerRequestTest(unittest.TestCase):
         kit = KitCopy(self)
         kit.edit("art-director", "`bible/style/requests/<id>.json`", "a file")
         self.assertIn("body lacks '`bible/style/requests/<id>.json`'", kit.own("art-director"))
+
+    def test_art_director_without_the_key(self):
+        kit = KitCopy(self)
+        kit.edit("art-director", "`bible/style/keys/<ep>/<Q>.json`", "a file")
+        self.assertIn("body lacks '`bible/style/keys/<ep>/<Q>.json`'", kit.own("art-director"))
 
     def test_editorial_without_images_only(self):
         kit = KitCopy(self)
