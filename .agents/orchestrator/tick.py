@@ -129,12 +129,12 @@ def workers_alive():
     return n
 
 
-RESET_RE = re.compile(r"resets\s+(?:([A-Z][a-z]{2})\s+(\d{1,2})\s+at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?", re.I)
+RESET_RE = re.compile(r"resets\s+(?:([A-Z][a-z]{2})\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?", re.I)
 MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 
 def reset_at(text, written):
-    """The reset time a rejection names ("resets Nov 10 at 1am (America/New_York)", "resets 3am (Europe/Madrid)"),
+    """The reset time a rejection names ("resets Nov 10 at 1am (America/New_York)", "resets Nov 17, 6am (UTC)", "resets 3am (Europe/Madrid)"),
     as the first such moment after `written` (a UTC datetime), or None if the text names none."""
     m = RESET_RE.search(text)
     if not m:
