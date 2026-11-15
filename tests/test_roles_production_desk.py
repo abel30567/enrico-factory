@@ -51,7 +51,13 @@ SPECIFIC = {
                         "You copy, shorten or add no line of a scene script.",
                         "You call no tool, do not run `factory gate` or `factory run`, and hold no "
                         "credential", "checked by `dailies-reviewer`",
-                        "Do not repair a scene script to avoid blocking."),
+                        "Do not repair a scene script to avoid blocking.",
+                        "write each input the task names as `production/assets/<id>/assets/state.json` "
+                        "in its place as `{\"path\": \"asset:<id>\", \"sha256\": ...}`",
+                        "the value of that file's key `sha256`, the sha256 of the asset's binary",
+                        "At `assets` and `rigging` the state stays a file input.",
+                        "never the sha256 of the state's own bytes", "an asset input's is the one exception",
+                        "or holds no `sha256` for an asset input"),
 }
 
 
@@ -244,6 +250,16 @@ class ProductionRoomTest(unittest.TestCase):
         kit.edit("render-wrangler", "writes: jobs/**", "writes: jobs/**, production/**")
         self.assertIn("writes is 'jobs/**, production/**', expected 'jobs/**'",
                       kit.own("render-wrangler"))
+
+    def test_render_wrangler_asset_input(self):
+        kit = KitCopy(self)
+        kit.edit("render-wrangler", "At `assets` and `rigging` the state stays", "At `assets` the state stays")
+        self.assertIn("body lacks 'At `assets` and `rigging` the state stays a file input.'",
+                      kit.own("render-wrangler"))
+        kit = KitCopy(self)
+        kit.edit("render-wrangler", "never copied from another file; an\n  asset input's is the one exception.",
+                 "never copied from another file.")
+        self.assertIn("body lacks \"an asset input's is the one exception\"", kit.own("render-wrangler"))
 
     def test_init_installs_them_with_the_production_room(self):
         tmp = tempfile.mkdtemp()
