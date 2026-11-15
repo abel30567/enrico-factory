@@ -422,7 +422,10 @@ building = 0
 for i in sorted(ready or [], key=lambda i: i["number"]):
     try:
         m = TITLE_RE.match(i["title"])
-        if not m or m.group(1) in pr_keys or any(l["name"] == "status:blocked" for l in i["labels"]):
+        if not m:
+            say("NEED", f"#{i['number']} is status:ready but its title has no [KEY]: retitle it, or no builder starts")
+            continue
+        if m.group(1) in pr_keys or any(l["name"] == "status:blocked" for l in i["labels"]):
             continue
         n, key = i["number"], m.group(1)
         tag = f"#{n} {key}"
