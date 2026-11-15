@@ -1,0 +1,14 @@
+{
+ "source": "#455: session recorded with the production's key",
+ "read": "2026-11-15",
+ "status": 200,
+ "body": {
+  "status": "IN_PROGRESS",
+  "request_id": "01a1dc8b-8c62-7aa3-90aa-aeac837457f0",
+  "response_url": "{base}/fal-ai/meshy/requests/01a1dc8b-8c62-7aa3-90aa-aeac837457f0",
+  "status_url": "{base}/fal-ai/meshy/requests/01a1dc8b-8c62-7aa3-90aa-aeac837457f0/status",
+  "cancel_url": "{base}/fal-ai/meshy/requests/01a1dc8b-8c62-7aa3-90aa-aeac837457f0/cancel",
+  "logs": null,
+  "metrics": {}
+ }
+}

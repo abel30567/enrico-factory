@@ -3,7 +3,8 @@
 The production, the recorded GitHub and the gate PASS are `World` of tests/test_run.py, with the kit's own
 tools and register. The asset store is `AssetStore` of tests/test_assets.py. The vendors are one fake on
 127.0.0.1 that answers by method and path from tests/fixtures/tools_3d, each fixture an answer written by
-hand from the vendor's public API reference, its `{base}` replaced by the fake's URL. The asset is the
+hand from the vendor's public API reference (`model/`) or recorded from a real session (`rig/`), its
+`{base}` replaced by the fake's URL. The asset is the
 invented `lamp-keeper` and its image `media:lamp-keeper-ref`. Nothing reaches a host other than 127.0.0.1,
 and every poll is 0 seconds apart.
 """
@@ -44,8 +45,10 @@ RIG = b"glTF invented lamp keeper rig\x00\x03\x04\x05"
 MODEL_EXPECTED, RIG_EXPECTED = {"usd": 0.3, "compute_min": 5}, {"usd": 0.5, "compute_min": 5}
 SUBMIT = json.loads((FIX / "model" / "submit.json").read_text())["body"]
 REQUEST = "/requests/" + SUBMIT["request_id"]
-TASK = json.loads((FIX / "rig" / "create.json").read_text())["body"]["result"]
-RIGGING = "/openapi/v1/rigging"
+RIG_SUBMIT = json.loads((FIX / "rig" / "submit.json").read_text())["body"]
+RIG_REQUEST = "/fal-ai/meshy/requests/" + RIG_SUBMIT["request_id"]
+RIG_FILE = json.loads((FIX / "rig" / "result.json").read_text())["body"]["rigged_character_glb"]["url"].replace(
+    "{base}", "")
 
 
 def sha(data):
@@ -84,10 +87,11 @@ class Vendor:
                     self.fixture("model/status-completed"))
         self.answer("GET", REQUEST, self.fixture("model/result"))
         self.answer("GET", "/files/model.glb", (200, MODEL))
-        self.answer("POST", RIGGING, self.fixture("rig/create"))
-        self.answer("GET", f"{RIGGING}/{TASK}", self.fixture("rig/task-in-progress"),
-                    self.fixture("rig/task-succeeded"))
-        self.answer("GET", "/files/rig.glb", (200, RIG))
+        self.answer("POST", "/" + vendor.RIG_PATH, self.fixture("rig/submit"))
+        self.answer("GET", RIG_REQUEST + "/status", self.fixture("rig/status-in-progress"),
+                    self.fixture("rig/status-completed"))
+        self.answer("GET", RIG_REQUEST, self.fixture("rig/result"))
+        self.answer("GET", RIG_FILE, (200, RIG))
 
     def fixture(self, name, **changes):
         data = json.loads((FIX / f"{name}.json").read_text())
@@ -217,14 +221,17 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual(self.store.objects[sha(RIG)], RIG)
         self.assertIn(f"{digest[:16]}-rig.glb\t{sha(RIG)}\t{len(RIG)}\tjob {digest}", self.w.manifest().splitlines())
         [post] = self.vendor.made("POST")
-        self.assertEqual(post["path"], RIGGING)
+        self.assertEqual(post["path"], "/" + vendor.RIG_PATH)
         model_url = json.loads(post["body"])["model_url"]
         self.assertTrue(model_url.startswith("data:application/octet-stream;base64,"))
         self.assertEqual(base64.b64decode(model_url.split(",", 1)[1]), MODEL)
         self.assertEqual(sorted(json.loads(post["body"])), ["model_url"])
-        self.assertEqual(post["headers"]["authorization"], f"Bearer {RIG_KEY}")
-        self.assertEqual([r["path"] for r in self.vendor.made()][1:], [
-            f"{RIGGING}/{TASK}", f"{RIGGING}/{TASK}", "/files/rig.glb?Expires=1747291618"])
+        self.assertEqual(post["headers"]["authorization"], f"Key {RIG_KEY}")
+        self.assertEqual([(r["method"], r["path"]) for r in self.vendor.made()], [
+            ("POST", "/" + vendor.RIG_PATH), ("GET", RIG_REQUEST + "/status"), ("GET", RIG_REQUEST + "/status"),
+            ("GET", RIG_REQUEST), ("GET", RIG_FILE)])
+        self.assertTrue(all(r["headers"]["authorization"] == f"Key {RIG_KEY}" for r in self.vendor.made()[1:-1]))
+        self.assertNotIn("authorization", self.vendor.made()[-1]["headers"])
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d", "rig"])
         self.assertEqual(os.listdir(self.tmp), [])
 
@@ -264,10 +271,54 @@ class Tools3dTest(unittest.TestCase):
         self.assertNotIn(REQUEST + "/status", [r["path"] for r in self.vendor.made()])
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, self.vendor.fixture("model/submit"))
         model = self.clean_model()
-        self.vendor.answer("GET", f"{RIGGING}/{TASK}", self.vendor.fixture("rig/task-succeeded", status="FAILED"))
+        self.vendor.answer("GET", RIG_REQUEST + "/status", self.vendor.fixture("rig/status-completed", status="FAILED"))
         job, digest = self.rig_job(model)
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d"] * 3 + ["rig"])
+
+    def test_rig_vendor_cannot_rig(self):
+        model = self.clean_model()
+        self.vendor.answer("GET", RIG_REQUEST, self.vendor.fixture("rig/result-invalid"))
+        job, digest = self.rig_job(model, "not a valid GLB")
+        self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
+        self.assertIn(("GET", RIG_REQUEST), [(r["method"], r["path"]) for r in self.vendor.made()])
+        self.assertNotIn(RIG_FILE, [r["path"] for r in self.vendor.made()])
+        self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
+        self.assertEqual(list(self.store.objects), [sha(MODEL)])
+        self.assertNotIn("-rig.glb", self.w.manifest())
+        self.assertEqual(os.listdir(self.tmp), [])
+
+    def test_rig_result_without_glb(self):
+        model = self.clean_model()
+        status, body = self.vendor.fixture("rig/result")
+        body = json.loads(body)
+        del body["rigged_character_glb"]
+        self.vendor.answer("GET", RIG_REQUEST, (status, json.dumps(body).encode()))
+        job, digest = self.rig_job(model, "no rigged GLB")
+        self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
+        self.assertEqual([r["path"] for r in self.vendor.made()][-1], RIG_REQUEST)
+        self.assertEqual(list(self.store.objects), [sha(MODEL)])
+
+    def test_rig_urls_outside_the_api(self):
+        model = self.clean_model()
+        outside = "https://elsewhere.invalid/fal-ai/meshy/requests/x"
+        for name, url, path in (("status_url", outside + "/status", RIG_REQUEST + "/status"),
+                                ("response_url", outside, RIG_REQUEST),
+                                ("status_url", f"{self.vendor.base}.invalid{RIG_REQUEST}/status",
+                                 RIG_REQUEST + "/status")):
+            with self.subTest(name=name, url=url):
+                self.vendor.answer("POST", "/" + vendor.RIG_PATH, self.vendor.fixture("rig/submit", **{name: url}))
+                self.vendor.requests.clear()
+                prompt = f"{name} {url}"
+                job, digest = (self.job("rig", f"media:{model[:16]}-model.glb", RIG_EXPECTED, prompt)
+                               if self.w.rows("run")[1:] else self.rig_job(model, prompt))
+                self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
+                self.assertEqual([r["path"] for r in self.vendor.made()], ["/" + vendor.RIG_PATH])
+                self.assertNotIn(path, [r["path"] for r in self.vendor.made()])
+        self.assertEqual(list(self.store.objects), [sha(MODEL)])
+
+    def test_data_uri_limit(self):
+        self.assertEqual(vendor.DATA_URI_BYTES, 30_000_000)
 
     def test_too_slow(self):
         self.vendor.answer("GET", REQUEST + "/status", self.vendor.fixture("model/status-in-progress"))
@@ -314,7 +365,7 @@ class Tools3dTest(unittest.TestCase):
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, self.vendor.fixture("model/submit"))
         self.w.edit("issues", 5, state="closed")
         self.assertEqual(self.factory_run(job), (0, line(model, "DONE", "0.3", "5"), ""))
-        self.vendor.answer("GET", f"{RIGGING}/{TASK}", self.vendor.fixture("rig/task-succeeded", status="FAILED"))
+        self.vendor.answer("GET", RIG_REQUEST + "/status", self.vendor.fixture("rig/status-completed", status="FAILED"))
         job, digest = self.rig_job(model)
         self.assert_failed(job, digest, "rig", vendor.VENDOR_FAILED, "0.5")
         self.assertEqual(len(self.printed), 3)

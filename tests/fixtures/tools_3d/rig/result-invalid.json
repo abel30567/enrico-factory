@@ -1,0 +1,26 @@
+{
+ "source": "#455: session recorded with the production's key",
+ "read": "2026-11-15",
+ "status": 422,
+ "body": {
+  "detail": [
+   {
+    "loc": [
+     "body"
+    ],
+    "msg": "the input model is empty or not a valid GLB",
+    "type": "invalid_request",
+    "url": "https://docs.fal.ai/errors#invalid_request",
+    "input": {
+     "model_url": "data:application/octet-stream;base64,<truncated>",
+     "height_meters": 1.7,
+     "skeleton_template": null,
+     "include_fingers": false,
+     "enable_animation": false,
+     "animation_action_id": 92,
+     "enable_safety_checker": true
+    }
+   }
+  ]
+ }
+}
