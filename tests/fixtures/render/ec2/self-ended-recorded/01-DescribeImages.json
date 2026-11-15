@@ -1,0 +1,15 @@
+{
+ "request": {
+  "method": "POST",
+  "params": {
+   "Action": "DescribeImages",
+   "ImageId.1": "ami-1234567890abcdef0",
+   "Version": "2016-11-15"
+  },
+  "path": "/"
+ },
+ "response": {
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DescribeImagesResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\">\n    <requestId>00000000-0000-4000-8000-000000000001</requestId>\n    <imagesSet>\n        <item>\n            <imageId>ami-1234567890abcdef0</imageId>\n            <imageLocation>amazon/Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20261113</imageLocation>\n            <imageState>available</imageState>\n            <imageOwnerId>898082745236</imageOwnerId>\n            <creationDate>2026-11-13T15:43:19.000Z</creationDate>\n            <isPublic>true</isPublic>\n            <architecture>x86_64</architecture>\n            <imageType>machine</imageType>\n            <sriovNetSupport>simple</sriovNetSupport>\n            <imageOwnerAlias>amazon</imageOwnerAlias>\n            <name>Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04) 20261113</name>\n            <description>Supported EC2 instances: G4dn, G5, G6, Gr6, Gr6f, G6e, G6f, G7, G7e, P4d, P4de, P5, P5e, P5en, P6-B200, P6-B300. Release notes: https://aws.amazon.com/releasenotes/aws-deep-learning-base-gpu-ami-ubuntu-22-04/</description>\n            <rootDeviceType>ebs</rootDeviceType>\n            <rootDeviceName>/dev/sda1</rootDeviceName>\n            <blockDeviceMapping>\n                <item>\n                    <deviceName>/dev/sda1</deviceName>\n                    <ebs>\n                        <snapshotId>snap-01f72cdeb3e5909bb</snapshotId>\n                        <volumeSize>75</volumeSize>\n                        <deleteOnTermination>true</deleteOnTermination>\n                        <volumeType>gp3</volumeType>\n                        <iops>3000</iops>\n                        <encrypted>false</encrypted>\n                        <throughput>125</throughput>\n                    </ebs>\n                </item>\n                <item>\n                    <deviceName>/dev/sdb</deviceName>\n                    <virtualName>ephemeral0</virtualName>\n                </item>\n                <item>\n                    <deviceName>/dev/sdc</deviceName>\n                    <virtualName>ephemeral1</virtualName>\n                </item>\n            </blockDeviceMapping>\n            <virtualizationType>hvm</virtualizationType>\n            <hypervisor>xen</hypervisor>\n            <enaSupport>true</enaSupport>\n            <platformDetails>Linux/UNIX</platformDetails>\n            <usageOperation>RunInstances</usageOperation>\n            <bootMode>uefi-preferred</bootMode>\n            <deprecationTime>2028-11-13T15:43:19.000Z</deprecationTime>\n            <freeTierEligible>true</freeTierEligible>\n            <sourceImageId>ami-1234567890abcdef1</sourceImageId>\n            <sourceImageRegion>us-east-1</sourceImageRegion>\n        </item>\n    </imagesSet>\n</DescribeImagesResponse>",
+  "status": 200
+ }
+}
