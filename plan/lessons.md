@@ -40,3 +40,9 @@
   system under test. The rigging model was already hosted on the queue API of the key in `gen.model3d`: one
   real call rigged a sample model in 27 s. The ask came from the tool's hard-coded address, not from a need.
   An owner ask is only for what he alone can do: a decision, a consent, a payment no held account covers.
+- **A leak scan prints a count and the distinct hits, never a cut list (2026-11-15).** Before pushing the
+  recorded render session as a fixture, my first scan for machine paths and addresses printed its hits
+  through `cut -c1-700`, and the cut hid a machine path in `out/render.json`. A second scan found it, and
+  also a public DNS name, a MAC address and an attachment id that the driver's record mode had not scrubbed
+  (#527). A scan for what must not be published ends in a number and the list of distinct matches
+  (`grep -o ... | sort -u`), and zero is read from the count, not from a screen that looks clean.
