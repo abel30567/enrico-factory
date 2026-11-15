@@ -76,9 +76,9 @@ class Case(unittest.TestCase):
         self.git("add", "-A")
         self.git("commit", "-q", "-m", "files")
 
-    def p(self, pipeline=None):
+    def p(self, pipeline=None, settings=None):
         return production.Production(
-            root=self.root, kit=KIT, settings={"BASE": "main"}, roles={},
+            root=self.root, kit=KIT, settings={"BASE": "main", **(settings or {})}, roles={},
             formats=roles.load_formats(KIT / "formats"),
             pipeline=pipeline if pipeline is not None else roles.load_pipeline(KIT / "pipeline.json"),
             kinds={}, actors={})
@@ -233,11 +233,25 @@ class Shape(Case):
                                                        "[BOARD-EP01-Q2] board for ep01/Q2"])
         self.assertEqual(found[0]["labels"], ["tracked", "room:story", "stage:board", "unit:ep01/Q1"])
         self.assertEqual(found[0]["body"], "Do the stage board for unit ep01/Q1.\n\n"
+                                           "Tool: grok-imagine. Expected cost: usd 0.1, compute_min 1.\n\n"
                                            "Upstream: #1 sequences ep01, locked by PR #2.\n"
                                            "Filed by factory tick.\n")
         self.assertEqual([self.made(f) for f in found],
                          [("story", "board", "ep01/Q1"), ("story", "board", "ep01/Q10"),
                           ("story", "board", "ep01/Q2")])
+
+    def test_media_settings_name_the_tool_and_cost(self):
+        self.commit(SCRATCH)
+        p = self.p(settings={"MEDIA_TOOL": "other-tool", "MEDIA_USD": "0.25", "MEDIA_COMPUTE_MIN": "3"})
+        found = filing.due(p, make_state(*SEQUENCES_LOCKED), self.root)
+        self.assertEqual(found[0]["body"], "Do the stage board for unit ep01/Q1.\n\n"
+                                           "Tool: other-tool. Expected cost: usd 0.25, compute_min 3.\n\n"
+                                           "Upstream: #1 sequences ep01, locked by PR #2.\n"
+                                           "Filed by factory tick.\n")
+
+    def test_only_media_wrangler_stages_name_a_tool(self):
+        found = filing.due(self.p(settings={"MEDIA_TOOL": "other-tool"}), make_state(*BEATS_LOCKED), self.root)
+        self.assertNotIn("Tool:", found[0]["body"])
 
     def test_key(self):
         self.assertEqual(filing.key("beats", "ep01"), "BEATS-EP01")
@@ -268,6 +282,7 @@ class EpisodeAfterSequence(Case):
         self.assertEqual(found["title"], "[REEL-EP01] reel for ep01")
         self.assertEqual(found["labels"], ["tracked", "room:story", "stage:reel", "unit:ep01"])
         self.assertEqual(found["body"], "Do the stage reel for unit ep01.\n\n"
+                                        "Tool: grok-imagine. Expected cost: usd 0.1, compute_min 1.\n\n"
                                         "Upstream: #11 board ep01/Q1, locked by PR #12.\n"
                                         "Upstream: #13 board ep01/Q10, locked by PR #14.\n"
                                         "Upstream: #15 board ep01/Q2, locked by PR #16.\n"
