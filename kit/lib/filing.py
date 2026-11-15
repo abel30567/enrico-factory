@@ -28,6 +28,10 @@ when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distributi
 when a ``distribution/window`` ticket locks, labelled ``room:story``. Each is filed once: an issue with its
 title, open or closed, in ``State.others`` is never filed again.
 
+A locked ``story/sequences`` ticket also files one ``story/style`` ticket for its episode, as unit ``<ep>``, when some
+``<Q>`` of the episode on the base has no ``bible/style/keys/<ep>/<Q>.json`` on the base: its body has one
+``Write the sequence key`` line per missing key, in ``<Q>`` order. It is filed once, like any ticket.
+
 A locked ``story/reel`` ticket is the locked story package of its episode (brief section 6, ``intake``): when the
 pipeline has ``production/intake``, the production stages after ``intake`` are filed from it. A ``shot`` stage is
 filed once per shot of ``episodes/<ep>/reel/edit-list.json`` on the base, as unit ``<ep>/<shot>``; an ``asset``
@@ -55,6 +59,9 @@ OPERATOR = "render-wrangler"
 TOOLS = {"assets": ("model3d", "0.3", "1"), "rigging": ("rig", "0.55", "1"), "layout": ("render", "0.2", "20"),
          "animation": ("render", "0.2", "20"), "simulation": ("render", "0.2", "20"),
          "lighting": ("render", "0.2", "20"), "render": ("render", "0.2", "20")}
+SEQUENCES = ("story", "sequences")
+STYLE = ("story", "style")
+SEQUENCE_KEY = "bible/style/keys/{}/{}.json"
 SHOT_STAGES = ("layout", "animation", "simulation", "lighting", "render")
 SCENES = ("layout", "animation", "simulation", "lighting")
 CHARACTER = "bible/canon/characters/{}.md"
@@ -262,6 +269,25 @@ def _intake(p, root, ticket: dict, pull: dict, taken: set, order: dict) -> list:
     return sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
 
 
+def _keys(p, root, ticket: dict, pull: dict, taken: set) -> list:
+    """The ``style`` ticket for the keys of the sequences of the locked ``sequences`` ticket's episode
+    that have no key on the base: one filing, or none."""
+    episode = tickets.episode(ticket["unit"])
+    if production.stage(p, *STYLE) is None or (*STYLE, episode) in taken:
+        return []
+    missing = [q for q in tickets.sequences(p, root, episode)
+               if gitstate.show(root, production.base(p), SEQUENCE_KEY.format(episode, q)) is None]
+    if not missing:
+        return []
+    taken.add((*STYLE, episode))
+    found = _filing(p, root, ticket, pull, [(ticket, pull)], *STYLE, episode)
+    head = f"Do the stage style for unit {episode}.\n\n"
+    lines = "".join(f"Write the sequence key {SEQUENCE_KEY.format(episode, q)}.\n" for q in missing)
+    found["body"] = (head + lines + "Add only these keys and change no other file under bible/style/.\n\n"
+                     + found["body"][len(head):])
+    return [found]
+
+
 def _intent_title(ticket: dict) -> str:
     ep = tickets.episode(ticket["unit"])
     return f"[{key('intent', ep)}] story intent packet for {ep}"
@@ -331,6 +357,8 @@ def due(p, state: tickets.State, root) -> list:
         room, stage = ticket["room"], ticket["stage"]
         if (room, stage) == PACKAGE:
             found += _intake(p, root, ticket, pull, taken, order)
+        if (room, stage) == SEQUENCES:
+            found += _keys(p, root, ticket, pull, taken)
         if not any(entry["after"] == stage for entry in production.stages(p, room)):
             continue
         upstream_unit = production.stage(p, room, stage)["unit"]
