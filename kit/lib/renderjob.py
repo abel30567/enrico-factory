@@ -8,7 +8,7 @@ literal of the last script); both given, they must agree. ``in_tar`` packs `job.
 `scripts/<nn>.py`, `job.sh` and `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a
 directory, refusing any member that is not a regular file or a directory, whose path is absolute or holds `..`,
 or whose name is not one `job.sh` writes. ``finish`` checks the node's answer and writes the outputs into `out`, with
-`manifest.json` last.
+`manifest.json` last. At `simulation` it also writes `rerun.json`, the state of the second build.
 
 A refusal or a failed job is ``JobError``; its text never holds a value of a setting or a secret.
 """
@@ -36,6 +36,8 @@ SCRIPT = "scene.py"
 SHOTS = "shots.json"
 JOB_FAILED = "job failed on the node"
 BUILD_OK = "FACTORY build ok"
+RERUN_STAGE = "simulation"
+RERUN_SCENE = "rerun-scene.json"
 NO_SCRIPT = "no input named scene.py"
 NO_SHOTS = "no input ending shots.json"
 BAD_RESOLUTION = "RENDER_RESOLUTION is not <width>x<height>"
@@ -44,8 +46,8 @@ NO_FPS = "no input {} and the unit's LEVEL has no fps"
 BAD_FPS = "{} has no fps that is a whole number above zero"
 TWO_FPS = "the unit's LEVEL has fps {}, {} has fps {}"
 # What job.sh packs into out.tar.
-NAMES = re.compile(r"scene\.json|node\.json|engine-build\.log|engine-render\.log|frame-[0-9]{6}\.(png|exr)"
-                   r"|rerender-[0-9]{6}\.png")
+NAMES = re.compile(r"scene\.json|rerun-scene\.json|node\.json|engine-build\.log|engine-render\.log"
+                   r"|frame-[0-9]{6}\.(png|exr)|rerender-[0-9]{6}\.png")
 FIXED_SEED = {"FixedSeed": 0}
 _RESOLUTION = re.compile(r"([1-9][0-9]*)x([1-9][0-9]*)")
 
@@ -204,11 +206,11 @@ def _json(path):
         return None
 
 
-def built(node) -> bool:
-    """True when `node.json`'s build step logged the ok marker."""
+def built(node, step_name: str = "build") -> bool:
+    """True when `node.json`'s step ``step_name`` logged the ok marker."""
     steps = node.get("steps") if isinstance(node, dict) else None
     return isinstance(steps, list) and any(
-        isinstance(step, dict) and step.get("step") == "build" and BUILD_OK in (step.get("markers") or [])
+        isinstance(step, dict) and step.get("step") == step_name and BUILD_OK in (step.get("markers") or [])
         for step in steps)
 
 
@@ -260,6 +262,12 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
     scene = _json(os.path.join(unpacked, "scene.json"))
     if not isinstance(scene, dict):
         raise JobError(JOB_FAILED)
+    rerun = _json(os.path.join(unpacked, RERUN_SCENE))
+    if described["stage"] == RERUN_STAGE:
+        if not built(node, "rebuild") or not isinstance(rerun, dict):
+            raise JobError(JOB_FAILED)
+    elif os.path.exists(os.path.join(unpacked, RERUN_SCENE)):
+        raise JobError(JOB_FAILED)
     directory = stage_dir(job)
     command = flags(node)
     out = job["out"]
@@ -268,6 +276,8 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
             shutil.copyfile(os.path.join(unpacked, name), os.path.join(out, name))
     try:
         state = scenestate.state(scene, described, level(_scripts(job)[-1]["text"]))
+        rerun_state = None if described["stage"] != RERUN_STAGE else scenestate.state(
+            rerun, described, level(_scripts(job)[-1]["text"]))
         measured = frames.measure(out, described["fps"], described["first"], described["last"],
                                   described["sampled"], run=run)
         metric = str(settings.get("PERCEPTUAL_METRIC", "")).strip()
@@ -278,6 +288,8 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
     except (scenestate.SceneError, frames.FramesError, KeyError, TypeError, ValueError):
         raise JobError(JOB_FAILED) from None
     Path(out, "state.json").write_text(scenestate.dumps(state), encoding="utf-8")
+    if rerun_state is not None:
+        Path(out, "rerun.json").write_text(scenestate.dumps(rerun_state), encoding="utf-8")
     Path(out, "render.json").write_text(json.dumps(measured, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     outputs = []
     for name in sorted(os.listdir(out)):

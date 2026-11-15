@@ -1,11 +1,12 @@
 """Simulation: a shot's simulation ran twice from the same inputs gives the same caches, and the locked
 run's caches stay in bounds (brief sections 6 and 16).
 
-Rule ids: depends (1), state (2), hashes (3), bounds (4). Rule 1 also holds each `simulation/scene.py` to
+Rule ids: depends (1), state (2), hashes (3), bounds (4), rerun (5). Rule 1 also holds each `simulation/scene.py` to
 `JOB_FILES` (`lint.job_files`), on line 1 of the script. Findings in JSON files are on line 1. A run file is
 `production/<ep>/<shot>/simulation/state.json` (the locked run) or `rerun.json` (a second run of the same
 job); `production/assets/` holds assets, not shots, and is not read. Caches are matched by
-`id`; only `state.json` is held to the bounds.
+`id`; only `state.json` is held to the bounds. Rule 5: each key of `RERUN_KEYS` (the scene state but `caches`)
+is equal in the two run files (`reproduce.differences`), read once both pass rule 2.
 """
 
 from __future__ import annotations
@@ -15,10 +16,13 @@ import re
 from pathlib import Path
 
 from ..lint import Finding, files, job_files, read_json
+from ..reproduce import differences
 
 RUN_FILE = re.compile(r"^production/([^/]+)/([^/]+)/simulation/(state|rerun)\.json$")
 SCENE = re.compile(r"^production/(?!assets/)[^/]+/[^/]+/simulation/scene\.py$")
 JOB_FILES = ("manifest.json", "state.json")
+RERUN_KEYS = ("actors", "camera", "fps", "frames", "framing", "lights", "line_flips", "lipsync", "motion", "render",
+              "shot", "stage", "sun")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_SPEED_M_S = 30
 ENERGY_GAIN = 1.1
@@ -88,6 +92,12 @@ def _hashes(state_rel: str, state: dict, rerun_rel: str, rerun: dict) -> list[Fi
     return found
 
 
+def _rerun(state_rel: str, state: dict, rerun_rel: str, rerun: dict) -> list[Finding]:
+    """Rule `rerun`: one finding on the rerun file per key of `RERUN_KEYS` the two runs do not hold equal."""
+    return [Finding(rerun_rel, 1, "rerun", f"{key} differs from {state_rel}") for key in RERUN_KEYS
+            if (key in state) != (key in rerun) or (key in state and differences(state[key], rerun[key]))]
+
+
 def _bounds(rel: str, caches: dict[str, dict]) -> list[Finding]:
     found = []
     for cid in sorted(caches):
@@ -115,18 +125,20 @@ def check(root: Path) -> list[Finding]:
     for ep, shot in sorted(units):
         unit, runs = f"production/{ep}/{shot}", units[(ep, shot)]
         rels = {run: f"{unit}/simulation/{run}.json" for run in ("state", "rerun")}
-        caches = {}
+        caches, data = {}, {}
         for run, other in (("state", "rerun"), ("rerun", "state")):
             if run not in runs:
                 continue
             if other not in runs:
                 found.append(Finding(rels[run], 1, "depends", f"{rels[other]} is missing"))
-            findings, caches[run] = _state(rels[run], shot, read_json(root, rels[run])[1])
+            data[run] = read_json(root, rels[run])[1]
+            findings, caches[run] = _state(rels[run], shot, data[run])
             found += findings
             if findings:
                 caches[run] = None
         if caches.get("state") is not None and caches.get("rerun") is not None:
             found += _hashes(rels["state"], caches["state"], rels["rerun"], caches["rerun"])
+            found += _rerun(rels["state"], data["state"], rels["rerun"], data["rerun"])
         if caches.get("state") is not None:
             found += _bounds(rels["state"], caches["state"])
     for rel in sorted(have):
