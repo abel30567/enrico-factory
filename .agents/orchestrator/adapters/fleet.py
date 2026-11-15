@@ -15,7 +15,7 @@
 import json, os, re, ssl, subprocess, sys, time, urllib.error, urllib.request
 from pathlib import Path
 
-TTL = {"builder": 7200, "fixer": 5400, "verifier": 3600, "br": 3600}
+TTL = {"builder": 7200, "fixer": 5400, "verifier": 5400, "br": 5400}
 POLL_S = 45
 BOOT_S = 600   # a box boots in a minute or two
 CA = "/etc/ssl/cert.pem"   # the python.org build on macOS ships no CA bundle; the system one is here
