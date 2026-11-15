@@ -1,0 +1,5 @@
+#!/bin/bash
+# Fake timeout: logs its limit to $FAKE/timeout.log and runs the rest.
+echo "$1" >> "$FAKE/timeout.log"
+shift
+exec "$@"

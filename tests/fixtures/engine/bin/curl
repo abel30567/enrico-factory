@@ -1,0 +1,19 @@
+#!/bin/bash
+# Fake curl for job.sh: a PUT logs "PUT <url>" to $FAKE/curl.log, copies the file to $FAKE/put/<last path
+# part of the url> and prints the http code ($FAKE_PUT_OUT for the url ending in /out, else 200).
+method=GET file="" url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -X) method=$2; shift ;;
+    --upload-file) file=$2; shift ;;
+    -o|-w) shift ;;
+    -*) ;;
+    *) url=$1 ;;
+  esac
+  shift
+done
+echo "$method $url" >> "$FAKE/curl.log"
+name=${url##*/}
+mkdir -p "$FAKE/put"
+[ -n "$file" ] && cp "$file" "$FAKE/put/$name" 2>/dev/null
+if [ "$name" = out ]; then printf '%s' "${FAKE_PUT_OUT:-200}"; else printf '200'; fi

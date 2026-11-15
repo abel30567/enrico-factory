@@ -1,0 +1,48 @@
+#!/bin/bash
+# Fake docker for job.sh. `docker rm` does nothing. `docker run` logs its arguments to $FAKE/docker.log,
+# finds the host root of `-v <root>:/work` and acts by the editor arguments:
+# - build (-ExecutePythonScript=): writes out/scene.json, Job/job.env ($FAKE_ENV, a file to copy, else
+#   frames 8 to 10 at render sampled "8 10"), the engine version line and the marker
+#   ($FAKE_MARKER, else "FACTORY build ok"; none when $FAKE_NO_OK is set), exits $FAKE_BUILD_RC (else 0);
+# - render (QueueManifest.utxt): out/frames/<4 digits>.png and .exr from FIRST to LAST of job.env, but
+#   not the file named by $FAKE_MISSING;
+# - rerender (Rerender.utxt): out/rerender/<4 digits>.png for each SAMPLED frame.
+echo "$*" >> "$FAKE/docker.log"
+[ "$1" = run ] || exit 0
+root=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = -v ] && root=${a%:/work}
+  prev=$a
+done
+env="$root/Job/job.env"
+get(){ sed -n -E "s/^$1=\"?([0-9a-z -]*)\"?\$/\\1/p" "$env" | head -1; }
+case "$*" in
+  *-ExecutePythonScript=*)
+    mkdir -p "$root/out" "$root/Job"
+    echo '{"actors": []}' > "$root/out/scene.json"
+    if [ -n "${FAKE_ENV:-}" ]; then cp "$FAKE_ENV" "$env"
+    else printf 'WIDTH=640\nHEIGHT=360\nFIRST=8\nLAST=10\nSTAGE=render\nSAMPLED="8 10"\n' > "$env"; fi
+    echo "LogInit: Engine Version: 5.0.0-fake+UE5"
+    [ -n "${FAKE_NO_OK:-}" ] || printf 'LogPython: %s\r\n' "${FAKE_MARKER:-FACTORY build ok}"
+    exit "${FAKE_BUILD_RC:-0}"
+    ;;
+  *QueueManifest.utxt*)
+    mkdir -p "$root/out/frames"
+    n=$(get FIRST)
+    while [ "$n" -le "$(get LAST)" ]; do
+      for e in png exr; do
+        f=$(printf '%04d.%s' "$n" "$e")
+        [ "$f" = "${FAKE_MISSING:-}" ] || echo "frame $n" > "$root/out/frames/$f"
+      done
+      n=$((n + 1))
+    done
+    echo "LogMovieRenderPipeline: render done"
+    ;;
+  *Rerender.utxt*)
+    mkdir -p "$root/out/rerender"
+    for n in $(get SAMPLED); do echo "rerender $n" > "$root/out/rerender/$(printf '%04d' "$n").png"; done
+    echo "LogMovieRenderPipeline: rerender done"
+    ;;
+esac
+exit 0
