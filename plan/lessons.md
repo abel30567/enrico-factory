@@ -63,3 +63,8 @@
   branch before it pushes. Mine did not, so the next launch was given the old head and the showrunner
   answered BLOCKED a third time. Before doing by hand what a kit command does, read the function and do
   every effect it has; then file the gap, so that the hand is not needed twice.
+- **A ruling on a pull request's `[BUILDER] BLOCKED` is not relaunched by the tick (2026-11-15).** The
+  17:49Z wake ruled on PR #540 and wrote "fixer at next tick"; the tick only repeated the NEED, whose text
+  ends "then orch launch fixer N" (`tick.py`, the BLOCKED branch of the PR state), and the fixer started
+  35 minutes late, by hand. A block on an issue is relaunched by the tick; a block on a pull request is
+  not. Read the NEED line to its end and do every step it names in the same wake.
