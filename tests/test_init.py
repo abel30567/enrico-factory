@@ -38,14 +38,18 @@ def skipped(name):
     return name.startswith(".") or name == "__pycache__" or name.endswith(".pyc")
 
 
-def kit_files(kit, roles=None):
-    """Files of `kit` init installs, relative to it; `roles` (a set of ids) filters roles/ and evals/."""
+def kit_files(kit, roles=None, lab=False):
+    """Files of `kit` init installs, relative to it; `roles` (a set of ids) filters roles/ and evals/, and
+    keeps of evals/golden/ only corpus/, only when `lab` (the lab room is installed)."""
     out = []
     for dirpath, dirnames, filenames in os.walk(kit):
         rel = Path(dirpath).relative_to(kit)
         dirnames[:] = [d for d in dirnames if not skipped(d) or (d == ".snapshot" and rel.parts[:1] == ("evals",))]
         if roles is not None and rel == Path("evals"):
-            dirnames[:] = [d for d in dirnames if d in roles]
+            dirnames[:] = [d for d in dirnames if d in roles or (d == "golden" and lab)]
+        if roles is not None and rel == Path("evals/golden"):
+            dirnames[:] = [d for d in dirnames if d == "corpus"]
+            filenames = []
         for name in filenames:
             if skipped(name):
                 continue
@@ -76,6 +80,19 @@ def files_under(root):
 
 def layout(rooms):
     return sorted(LAYOUT + [ROOM_LAYOUT[r] for r in rooms if r in ROOM_LAYOUT])
+
+
+def add_golden(kit):
+    """Give the kit at `kit` an evals/golden/ with a corpus, a README and an engine level."""
+    for rel in ("corpus/structure/01-clean/case.json", "corpus/structure/01-clean/tree/draft.md", "README.md",
+                "prop-drop/level.py"):
+        (kit / "evals/golden" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (kit / "evals/golden" / rel).write_text(rel + "\n")
+
+
+def real_roles(rooms):
+    return {path.stem for path in (KIT / "roles").glob("*.md")
+            if frontmatter.parse(path.read_text())[0].get("room") in (*rooms, "studio")}
 
 
 def roles_for(rooms):
@@ -191,6 +208,19 @@ class TreeTest(InitTest):
         expected = {p: v for p, v in tree(target).items() if p != "." and not p.startswith(".factory/evals")}
         self.assertTrue(any(p.startswith(".factory/evals") for p in tree(target)))
         self.assertEqual({p: v for p, v in tree(built).items() if p != "."}, expected)
+        add_golden(kit)
+        lab = self.tempdir() / "lab"
+        done = python("-c", "import sys; from pathlib import Path; from kit.lib import cmd_init; "
+                            "cmd_init.install(Path(sys.argv[1]), Path(sys.argv[2]), ['story', 'lab'], evals=False)",
+                      lab, kit)
+        self.assertEqual((done.returncode, done.stdout, done.stderr), (0, "", ""))
+        self.assertFalse((lab / ".factory/evals").exists())
+
+    def test_real_kit_without_evals_installs_no_evals_with_the_lab_room(self):
+        target = self.tempdir()
+        cmd_init.install(target, KIT, ["story", "lab"], evals=False)
+        self.assertTrue((target / ".factory/lib/cmd_corpus.py").is_file())
+        self.assertFalse((target / ".factory/evals").exists())
 
     def test_layout_contents(self):
         target, _ = self.production(self.source_kit(), "--rooms", "story")
@@ -290,12 +320,14 @@ class CheckTest(InitTest):
 class RoomsTest(InitTest):
     def test_one_room_installs_only_its_roles_evals_and_pipeline(self):
         kit = self.source_kit()
+        add_golden(kit)
         for room, roles, evals in (("story", ["chief", "editor", "keeper", "writer"], ["editor", "keeper", "writer"]),
                                    ("distribution", ["keeper", "uploader", "watcher"], ["keeper", "uploader"])):
             with self.subTest(room=room):
                 target, _ = self.production(kit, "--rooms", room)
                 self.assertEqual(sorted(p.stem for p in (target / ".factory/roles").iterdir()), roles)
                 self.assertEqual(sorted(p.name for p in (target / ".factory/evals").iterdir()), evals)
+                self.assertFalse((target / ".factory/evals/golden").exists())
                 text = (target / ".factory/pipeline.json").read_text()
                 entries = json.loads(text)
                 self.assertEqual([e["room"] for e in entries], [room])
@@ -328,6 +360,55 @@ class RoomsTest(InitTest):
         self.assertEqual(self.init(kit, target / "missing").returncode, 2)
         (target / "file").write_text("x")
         self.assertEqual(self.init(kit, target / "file").returncode, 2)
+
+
+class CorpusTest(InitTest):
+    """With the lab room, `evals/golden/corpus/` is installed whole and `factory corpus` runs there."""
+
+    def corpus_line(self, cwd):
+        result = subprocess.run([str(cwd / ".factory/factory"), "corpus"], capture_output=True, text=True, cwd=cwd)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result.stdout.splitlines()[-1]
+
+    def assert_corpus(self, target):
+        self.assertEqual(sorted(p.name for p in (target / ".factory/evals/golden").iterdir()), ["corpus"])
+        corpus = KIT / "evals/golden/corpus"
+        self.assertEqual(files_under(target / ".factory/evals/golden/corpus"),
+                         sorted(p.relative_to(corpus).as_posix() for p in corpus.rglob("*") if p.is_file()))
+        expected = python(KIT / "factory", "corpus")
+        self.assertEqual(expected.returncode, 0, expected.stdout + expected.stderr)
+        self.assertEqual(self.corpus_line(target), expected.stdout.splitlines()[-1])
+
+    def test_lab_room_installs_the_corpus_and_factory_corpus_runs_in_the_production(self):
+        target = self.tempdir()
+        result = python(KIT / "factory", "init", "--rooms", "story,lab", target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        installed = kit_files(KIT, real_roles(["story", "lab"]), lab=True)
+        self.assertTrue(any(p.startswith("evals/golden/corpus/") for p in installed))
+        self.assertEqual(files_under(target), sorted([f".factory/{p}" for p in installed] + layout(["story", "lab"])))
+        self.assert_corpus(target)
+
+    def test_upgrade_adds_the_corpus_with_the_lab_room_and_drops_it_without(self):
+        target = self.tempdir()
+        self.assertEqual(python(KIT / "factory", "init", "--rooms", "story", target).returncode, 0)
+        self.assertFalse((target / ".factory/evals/golden").exists())
+        story = files_under(target / ".factory")
+        result = python(KIT / "factory", "init", "--upgrade", "--rooms", "story,lab", target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_corpus(target)
+        result = python(KIT / "factory", "init", "--upgrade", "--rooms", "story", target)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((target / ".factory/evals/golden").exists())
+        self.assertEqual(files_under(target / ".factory"), story)
+
+    def test_fixture_kit_installs_only_the_corpus_of_golden_with_the_lab_room(self):
+        kit = self.source_kit()
+        add_golden(kit)
+        target, _ = self.production(kit, "--rooms", "story,lab")
+        self.assertEqual(files_under(target / ".factory/evals/golden"),
+                         ["corpus/structure/01-clean/case.json", "corpus/structure/01-clean/tree/draft.md"])
+        installed = kit_files(kit, roles_for(["story", "lab"]), lab=True)
+        self.assertEqual(files_under(target), sorted([f".factory/{p}" for p in installed] + layout(["story", "lab"])))
 
 
 class AgainTest(InitTest):
