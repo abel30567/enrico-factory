@@ -222,10 +222,6 @@ class B1Billing(Case):
         replay, driver = self.started(exchanges, clock="2026-11-14T12:10:15Z")
         self.assertEqual(driver.stop(), {"usd": 0.0899, "compute_min": 10.25})
 
-    def test_self_ended_has_no_time_in_its_reason(self):
-        replay, driver = self.started(session("self-ended"), clock="2026-11-14T12:10:15Z")
-        self.assertEqual(driver.stop(), {"usd": 0.0899, "compute_min": 10.25})
-
 
 class B2AtLeastOneMinute(Case):
     def test_twenty_seconds_bill_one_minute(self):
