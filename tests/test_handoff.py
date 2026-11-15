@@ -395,7 +395,7 @@ class Summary(Case):
 class Guard(Case):
     REFUSED = (slash("Users", "someone", "art", "ref.png"), slash("home", "a", "b"), slash("tmp", "x"), "~/work",
                "$HOME/x", "file://" + slash("etc", "passwd"), "C:\\Users\\a", "C:/a", "see ~ there", slash("var"),
-               f"({slash('opt')})", slash("srv", "x"))
+               f"({slash('opt')})", slash("srv", "x"), slash("tmp"), slash("Users"))
     ALLOWED = ("and/or", "https://media.example.invalid/ab12/cd", "episodes/ep02/outline.md", "1/2",
                "<!-- preview-of " + "a" * 64 + " -->", "[the outline](episodes/ep02/outline.md)", "a / b",
                "~~~~", "http://127.0.0.1:9/pub/ab")
