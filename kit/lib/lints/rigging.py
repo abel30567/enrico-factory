@@ -7,14 +7,16 @@ one. Of a rigging state it reads `asset`, `rig_sha256`, `joints` (each `{name, m
 degrees) and `rom` (`{poses, limit_violations, penetration_mm}`); of a manifest only `outputs`, of each
 output only `sha256`, and `skeleton`; of an asset state only `kind`. Every other key is ignored.
 
-Rule ids: shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5), skeleton (6).
+Rule ids: shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5), skeleton (6),
+depends (7).
 Findings are on line 1 of the state, except a manifest whose `outputs` is not a list of outputs and every
 `skeleton` finding, which are on line 1 of the manifest. The manifest of a character (an asset state that is
 an object whose `kind` is `character`) has a `skeleton`, `{bones, weights_normalised}` with one root, unique
 bone names and normalised weights; it needs no rigging state. A state with a `shape` finding gets none of
 rules 2 to 5. At least one pose is tested, no joint-limit violation is found, no joint's `min` is above its
 `max` on an axis, and the worst penetration is at most `MAX_PENETRATION_MM`. The rig hash is the `sha256` of
-an output the rig job's manifest records.
+an output the rig job's manifest records. Rule 7 holds each `rigging/scene.py` to `JOB_FILES`
+(`lint.job_files`), on line 1 of the script: the state only, since rule 5 already names a missing manifest.
 """
 
 from __future__ import annotations
@@ -23,12 +25,14 @@ import math
 import re
 from pathlib import Path
 
-from ..lint import Finding, files, read_json
+from ..lint import Finding, files, job_files, read_json
 from . import assets
 
 MAX_PENETRATION_MM = 5
 STATE = re.compile(r"^production/assets/([^/]+)/rigging/state\.json$")
 MANIFEST = re.compile(r"^production/assets/([^/]+)/rigging/manifest\.json$")
+SCENE = re.compile(r"^production/assets/[^/]+/rigging/scene\.py$")
+JOB_FILES = ("state.json",)
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 KEYS = ("asset", "rig_sha256", "joints", "rom")
 ROM_KEYS = ("poses", "limit_violations", "penetration_mm")
@@ -140,6 +144,8 @@ def check(root: Path) -> list[Finding]:
     present = set(rels)
     found = []
     for rel in rels:
+        if SCENE.match(rel):
+            found += job_files(present, rel, JOB_FILES)
         if m := MANIFEST.match(rel):
             found += _skeleton(root, rel, f"production/assets/{m.group(1)}/assets/state.json", present)
         if not (m := STATE.match(rel)):
