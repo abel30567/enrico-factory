@@ -243,6 +243,8 @@ the table there.
 Production stages lock cheapest first: no final render until layout, animation, simulation and
 lighting are locked on previews. A simulation is locked as a cache; renders only read caches. A new
 version of a locked asset marks every shot that uses it stale at that shot's earliest broken stage.
+A shot stage locks only when `assets` is locked for the characters and the set of its shot file and
+`rigging` is locked for its characters.
 
 A ticket is a GitHub issue titled `[KEY] summary` with labels `tracked`, `room:<room>`,
 `stage:<stage>` and `unit:<unit-id>`. One ticket, one maker, one branch, one pull request, except a
@@ -371,7 +373,7 @@ Merging a pull request is the lock. `factory lock` merges at most one pull reque
 1. `[LINT] PASS` counts for the head, for every lint the stage names.
 2. Every checker the stage names has a counting `APPROVED`, and no Blocker is open.
 3. Every judge the stage names has a counting verdict on the head. Where the stage is `blind` and a locked version exists, the verdicts prefer the new one (for a panel, a majority).
-4. The upstream stage of the same unit is locked, or the format skips it; in production, every cheaper stage of the shot is locked. For an episode stage after a sequence stage, the upstream stage is locked for every sequence of the episode on the base branch, and there is at least one. For a sequence stage after an episode stage, the upstream ticket is the one of the sequence's episode.
+4. The upstream stage of the same unit is locked, or the format skips it; in production, every cheaper stage of the shot is locked, `assets` for each character and the set of its shot file and `rigging` for each character included. For an episode stage after a sequence stage, the upstream stage is locked for every sequence of the episode on the base branch, and there is at least one. For a sequence stage after an episode stage, the upstream ticket is the one of the sequence's episode.
 5. On a pitched ticket, the pull request is the one selected.
 6. A pull request touching `bible/**` carries its amendment, the vote its class requires, and `canon-reviewer` `APPROVED`.
 7. The changed files are inside the maker role's `writes` globs, and inside the room of the orchestrator that is locking.
@@ -464,8 +466,8 @@ commits the files on the pull request's branch.
   it they read the job file from disk and its inputs on the base. The credential does not enter the
   operator's session (`docs/harness.md`, section 8). The tools are the files under `kit/lib/tools/`. A pull
   request that holds a job can be locked: beside the maker's `writes`, rule 7 of section 9 takes the job
-  file of each `DONE` job, its request when it is inside the stage's `paths`, and the manifest rows those
-  jobs added.
+  file of each `DONE` job, its request when it is inside the stage's `paths`, the files of its tool's
+  `STAGE_FILES` in the ticket's directory, by name, and the manifest rows those jobs added.
 - **Locks that need a gate PASS**: a lock that hands a package to another room (the story package,
   the master, a platform package), and any lock on a ticket that has passed its iteration cap.
 - **Release is staged**: private upload, a check that the platform finished processing and kept
@@ -869,6 +871,10 @@ caches, stems, the master and every engine binary go to the asset store under th
 | `conform/captions.json` | conform-editor | a list of `{line, text, start, end}`: one cue per `L<n>` of `lines.json`, with its text, `start` and `end` in frames |
 | `conform/mix.json` | the job | `{loudness_lufs, true_peak_dbtp, lines, stems, master}`: integrated loudness and true peak by `ebur128`; `lines` a list of `{line, start, end}`, the frames where each `L<n>` is heard in the mix; `stems` a list of `{name, sha256}`; `master` its sha256 |
 
+A production lint (`layout`, `animation`, `simulation`, `lighting`) holds each `<stage>/scene.py` to the
+files its job writes beside it, and a request `<stage>/requests/<id>.json` holds the finding back until
+one of them exists.
+
 The scene state, `state.json`. Every key is present from `layout` on; one that no stage has filled yet
 is an empty list or null.
 
@@ -884,7 +890,7 @@ is an empty list or null.
 | `motion` | a list of `{actor, foot_slide_mm, penetration_mm, float_mm, limit_violations, max_step_deg}`, each the worst over the shot; `max_step_deg` the largest turn of any joint between two frames | `animation` |
 | `lipsync` | a list of `{line, actor, offset_frames}`: per `L<n>` spoken on screen, the mouth's start minus the sound's start | `animation` |
 | `caches` | a list of `{id, sha256, max_speed_m_s, energy_j, gravity_m_s2}`: `energy_j` `{first, last}`; `gravity_m_s2` the fitted free-fall acceleration, or null where nothing falls | `simulation` |
-| `lights`, `sun` | a list of `{id, kind, intensity, unit, color, temperature_k}` (`unit` `lux` or `cd`, `color` linear `[r, g, b]` 0 to 1); `{elevation_deg, azimuth_deg}`, or null indoors | `lighting` |
+| `lights`, `sun` | a list of `{id, kind, intensity, unit, color, temperature_k}` (`unit` `lux` or `cd`, `color` linear `[r, g, b]` 0 to 1; a light without a temperature gets the correlated colour temperature of its `color`); `{elevation_deg, azimuth_deg}` toward the one directional light, `azimuth_deg` from +X toward +Y in [0, 360), or null when no light is directional | `lighting` |
 | `render` | `{lumen, tsr, spatial_samples, temporal_samples, warmup_frames, width, height}`: two booleans, then integers | the render reproducibility harness |
 
 Values the production lints use. Each one stays here until the measurement named beside it replaces
