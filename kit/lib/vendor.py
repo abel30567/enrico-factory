@@ -1,8 +1,9 @@
-"""What the 3D tools share: the vendors' addresses, the reasons, the job's reference image and every HTTP request.
+"""What the 3D tools share: the vendors' addresses, the reasons, the job's reference image and model, the
+stage files and every HTTP request.
 
 The model tool (`kit/lib/tools/model3d.py`) asks the model vendor's queue API for a model of one reference
 image; the rig tool (`kit/lib/tools/rig.py`) asks the rig vendor, on the same queue API, to rig a model held
-in the asset store.
+in the asset store, the one the asset's `assets/state.json` names.
 A tool module is loaded fresh for each call, so every constant a test patches is here, and the tools read
 them as ``vendor.<NAME>`` at call time.
 
@@ -13,6 +14,7 @@ setting, a key, a URL, a response body or the text of an exception.
 
 import base64
 import contextlib
+import hashlib
 import http.client
 import json
 import os
@@ -22,7 +24,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from kit.lib import assets, media
+from kit.lib import assets, glb, media
 from kit.lib.tools import Down, Failed
 
 MODEL_API = "https://queue.fal.run"
@@ -52,9 +54,13 @@ DOWNLOAD_FAILED = "download failed"
 NOT_STORED = "asset store did not take the output"
 NOT_IN_STORE = "model is not in the asset store"
 TOO_LARGE = "model is larger than a data URI allows"
+NO_MODEL = "request names no asset model"
+NO_STATE = "asset state is not an input"
+NOT_A_GLB = "output is not a GLB the kit can read"
 REASONS = (NOT_A_REQUEST, NO_REFERENCE, NOT_IN_MANIFEST, REFUSED, UNREACHABLE, VENDOR_FAILED, TOO_SLOW,
-           DOWNLOAD_FAILED, NOT_STORED)
-RIG_REASONS = REASONS + (NOT_IN_STORE, TOO_LARGE)
+           DOWNLOAD_FAILED, NOT_STORED, NOT_A_GLB)
+RIG_REASONS = REASONS + (NOT_IN_STORE, TOO_LARGE, NO_MODEL, NO_STATE)
+ASSET_PREFIX = "asset:"
 
 
 class _NoAnswer(Exception):
@@ -66,17 +72,35 @@ def _before(reason):
     return Failed(reason, usd=0, compute_min=0)
 
 
+def _json(text):
+    try:
+        return json.loads(text) if text is not None else None
+    except ValueError:
+        return None
+
+
+def request(call):
+    """The request, the first input: ``{for, prompt, refs}`` with ``refs`` a list."""
+    inputs = call["inputs"]
+    found = _json(inputs[0]["text"]) if inputs else None
+    if not isinstance(found, dict) or sorted(found) != REQUEST_KEYS or not isinstance(found["refs"], list):
+        raise _before(NOT_A_REQUEST)
+    return found
+
+
+def asset(call):
+    """The request's ``for``, a non-empty string."""
+    found = request(call)["for"]
+    if not isinstance(found, str) or not found:
+        raise _before(NOT_A_REQUEST)
+    return found
+
+
 def reference(call):
     """The sha256 of the job's reference image: ``refs[0]`` of the request (the first input), looked up in
     the manifest (the second input)."""
     inputs = call["inputs"]
-    try:
-        request = json.loads(inputs[0]["text"]) if inputs and inputs[0]["text"] is not None else None
-    except ValueError:
-        request = None
-    if not isinstance(request, dict) or sorted(request) != REQUEST_KEYS or not isinstance(request["refs"], list):
-        raise _before(NOT_A_REQUEST)
-    refs = request["refs"]
+    refs = request(call)["refs"]
     if not refs or not isinstance(refs[0], str) or not refs[0].startswith(REF_PREFIX) or refs[0] == REF_PREFIX:
         raise _before(NO_REFERENCE)
     name = refs[0][len(REF_PREFIX):]
@@ -87,6 +111,51 @@ def reference(call):
         if len(fields) >= 2 and fields[0] == name and _SHA256.fullmatch(fields[1]):
             return fields[1]
     raise _before(NOT_IN_MANIFEST)
+
+
+def model(call):
+    """The sha256 of the model to rig: the request (the first input) names ``refs`` exactly
+    ``["asset:<for>"]``, and a later input is ``production/assets/<for>/assets/state.json``, whose
+    ``sha256`` it is."""
+    name = asset(call)
+    if request(call)["refs"] != [ASSET_PREFIX + name]:
+        raise _before(NO_MODEL)
+    rel = f"production/assets/{name}/assets/state.json"
+    for item in call["inputs"][1:]:
+        state = _json(item["text"]) if item["path"] == rel else None
+        if isinstance(state, dict) and isinstance(state.get("sha256"), str) and _SHA256.fullmatch(state["sha256"]):
+            return state["sha256"]
+    raise _before(NO_STATE)
+
+
+def summary(path):
+    """`kit.lib.glb.summary` of the output at ``path``; a GLB that does not read is deleted and fails the job."""
+    with open(path, "rb") as handle:
+        data = handle.read()
+    try:
+        return glb.summary(data)
+    except glb.Broken:
+        os.unlink(path)
+        raise Failed(NOT_A_GLB) from None
+
+
+def stage_file(out, name, data):
+    """Write the stage file ``name`` in ``out``: ``data`` as JSON, keys sorted, one space of indent."""
+    with open(os.path.join(out, name), "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(data, indent=1, sort_keys=True) + "\n")
+
+
+def manifest(call, engine, names, **extra):
+    """The stage manifest of a vendor job, ``{job, engine, flags, inputs, seeds, outputs}`` and ``extra``:
+    ``outputs`` the outputs ``names`` of the job, in name order."""
+    outputs = []
+    for name in sorted(names):
+        with open(os.path.join(call["out"], name), "rb") as handle:
+            data = handle.read()
+        outputs.append({"bytes": len(data), "name": name, "sha256": hashlib.sha256(data).hexdigest()})
+    return {"job": call["hash"], "engine": engine, "flags": [],
+            "inputs": [{"path": item["path"], "sha256": item["sha256"]} for item in call["inputs"]],
+            "seeds": {}, "outputs": outputs, **extra}
 
 
 def read_key(path):

@@ -7,7 +7,7 @@ every `production/assets/<asset>/assets/state.json` of the tree, the canon sheet
 no other finding, and one with a `naming` finding none of rules 3 to 6. A character needs its canon
 sheet under `bible/canon/characters/`, a set its sheet under `bible/canon/places/`. A character's height
 is the ledger row `height` of its id, written `<number> m`; a set's is checked where it has such a row,
-a prop's never. Only a character's skeleton is checked beyond its shape.
+a prop's never. A character's skeleton is checked when it is not null; rigging requires one.
 """
 
 from __future__ import annotations
@@ -80,6 +80,21 @@ def _shape(data) -> list[str]:
     return out
 
 
+def skeleton_problems(skeleton) -> list[str]:
+    """What is wrong with a skeleton of the right shape: not one root, a repeated bone name, weights that
+    are not normalised."""
+    found = []
+    bones = skeleton["bones"]
+    roots = sum(1 for b in bones if b["parent"] is None)
+    if roots != 1:
+        found.append(f"skeleton has {roots} roots, not one")
+    names = [b["name"] for b in bones]
+    found += [f"bone name {name} repeats" for name in sorted(set(names)) if names.count(name) > 1]
+    if not skeleton["weights_normalised"]:
+        found.append("skin weights are not normalised")
+    return found
+
+
 def _heights(root: Path, present: set[str]) -> dict[str, tuple[int, str]]:
     """{subject: (line, value)}: the first `height` row of each subject, trimmed and lower-cased."""
     if CANON_LEDGER not in present:
@@ -130,20 +145,8 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
         elif abs(Decimal(repr(data["height_m"])) - Decimal(m.group(1))) > SCALE_TOLERANCE * Decimal(m.group(1)):
             found.append(("scale", f"height_m {format(data['height_m'], 'g')} is not within 10% of {value} "
                                    f"({CANON_LEDGER}:{n})"))
-    if kind == "character":
-        skeleton = data["skeleton"]
-        if skeleton is None:
-            found.append(("skeleton", "a character has no skeleton"))
-        else:
-            bones = skeleton["bones"]
-            roots = sum(1 for b in bones if b["parent"] is None)
-            if roots != 1:
-                found.append(("skeleton", f"skeleton has {roots} roots, not one"))
-            names = [b["name"] for b in bones]
-            found += [("skeleton", f"bone name {name} repeats")
-                      for name in sorted(set(names)) if names.count(name) > 1]
-            if not skeleton["weights_normalised"]:
-                found.append(("skeleton", "skin weights are not normalised"))
+    if kind == "character" and data["skeleton"] is not None:
+        found += [("skeleton", message) for message in skeleton_problems(data["skeleton"])]
     return found
 
 

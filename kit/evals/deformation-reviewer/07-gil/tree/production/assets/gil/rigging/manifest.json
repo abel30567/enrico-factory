@@ -4,5 +4,6 @@
   "flags": [],
   "inputs": [],
   "seeds": {},
-  "outputs": [{"name": "gil_rig.uasset", "sha256": "573593ad11e134677298dac1d8154d81499cfcfbe275155ddd7bd6cd530798e9", "bytes": 2097152}]
+  "outputs": [{"name": "gil_rig.uasset", "sha256": "573593ad11e134677298dac1d8154d81499cfcfbe275155ddd7bd6cd530798e9", "bytes": 2097152}],
+  "skeleton": {"bones": [{"name": "pelvis", "parent": null}, {"name": "spine_01", "parent": "pelvis"}, {"name": "neck", "parent": "spine_01"}, {"name": "head", "parent": "neck"}, {"name": "upperarm_l", "parent": "spine_01"}, {"name": "upperarm_r", "parent": "spine_01"}, {"name": "lowerarm_l", "parent": "upperarm_l"}, {"name": "lowerarm_r", "parent": "upperarm_r"}, {"name": "thigh_l", "parent": "pelvis"}, {"name": "thigh_r", "parent": "pelvis"}, {"name": "calf_l", "parent": "thigh_l"}, {"name": "calf_r", "parent": "thigh_r"}], "weights_normalised": true}
 }
