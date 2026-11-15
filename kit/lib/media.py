@@ -240,3 +240,54 @@ def check(settings, sha256, size):
         raise Failed(f"public link answered {status}")
     if body != (sha256, size):
         raise Failed(OTHER_BYTES_AT_LINK)
+
+
+# The first bytes of each picture type a role may open, and its file extension.
+PICTURE_HEADS = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"GIF87a", "gif"), (b"GIF89a", "gif"))
+PICTURE_HEAD_BYTES = 12
+
+
+def picture_type(head):
+    """``png``, ``jpg``, ``gif`` or ``webp`` from a file's first bytes, else None."""
+    for prefix, kind in PICTURE_HEADS:
+        if head.startswith(prefix):
+            return kind
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def _written(response, size, handle):
+    """``(sha256, length)`` of at most ``size + 1`` bytes of the body, each piece written to ``handle`` as it
+    is hashed; the ``OSError`` of a write, which ends the read."""
+    hasher, length = hashlib.sha256(), 0
+    while length <= size and (piece := response.read(min(CHUNK, size + 1 - length))):
+        hasher.update(piece)
+        length += len(piece)
+        try:
+            handle.write(piece)
+        except OSError as error:
+            return error
+    return hasher.hexdigest(), length
+
+
+def fetch(settings, sha256, size, path):
+    """Get the public link as ``check`` does and write the body to the new file ``path`` (mode 0600).
+
+    ``Failed`` with ``check``'s reasons unless it serves ``size`` bytes of ``sha256``; then no file is left.
+    An ``OSError`` when the file cannot be written.
+    """
+    request = urllib.request.Request(link(settings, sha256), headers={"User-Agent": USER_AGENT})
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            status, _, body = _send(request, LINK_UNREACHABLE, lambda response: _written(response, size, handle))
+        if isinstance(body, OSError):
+            raise body
+        if status != 200:
+            raise Failed(f"public link answered {status}")
+        if body != (sha256, size):
+            raise Failed(OTHER_BYTES_AT_LINK)
+    except BaseException:
+        os.unlink(path)
+        raise

@@ -116,6 +116,18 @@ class ValidateTest(unittest.TestCase):
                            "roles/watcher.md", f"actor {value!r} is not an upper-case id such as STORY-EDITOR "
                                                "or CHANNEL:TUBE")
 
+    def test_media_on_a_checker_passes(self):
+        kit = KitCopy(self)
+        kit.add_key("roles/editor.md", "media: cited")
+        self.assertEqual(kit.validate(), [])
+
+    def test_media_defects(self):
+        self.check(lambda k: k.add_key("roles/editor.md", "media: all"), "roles/editor.md",
+                   "media 'all' is not one of cited")
+        kit = KitCopy(self)
+        kit.add_key("roles/writer.md", "media: cited")
+        self.assertEqual(kit.validate(), ["roles/writer.md: media is only for kind checker"])
+
     ACTOR_DEFECTS = (("writer", "FOO-"), ("writer", "FOO--BAR"), ("uploader", "CHANNEL:TUBE-"))
     ACTOR_CLEAN = (("writer", "QUILL-2"), ("writer", "A"), ("writer", "A-B-C"), ("uploader", "CHANNEL:TUBE"))
 
@@ -426,6 +438,13 @@ class ShippedKitTest(unittest.TestCase):
 
     def test_shipped_kit_validates(self):
         self.assertEqual(roles.validate(KIT), [])
+
+    def test_shipped_media_key_and_command(self):
+        shipped = roles.load_roles(KIT / "roles")
+        self.assertEqual(sorted(r for r, doc in shipped.items() if "media" in doc["meta"]), ["look-reviewer"])
+        self.assertEqual(shipped["look-reviewer"]["meta"]["media"], "cited")
+        result = run(FACTORY, "roles", "--check")
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "OK"))
 
 
 class CommandLineTest(unittest.TestCase):

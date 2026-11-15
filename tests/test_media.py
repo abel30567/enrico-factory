@@ -548,6 +548,48 @@ class B11ContentType(MediaTest):
                          ["image/jpeg", "video/mp4", "application/octet-stream", "application/octet-stream"])
 
 
+class B13Fetch(MediaTest):
+    """``media.fetch`` writes the bytes the public link serves to a new file, and ``picture_type`` names them."""
+
+    def fetch(self, data=PNG):
+        path = self.files / "got"
+        media.fetch(self.values, sha(data), len(data), path)
+        return path
+
+    def test_twin_right_bytes_give_a_private_file(self):
+        self.store.objects[sha(PNG)] = PNG
+        path = self.fetch()
+        self.assertEqual(path.read_bytes(), PNG)
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        self.assertEqual([(r["method"], r["path"]) for r in self.store.requests], [("GET", f"/pub/{sha(PNG)}")])
+        self.assertNotIn("authorization", self.store.requests[0]["headers"])
+        self.assertEqual(self.store.requests[0]["headers"]["user-agent"], AGENT)
+
+    def test_defect_link_fails_and_leaves_no_file(self):
+        cases = [(OTHER, "public link serves other bytes"), (PNG + b"!", "public link serves other bytes"),
+                 (None, "public link answered 404")]
+        for served, reason in cases:
+            with self.subTest(reason=reason, served=served):
+                self.store.public[sha(PNG)] = served
+                with self.assertRaises(media.Failed) as raised:
+                    self.fetch()
+                self.assertEqual(str(raised.exception), reason)
+                self.assertEqual(list(self.files.iterdir()), [])
+        for request in self.store.requests:
+            self.assertNotIn("authorization", request["headers"])
+
+    def test_defect_closed_port(self):
+        self.values["MEDIA_PUBLIC_BASE"] = f"http://127.0.0.1:{free_port()}/pub"
+        with self.assertRaisesRegex(media.Failed, "^public link unreachable$"):
+            self.fetch()
+        self.assertEqual(list(self.files.iterdir()), [])
+
+    def test_picture_type(self):
+        heads = [b"\x89PNG\r\n\x1a\nrest", b"\xff\xd8\xff\xe0rest", b"GIF87arest", b"GIF89arest",
+                 b"RIFF\x10\x00\x00\x00WEBPVP8 ", b"text", b"RIFF\x10\x00\x00\x00WAVEfmt "]
+        self.assertEqual([media.picture_type(h) for h in heads], ["png", "jpg", "gif", "gif", "webp", None, None])
+
+
 class B12Register(unittest.TestCase):
     def setUp(self):
         register, problems = resources.load(resources.REGISTER)

@@ -79,7 +79,7 @@ def own_problems(role_id, text):
     except frontmatter.FrontMatterError as error:
         return [str(error)]
     problems = []
-    keys = set(roles.ROLE_REQUIRED) | {"may_not"} | ({"actor"} if role_id == "braintrust" else set())
+    keys = set(roles.ROLE_REQUIRED) | {"may_not"} | {"braintrust": {"actor"}, "look-reviewer": {"media"}}.get(role_id, set())
     problems += [f"unexpected key {k!r}" for k in sorted(set(meta) - keys)]
     problems += [f"missing key {k!r}" for k in sorted(keys - set(meta))]
     expected = {
@@ -92,6 +92,8 @@ def own_problems(role_id, text):
     }
     if role_id == "braintrust":
         expected["actor"] = "BRAINTRUST"
+    if role_id == "look-reviewer":
+        expected["media"] = "cited"
     for key, value in expected.items():
         if key in meta and meta[key] != value:
             problems.append(f"{key} is {meta[key]!r}, expected {value!r}")
