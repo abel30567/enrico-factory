@@ -7,6 +7,7 @@ Seeded copies live in a temporary directory.
 import ast
 import copy
 import gc
+import hashlib
 import importlib.util
 import json
 import os
@@ -56,6 +57,10 @@ BASH4 = ("declare -A", "mapfile", "readarray", ",,}", "^^}", "&>>", "|&")
 VENDOR = re.compile(r"ghcr\.io|dlami|SMOKE|smoke")
 TAIL = ["-unattended", "-nosplash", "-nosound", "-stdout", "-FullStdOutLogOutput"]
 EDITOR = "/home/ue4/UnrealEngine/Engine/Binaries/Linux/UnrealEditor-Cmd"
+# The binary of the job asset wren (the asset of tests/test_asset_jobs.py), its sha256 and its locked state.
+GLB = b"glTF wren"
+BIN = hashlib.sha256(GLB).hexdigest()
+WREN = {"asset": "wren", "kind": "character", "sha256": BIN}
 MEASURED = {"floor": [0, 0.4557, 1, 1], "ball": [0.3924, 0.3547, 0.6076, 0.7563],
             "block": [0.6016, 0.4815, 0.6983, 0.655]}
 
@@ -192,7 +197,7 @@ class ScriptTest(EngineCase):
 
 
 class JobTest(EngineCase):
-    def run_job(self, **fake) -> dict:
+    def run_job(self, links: str = LINKS, **fake) -> dict:
         """Runs a copy of job.sh with the fake programs first on PATH; returns what it left."""
         bin_ = self.tmp / "bin"
         shutil.copytree(FIX / "bin", bin_)
@@ -202,8 +207,8 @@ class JobTest(EngineCase):
         (work / "job").mkdir(parents=True)
         shutil.copy(ENGINE / "job.sh", work / "job/job.sh")
         shutil.copy(ENGINE / "build.py", work / "job/build.py")
-        (self.tmp / "links.txt").write_text(LINKS, encoding="utf-8")
-        (self.tmp / "fake").mkdir()
+        (self.tmp / "links.txt").write_text(links, encoding="utf-8")
+        (self.tmp / "fake").mkdir(exist_ok=True)
         env = {"PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}", "WORK": str(work), "IMAGE": IMAGE,
                "LINKS": str(self.tmp / "links.txt"), "NODE_LOG": str(self.tmp / "node.log"),
                "FAKE": str(self.tmp / "fake"), **fake}
@@ -289,6 +294,24 @@ class JobTest(EngineCase):
             self.assertEqual(found["curl"], [f"PUT {STORE}/out", f"PUT {STORE}/log", f"PUT {STORE}/status"])
             self.assertRegex(found["log"], r"(?m)^NODE \d\d:\d\d:\d\d put out http=403$")
 
+    def test_12_job_gets_each_asset_binary_of_links_before_the_build(self):
+        (self.tmp / "fake/store").mkdir(parents=True)
+        (self.tmp / "fake/store" / BIN).write_bytes(GLB)
+        lacking = "c" * 64
+        found = self.run_job(LINKS + "".join(f"GET {n} https://store.invalid/{n}\n" for n in (BIN, lacking)))
+        self.assertEqual(found["curl"], [f"GET https://store.invalid/{BIN}", f"GET https://store.invalid/{lacking}",
+                                         f"PUT {STORE}/out", f"PUT {STORE}/log", f"PUT {STORE}/status"])
+        assets = found["work"] / "job/assets"
+        self.assertEqual(sorted(p.name for p in assets.iterdir()), [f"{BIN}.glb"])
+        self.assertEqual((assets / f"{BIN}.glb").read_bytes(), GLB)
+        got = re.search(rf"(?m)^NODE \d\d:\d\d:\d\d get {BIN} http=200$", found["log"])
+        lost = re.search(rf"(?m)^NODE \d\d:\d\d:\d\d get {lacking} http=404$", found["log"])
+        build = re.search(r"(?m)^NODE \d\d:\d\d:\d\d step build ", found["log"])
+        self.assertTrue(got and lost and build)
+        self.assertLess(got.start(), build.start())
+        self.assertLess(lost.start(), build.start())
+        self.assertEqual(found["status"], '{"result": "ok"}\n')
+
 
 def _job(unit: str, scripts: int = 1) -> dict:
     level = golden.UNITS[unit]
@@ -300,10 +323,13 @@ def _job(unit: str, scripts: int = 1) -> dict:
 
 
 class BuildTest(EngineCase):
-    def build(self, scripts: list, job: dict, script: Path = ENGINE / "build.py"):
+    def build(self, scripts: list, job: dict, script: Path = ENGINE / "build.py", binaries: dict | None = None):
         """Runs `script` under the fake `unreal`; returns the fake, the work root and the kinds alive at gc.collect."""
         work = self.tmp / f"work{len(list(self.tmp.iterdir()))}"
         (work / "job/scripts").mkdir(parents=True)
+        (work / "job/assets").mkdir()
+        for name, data in (binaries or {}).items():
+            (work / "job/assets" / name).write_bytes(data)
         for i, path in enumerate(scripts):
             shutil.copy(path, work / f"job/scripts/{i:02d}.py")
         (work / "job/job.json").write_text(json.dumps(dict(job, scripts=[f"scripts/{i:02d}.py" for i in range(len(scripts))])),
@@ -395,6 +421,50 @@ class BuildTest(EngineCase):
                 self.assertEqual(alive, [])
                 self.assertEqual(scenestate.state(json.loads((work / "out/scene.json").read_text(encoding="utf-8")),
                                                   _job(unit), golden.UNITS[unit])["shot"], _job(unit)["shot"])
+
+    def test_9_build_places_the_binary_of_a_job_asset(self):
+        job = dict(_job("lit-render"), assets={"wren": BIN})
+        fake, work, alive = self.build([GOLDEN / "lit-render/scene.py"], job, binaries={f"{BIN}.glb": GLB})
+        self.assertEqual(fake.CALLS[-2:], ["gc.collect", "log FACTORY build ok"])
+        self.assertEqual(alive, [])
+        self.assertIn(f"AssetTools.import_asset_tasks {work}/job/assets/{BIN}.glb /Game/Job/Assets wren True True True",
+                      fake.CALLS)
+        labels = [c for c in fake.CALLS if c.startswith("Actor.set_actor_label")]
+        self.assertLess(labels.index("Actor.set_actor_label wren"), labels.index("Actor.set_actor_label camera"))
+        scene = json.loads((work / "out/scene.json").read_text(encoding="utf-8"))
+        row = next(a for a in scene["actors"] if a["label"] == "wren")
+        self.assertEqual((row["class"], row["location"], row["rotation"]),
+                         ("StaticMeshActor", [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]))
+        state = scenestate.state(scene, job, golden.UNITS["lit-render"], {"wren": WREN})
+        wren = next(a for a in state["actors"] if a["id"] == "wren")
+        self.assertEqual((wren["kind"], wren["asset"], wren["sha256"]), ("character", "asset:wren", BIN))
+        fixture = json.loads((FIX / "lit-render/scene.json").read_text(encoding="utf-8"))
+        before = scenestate.state(fixture, _job("lit-render"), golden.UNITS["lit-render"])
+        self.assertEqual([a for a in state["actors"] if a["id"] != "wren"], before["actors"])
+
+    def test_10_build_refuses_a_binary_it_cannot_place(self):
+        other = b"not a glb"
+        defects = {
+            "the asset store gave no binary": (BIN, {}),
+            "the binary's sha256 is not its state's": (BIN, {f"{BIN}.glb": b"glTF bo"}),
+            "the engine placed no actor for its binary": (hashlib.sha256(other).hexdigest(),
+                                                          {f"{hashlib.sha256(other).hexdigest()}.glb": other}),
+        }
+        for message, (digest, binaries) in defects.items():
+            with self.subTest(defect=message):
+                job = dict(_job("lit-render"), assets={"wren": digest})
+                fake, work, alive = self.build([GOLDEN / "lit-render/scene.py"], job, binaries=binaries)
+                self.assertEqual(fake.CALLS[-1], f"log FACTORY build failed asset:wren: {message}")
+                self.assertNotIn("log FACTORY build ok", fake.CALLS)
+                self.assertFalse((work / "out/scene.json").exists())
+                self.assertFalse([c for c in fake.CALLS if c.startswith("Actor.set_actor_label")])
+                self.assertEqual(alive, [])
+
+    def test_11_a_scene_of_primitives_imports_nothing(self):
+        fake, work, alive = self.build([GOLDEN / "lit-render/scene.py"], _job("lit-render"),
+                                       binaries={f"{BIN}.glb": GLB})
+        self.assertEqual((work / "out/scene.json").read_bytes(), (FIX / "lit-render/scene.json").read_bytes())
+        self.assertFalse([c for c in fake.CALLS if "import" in c or "spawn_actor_from_object" in c])
 
 
 class StateTest(unittest.TestCase):
