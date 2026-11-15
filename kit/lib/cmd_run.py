@@ -5,12 +5,15 @@ runs once: when the ledger on the base already holds its `run` row, that row is 
 ` (already recorded)` and nothing else happens. Otherwise the job needs a counting `GATE PASS`, an
 installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open pull (with
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
-outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, adds one
-manifest row per output on the pull's branch (for a tool with ``STAGE_FILES``: puts every other output in the
+outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, puts each output
+that is a picture (`media.picture_type`) in the media store, then adds one manifest row per output on the pull's
+branch (for a tool with ``STAGE_FILES``: puts every other output in the
 asset store and commits those in the ticket's production directory instead) and, in the same commit, the post's
 answer the tool recorded at `distribution/<unit>/post.json`, and appends the `run` row with the real cost to the ledger
 on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down.
-Without `--apply` it makes every check, calls no tool and writes nothing.
+Without `--apply` it makes every check, calls no tool and writes nothing. A media store that is not usable or does
+not take a picture refuses the run after the call: nothing is recorded, and a later run records the kept call
+without calling the tool again.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
@@ -45,6 +48,7 @@ TOOL_NAME = re.compile(r"[a-z][a-z0-9-]*")
 OUTPUT_NAME = re.compile(r"[a-z0-9][a-z0-9._-]*")
 UNIT_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 STORE = "store.assets"
+MEDIA = "store.media"
 RESULT = "result.json"
 RECORD = "record"
 DONE, FAILED = "DONE", "FAILED"
@@ -345,6 +349,31 @@ def _store(values, register, out, names):
             raise Refused(f"the asset store did not take {name}: {error}") from None
 
 
+def _pictures(out, outputs):
+    """The names of the outputs in ``out`` whose first bytes ``media.picture_type`` names, in name order."""
+    found = []
+    for name in sorted(o["name"] for o in outputs):
+        with open(out / name, "rb") as handle:
+            if media.picture_type(handle.read(media.PICTURE_HEAD_BYTES)):
+                found.append(name)
+    return found
+
+
+def _media(root, values, register, out, names):
+    """Put the outputs ``names`` of ``out`` in the media store, in name order; ``Refused`` when the register
+    has no media store, it is not usable or it does not take one."""
+    found = {r["id"]: r for r in register["resources"]}
+    if MEDIA not in found:
+        raise Refused(f"the register has no resource {MEDIA}")
+    _usable(found[MEDIA], values, register, root)
+    key_file = os.path.join(resources.expand(values[register["secrets_dir_setting"]]), MEDIA)
+    for name in sorted(names):
+        try:
+            media.put(values, key_file, str(out / name))
+        except (media.Refused, media.Failed) as error:
+            raise Refused(f"the media store did not take {name}: {error}") from None
+
+
 def _run(p, gh, state, rows, target, apply, number=None):
     request = cmd_gate._job_request(p, state, target, number)
     digest, name = request["hash"], request["tool"]
@@ -358,8 +387,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
     earlier = os.path.lexists(job_dir)
     if earlier:
         tool = _load_tool(name)
-        if getattr(tool, "STAGE_FILES", ()):
-            register, values = _register(p.root)
+        register, values = _register(p.root)
     else:
         if not _counting_pass(request, rows):
             raise Refused(f"job {digest} has no counting GATE PASS")
@@ -415,6 +443,9 @@ def _run(p, gh, state, rows, target, apply, number=None):
         _stage_files(p, gh, pull["head_ref"], digest, job_dir / "out", directory,
                      [n for n in names if n in stage_files])
     elif verdict == DONE and (outputs or record):
+        pictures = _pictures(job_dir / "out", outputs)
+        if pictures:
+            _media(p.root, values, register, job_dir / "out", pictures)
         if record:
             _manifest(p, gh, pull["head_ref"], digest, outputs, _answer_path(request["ticket"]),
                       job_dir / RECORD / record[0]["name"])

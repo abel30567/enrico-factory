@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import cmd_run, down, gitstate, ledger, lint, resources  # noqa: E402
+from test_media import KEY_ID, REGION, SECRET, FakeStore  # noqa: E402
 from test_run import BRANCH, TICKET, World, line  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "tool_grok_imagine"
@@ -176,8 +177,12 @@ class ImageTest(unittest.TestCase):
         secret = w.secrets / "proxy.client"
         secret.write_text(TOKEN + "\n")
         secret.chmod(0o600)
+        self.store = FakeStore(self)
+        key = w.secrets / "store.media"
+        key.write_text(f"{KEY_ID}\n{SECRET}\n{REGION}\n")
+        key.chmod(0o600)
         w.local(STATE_DIR=w.state, SECRETS_DIR=w.secrets, PROXY_URL=url or proxy.url,
-                MEDIA_PUBLIC_BASE=media_base or proxy.url + "media")
+                MEDIA_PUBLIC_BASE=media_base or proxy.url + "media", MEDIA_STORE=self.store.url("/b"))
         self.manifest_text = manifest
         w.commit(MANIFEST, manifest)
         self.merge_trunk(w)
@@ -229,6 +234,7 @@ class ImageTest(unittest.TestCase):
         image = AMA
         self.assertEqual(w.manifest(), self.manifest_text + f"{digest[:16]}-image.png\t{sha(image)}\t"
                                                             f"{len(image)}\tjob {digest}\n")
+        self.assertEqual(self.store.objects, {sha(AMA): AMA})
         [row_] = w.rows("run")
         self.assertEqual(ledger.line(row_).split("\t")[5:10], [TOOL, usd, "0", "renderer", "DONE"])
 
@@ -237,7 +243,8 @@ class ImageTest(unittest.TestCase):
         self.assertEqual(w.run(job), (0, line(digest, "DONE", "0", "0") + "\n", ""))
         self.assertEqual(proxy.requests, [{"path": "/v1/images/generations", "authorization": f"Bearer {TOKEN}",
                                            "body": BODY}])
-        self.assertEqual(proxy.gets, [])
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}"])
+        self.assertEqual(self.store.objects, {sha(AMA): AMA})
         self.assertTrue(AMA.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(w.manifest(), MANIFEST_TEXT + f"{digest[:16]}-image.png\t{sha(AMA)}\t"
                                                        f"{len(AMA)}\tjob {digest}\n")
@@ -251,7 +258,7 @@ class ImageTest(unittest.TestCase):
     def test_one_ref(self):
         w, proxy, job, digest = self.world(answer("refs-ok"), refs_request("media:ama-ref"), expected=COSTED)
         self.assert_done(w, job, digest, "0.07")
-        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}"])
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(AMA)}"])
         self.assertEqual(proxy.requests, [{"path": "/v1/images/edits", "authorization": f"Bearer {TOKEN}",
                                            "body": form("one", [AMA])}])
 
@@ -259,7 +266,7 @@ class ImageTest(unittest.TestCase):
         w, proxy, job, digest = self.world(with_usage({"cost_in_usd_ticks": 800000000}),
                                            refs_request("media:ama-ref", "media:tide-ref"), expected=COSTED)
         self.assert_done(w, job, digest, "0.08")
-        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(TIDE)}"])
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(TIDE)}", f"/media/{sha(AMA)}"])
         self.assertEqual([(r["path"], r["body"]) for r in proxy.requests],
                          [("/v1/images/edits", form("two", [AMA, TIDE]))])
         w, proxy, job, digest = self.world(answer("refs-ok"), refs_request("media:tide-ref", "media:ama-ref"),
@@ -272,7 +279,8 @@ class ImageTest(unittest.TestCase):
             "media:ama-ref", "media:tide-ref", "media:reef-ref"), manifest=MANY_TEXT, held=MANY_HELD,
             expected=COSTED)
         self.assert_done(w, job, digest, "0.07")
-        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(TIDE)}", f"/media/{sha(REEF)}"])
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(TIDE)}", f"/media/{sha(REEF)}",
+                                      f"/media/{sha(AMA)}"])
         four = json.loads(form("four", [AMA, TIDE, REEF, AMA]))
         four["images"].pop()
         self.assertEqual([(r["path"], r["body"]) for r in proxy.requests],
@@ -284,7 +292,7 @@ class ImageTest(unittest.TestCase):
             held=MANY_HELD, expected=COSTED)
         self.assert_done(w, job, digest, "0.1")
         self.assertEqual(proxy.gets, [f"/media/{sha(TIDE)}", f"/media/{sha(AMA)}", f"/media/{sha(REEF)}",
-                                      f"/media/{sha(AMA)}"])
+                                      f"/media/{sha(AMA)}", f"/media/{sha(AMA)}"])
         self.assertEqual([(r["path"], r["authorization"], r["body"]) for r in proxy.requests],
                          [("/v1/images/edits", f"Bearer {TOKEN}", form("four", [TIDE, AMA, REEF, AMA]))])
 
@@ -319,7 +327,7 @@ class ImageTest(unittest.TestCase):
         w, proxy, job, digest = self.world(answer("refs-ok"), refs_request("media:ama-ref"), manifest=manifest,
                                            expected=COSTED)
         self.assert_done(w, job, digest, "0.07")
-        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}"])
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(AMA)}"])
         self.assertEqual([r["body"] for r in proxy.requests], [form("one", [AMA])])
 
     def test_ref_fetch_failures(self):
