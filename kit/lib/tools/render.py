@@ -1,6 +1,7 @@
 """The tool `render`: start a render node (kit/lib/node.py), run the job on it, stop it.
 
-The node is the driver ``RENDER_PROVIDER`` names; with none of that name the resource is down. The node is
+The node is the driver ``RENDER_PROVIDER`` names, made with the call's settings and secrets; with none of that
+name, or one that lacks a setting, a secret or a program it needs, the resource is down. The node is
 stopped once whenever ``start`` was called, and the amounts are what ``stop`` returns. The outputs named in
 ``STAGE_FILES`` are the stage's files; `factory run` commits them and sends every other output to the
 asset store.
@@ -16,7 +17,8 @@ STAGE_FILES = ("manifest.json", "mix.json", "render.json", "rerun.json", "state.
 
 
 def run(call):
-    driver = node.connect(call["settings"]["RENDER_PROVIDER"], call["secrets"]["render.node"])
+    driver = node.connect(call["settings"]["RENDER_PROVIDER"], call["secrets"]["render.node"],
+                          {"settings": call["settings"], "secrets": call["secrets"]})
     if driver is None:
         raise Down()
     unavailable, reason, held = False, None, None

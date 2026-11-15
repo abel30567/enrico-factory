@@ -6,7 +6,8 @@ kit/resources.json, and the fake asset store `AssetStore` of tests/test_assets.p
 `FakeNode`, added to `node.PROVIDERS` as `fake`: it logs each call, its `run` copies
 tests/fixtures/render/node/* into `out` (``{job}`` replaced by the hash and ``{input}`` by the first input's
 sha256) and its `stop` returns 0.35 USD and 12 minutes. ``FakeNode.plan`` makes a call raise an error whose
-text is the node key, `Unavailable`, `SystemExit` or `KeyboardInterrupt`. Nothing reaches the network.
+text is the node key, `Unavailable`, `SystemExit` or `KeyboardInterrupt`. ``FakeNode.config`` is the
+``config`` it was made with. Nothing reaches the network.
 """
 
 import hashlib
@@ -28,18 +29,30 @@ from test_run import BRANCH, FIX, NOW, TICKET, World, line  # noqa: E402
 
 NODE_FIX = ROOT / "tests" / "fixtures" / "render" / "node"
 NODE_KEY = "seeded-node-key-3f9a61c2"
+PULL_TOKEN = "seeded-pull-token-7c1e"
+NODE_SETTINGS = {"RENDER_INSTANCE_TYPE": "g9.test", "RENDER_MACHINE_IMAGE": "image-test", "RENDER_TAG": "project=test",
+                 "RENDER_USD_HOUR": "0.526", "RENDER_MAX_MIN": "75", "RENDER_RESOLUTION": "640x360",
+                 "UNREAL_IMAGE": "registry.invalid/engine@sha256:" + "0" * 64}
+# The checks of render.node once the orchestrator adds what a driver needs (#460, "For the orchestrator").
+NODE_CHECKS = [{"kind": "setting", "name": "RENDER_PROVIDER"}, {"kind": "secret", "name": "render.node"},
+               *({"kind": "setting", "name": name} for name in NODE_SETTINGS),
+               {"kind": "secret", "name": "engine.unreal"}, {"kind": "setting", "name": "ASSET_STORE"},
+               {"kind": "secret", "name": "store.assets"}]
 STAGE_DIR = "production/ep01/render"
 STAGE_PATHS = [f"{STAGE_DIR}/manifest.json", f"{STAGE_DIR}/render.json"]
 FRAMES = ["frame-0000.bin", "frame-0001.bin"]
 
 
 class FakeNode:
-    """A render node that logs each call to ``FakeNode.calls`` and follows ``FakeNode.plan``."""
+    """A render node that logs each call to ``FakeNode.calls``, follows ``FakeNode.plan`` and keeps the
+    ``config`` it was made with in ``FakeNode.config``."""
 
-    calls, plan = [], {}
+    calls, plan, config = [], {}, None
+    NEEDS, PROGRAMS = (), ()
 
-    def __init__(self, key_file):
+    def __init__(self, key_file, config):
         self.key_file = key_file
+        FakeNode.config = config
 
     def _step(self, name):
         FakeNode.calls.append(name)
@@ -76,13 +89,17 @@ class RenderTest(unittest.TestCase):
                       mock.patch.object(resources, "REGISTER", ROOT / "kit" / "resources.json"),
                       mock.patch.dict(node.PROVIDERS, {"fake": FakeNode}),
                       mock.patch.object(FakeNode, "calls", []),
-                      mock.patch.object(FakeNode, "plan", {})):
+                      mock.patch.object(FakeNode, "plan", {}),
+                      mock.patch.object(FakeNode, "config", None),
+                      mock.patch.object(FakeNode, "NEEDS", ()),
+                      mock.patch.object(FakeNode, "PROGRAMS", ())):
             patch.start()
             self.addCleanup(patch.stop)
         self.store = AssetStore(self)
         self.settings(RENDER_PROVIDER="fake")
         self.write_key("render.node", NODE_KEY)
         self.write_key("store.assets", f"{KEY_ID}\n{SECRET}\n{REGION}\n")
+        self.write_key("engine.unreal", PULL_TOKEN + "\n")
         text = json.dumps({"scene": "an invented scene"}, indent=1) + "\n"
         w.commit("scripts/render.json", text)
         self.input_sha = hashlib.sha256(text.encode()).hexdigest()
@@ -93,8 +110,8 @@ class RenderTest(unittest.TestCase):
     # -- the world
 
     def settings(self, **changes):
-        self.w.local(STATE_DIR=self.w.state, SECRETS_DIR=self.w.secrets, ASSET_STORE=self.store.url("/b"),
-                     **changes)
+        self.w.local(**{"STATE_DIR": self.w.state, "SECRETS_DIR": self.w.secrets,
+                        "ASSET_STORE": self.store.url("/b"), **NODE_SETTINGS, **changes})
 
     def write_key(self, name, text):
         path = self.w.secrets / name
@@ -103,9 +120,20 @@ class RenderTest(unittest.TestCase):
 
     def render(self, apply=True):
         code, out, err = self.w.run(self.job, apply=apply)
-        for secret in (NODE_KEY, KEY_ID, SECRET, REGION):
+        for secret in (NODE_KEY, PULL_TOKEN, KEY_ID, SECRET, REGION):
             self.assertNotIn(secret, out + err)
         return code, out, err
+
+    def node_checks(self):
+        """Patch the register to a copy of kit/resources.json whose render.node has ``NODE_CHECKS``."""
+        register = json.loads((ROOT / "kit" / "resources.json").read_text())
+        [found] = [r for r in register["resources"] if r["id"] == "render.node"]
+        found["checks"] = NODE_CHECKS
+        path = self.w.tmp / "resources.json"
+        path.write_text(json.dumps(register, indent=2) + "\n")
+        patch = mock.patch.object(resources, "REGISTER", path)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     def output(self, name):
         data = (NODE_FIX / name).read_bytes().replace(b"{job}", self.digest.encode())
@@ -163,6 +191,19 @@ class RenderTest(unittest.TestCase):
     # 1
     def test_clean(self):
         self.assert_clean()
+        self.assertEqual(FakeNode.config, {"settings": {"RENDER_PROVIDER": "fake"},
+                                           "secrets": {"render.node": str(self.w.secrets / "render.node")}})
+        self.assertTrue(Path(FakeNode.config["secrets"]["render.node"]).is_absolute())
+
+    def test_clean_with_the_checks_a_driver_needs(self):
+        self.node_checks()
+        self.assert_clean()
+        self.assertEqual(sorted(FakeNode.config["settings"]),
+                         sorted(["RENDER_PROVIDER", *NODE_SETTINGS, "ASSET_STORE"]))
+        self.assertEqual(len(FakeNode.config["settings"]), 9)
+        self.assertEqual({name: FakeNode.config["settings"][name] for name in NODE_SETTINGS}, NODE_SETTINGS)
+        self.assertEqual(sorted(FakeNode.config["secrets"]), ["engine.unreal", "render.node", "store.assets"])
+        self.assertEqual(Path(FakeNode.config["secrets"]["engine.unreal"]).read_text(), PULL_TOKEN + "\n")
 
     def test_stage_file_already_there_is_written_over(self):
         tree = self.w.tmp / "maker"
@@ -264,6 +305,26 @@ class RenderTest(unittest.TestCase):
         self.settings(RENDER_PROVIDER="other")
         self.assert_down([])
 
+    def test_driver_needs_a_setting_the_call_lacks(self):
+        FakeNode.NEEDS = ("RENDER_TAG",)
+        self.assert_down([])
+        self.assertIsNone(FakeNode.config)
+
+    def test_driver_needs_a_setting_the_call_has(self):
+        FakeNode.NEEDS = ("RENDER_TAG", "engine.unreal")
+        self.node_checks()
+        self.assert_clean()
+        self.assertEqual(FakeNode.config["settings"]["RENDER_TAG"], "project=test")
+
+    def test_driver_needs_a_program_not_found(self):
+        FakeNode.PROGRAMS = ("no-such-program-4b1d",)
+        self.assert_down([])
+        self.assertIsNone(FakeNode.config)
+
+    def test_driver_needs_a_program_found(self):
+        FakeNode.PROGRAMS = ("sh",)
+        self.assert_clean()
+
     # 8
     def test_store_not_usable(self):
         (self.w.secrets / "store.assets").unlink()
@@ -312,9 +373,22 @@ class RenderTest(unittest.TestCase):
 class NodeTest(unittest.TestCase):
     def test_the_kit_ships_no_driver(self):
         self.assertEqual(node.PROVIDERS, {})
-        self.assertIsNone(node.connect("fake", "render.node"))
-        with mock.patch.dict(node.PROVIDERS, {"fake": FakeNode}):
-            self.assertEqual(node.connect("fake", "render.node").key_file, "render.node")
+        config = {"settings": {"RENDER_PROVIDER": "fake"}, "secrets": {"render.node": "render.node"}}
+        self.assertIsNone(node.connect("fake", "render.node", config))
+        with mock.patch.dict(node.PROVIDERS, {"fake": FakeNode}), mock.patch.object(FakeNode, "config", None):
+            self.assertEqual(node.connect("fake", "render.node", config).key_file, "render.node")
+            self.assertIs(FakeNode.config, config)
+
+    def test_needs_and_programs(self):
+        config = {"settings": {"RENDER_PROVIDER": "fake", "RENDER_TAG": "project=test"},
+                  "secrets": {"render.node": "render.node"}}
+        with mock.patch.dict(node.PROVIDERS, {"fake": FakeNode}), mock.patch.object(FakeNode, "config", None):
+            for needs, programs, made in (((), (), True), (("RENDER_TAG", "render.node"), ("sh",), True),
+                                          (("RENDER_RESOLUTION",), (), False), (("engine.unreal",), (), False),
+                                          ((), ("sh", "no-such-program-4b1d"), False)):
+                with self.subTest(needs=needs, programs=programs), \
+                        mock.patch.multiple(FakeNode, NEEDS=needs, PROGRAMS=programs):
+                    self.assertEqual(node.connect("fake", "render.node", config) is not None, made)
 
 
 class UnitDirTest(unittest.TestCase):
