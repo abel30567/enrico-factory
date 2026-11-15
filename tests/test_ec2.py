@@ -46,6 +46,10 @@ UNAVAILABLE = ("InsufficientInstanceCapacity", "InstanceLimitExceeded", "VcpuLim
                "Unsupported", "ServiceUnavailable", "Unavailable")
 REFUSED = ("UnauthorizedOperation", "InvalidAMIID.NotFound")
 REASON = "<reason>User initiated (2026-11-14 12:10:00 GMT)</reason>"
+PUBLIC_REAL = ("<ipAddress>203.0.113.9</ipAddress><dnsName>ec2-203-0-113-9.compute-1.amazonaws.com</dnsName>"
+               "<macAddress>0e:1a:2b:3c:4d:5e</macAddress><attachmentId>eni-attach-0a1b2c3d4e5f60718</attachmentId>")
+PUBLIC_INVENTED = ("<ipAddress>192.0.2.2</ipAddress><dnsName>ec2-192-0-2-2.compute-1.amazonaws.com</dnsName>"
+                   "<macAddress>02:00:00:00:00:01</macAddress><attachmentId>eni-attach-1234567890abcdef0</attachmentId>")
 
 
 def sha(data):
@@ -520,6 +524,42 @@ class B7Record(Case):
             "<requesterId>123456789012</requesterId> arn:aws:iam::123456789013:role 192.0.2.1 ip-192-0-2-2 "
             "192.0.2.2 <RequestID>00000000-0000-4000-8000-000000000001</RequestID> "
             "<requestId>00000000-0000-4000-8000-000000000002</requestId>"))
+
+    def test_public_dns_name_takes_the_new_address(self):
+        text = ("ip-10-1-2-3 <dnsName>ec2-203-0-113-9.compute-1.amazonaws.com</dnsName> "
+                "<ipAddress>203.0.113.9</ipAddress> ec2-10-1-2-3 10.1.2.3")
+        self.assertEqual(ec2._Scrub().text(text), (
+            "ip-192-0-2-1 <dnsName>ec2-192-0-2-2.compute-1.amazonaws.com</dnsName> "
+            "<ipAddress>192.0.2.2</ipAddress> ec2-192-0-2-1 192.0.2.1"))
+
+    def test_mac_address(self):
+        text = "<macAddress>0e:1a:2b:3c:4d:5e</macAddress> 0E:1A:2B:3C:4D:5E 0e:1a:2b:3c:4d:5f"
+        self.assertEqual(ec2._Scrub().text(text),
+                         "<macAddress>02:00:00:00:00:01</macAddress> 02:00:00:00:00:01 02:00:00:00:00:02")
+
+    def test_attachment_id(self):
+        text = "eni-attach-0a1b2c3d4e5f60718 eni-0a1b2c3d4e5f60718 eni-attach-0f0f0f0f0f0f0f0f0"
+        self.assertEqual(ec2._Scrub().text(text),
+                         "eni-attach-1234567890abcdef0 eni-1234567890abcdef0 eni-attach-1234567890abcdef1")
+
+    def test_record_scrubs_public_names_macs_and_attachments(self):
+        record = self.directory()
+        exchanges = self.real()
+        exchanges[3] = with_body(exchanges[3], "<instanceState>", PUBLIC_REAL + "<instanceState>")
+        replay, driver = self.started(exchanges, record=record)
+        driver.stop()
+        self.assertIn(PUBLIC_INVENTED, json.loads(Path(record, "04-DescribeInstances.json").read_text(
+            encoding="utf-8"))["response"]["body"])
+        text = "".join(Path(record, name).read_text(encoding="utf-8") for name in sorted(os.listdir(record)))
+        self.assertEqual(len(os.listdir(record)), 6)
+        for real in ("203.0.113.9", "203-0-113-9", "0e:1a:2b:3c:4d:5e", "eni-attach-0a1b2c3d4e5f60718"):
+            self.assertNotIn(real, text)
+
+    def test_invented_and_other_values_stay(self):
+        text = ("<privateIpAddress>192.0.2.1</privateIpAddress>" + PUBLIC_INVENTED + "<dnsName></dnsName>"
+                "<launchTime>2026-11-15T09:51:51.000Z</launchTime><availabilityZone>us-east-1c</availabilityZone>"
+                "<clientToken>ce847f4ad2cdef8b49c0fc34113fc6e6</clientToken>")
+        self.assertEqual(ec2._Scrub().text(text), text)
 
 
 class B8Imports(unittest.TestCase):

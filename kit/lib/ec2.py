@@ -16,7 +16,7 @@ its end. The objects of ``jobs/<nonce>/`` stay in the store; its expiry rule rem
 ``node.Unavailable`` is raised only before an instance id is known, or for an instance the cloud ended
 for want of capacity; any other refusal is ``Refused`` with the error code or a message as its text.
 With ``record`` a directory, every answered exchange is written there with its ids, accounts, request
-ids and addresses replaced by invented ones, and no header.
+ids, addresses, public DNS names and MAC addresses replaced by invented ones, and no header.
 """
 
 import base64
@@ -100,12 +100,14 @@ def _ceil4(value):
 class _Scrub:
     """One session's map of real values to invented ones: one old value always gets one new value."""
 
-    IDS = re.compile(r"\b(i|r|vol|eni|subnet|vpc|sg|ami)-([0-9a-f]{17}|[0-9a-f]{8})\b")
+    IDS = re.compile(r"\b(i|r|vol|eni-attach|eni|subnet|vpc|sg|ami)-([0-9a-f]{17}|[0-9a-f]{8})\b")
     ACCOUNT_ELEMENT = re.compile(r"(<(ownerId|requesterId)>)([^<]*)(</\2>)")
     ACCOUNT_ARN = re.compile(r"(?<=:)([0-9]{12})(?=:)")
     REQUEST_ID = re.compile(r"(<(requestId|RequestID)>)([^<]*)(</\2>)")
-    ADDRESS = re.compile(r"\bip-([0-9]{1,3})-([0-9]{1,3})-([0-9]{1,3})-([0-9]{1,3})\b"
+    ADDRESS = re.compile(r"\b(?:ip|ec2)-([0-9]{1,3})-([0-9]{1,3})-([0-9]{1,3})-([0-9]{1,3})\b"
                          r"|(?<![0-9.])([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})(?![0-9]|\.[0-9])")
+
+    MAC = re.compile(r"(?<![0-9a-fA-F:])[0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5}(?![0-9a-fA-F:])")
 
     def __init__(self):
         self.seen = {}
@@ -125,11 +127,16 @@ class _Scrub:
         return self._new("account", old, lambda k: str(123456789012 + k))
 
     def _address(self, match):
-        """An IPv4 address, dotted or dashed (``ip-10-1-2-3``), as ``192.0.2.<k + 1>`` in the same form."""
+        """An IPv4 address, dotted or dashed (``ip-10-1-2-3``, ``ec2-10-1-2-3``), as ``192.0.2.<k + 1>`` in the same form."""
         dashed = match.group(1) is not None
         parts = match.groups()[:4] if dashed else match.groups()[4:]
         new = self._new("address", ".".join(parts), lambda k: f"192.0.2.{k + 1}")
-        return "ip-" + new.replace(".", "-") if dashed else new
+        return match.group(0).split("-", 1)[0] + "-" + new.replace(".", "-") if dashed else new
+
+    def _mac(self, match):
+        """A MAC address, in any case, as ``02:`` and the five bytes of ``k + 1``."""
+        return self._new("mac", match.group(0).lower(),
+                         lambda k: "02:" + ":".join(f"{byte:02x}" for byte in (k + 1).to_bytes(5, "big")))
 
     def text(self, text):
         text = self.REQUEST_ID.sub(lambda m: m.group(1) + self._new(
@@ -137,6 +144,7 @@ class _Scrub:
         text = self.ACCOUNT_ELEMENT.sub(lambda m: m.group(1) + self._account(m.group(3)) + m.group(4), text)
         text = self.ACCOUNT_ARN.sub(lambda m: self._account(m.group(1)), text)
         text = self.IDS.sub(self._id, text)
+        text = self.MAC.sub(self._mac, text)
         return self.ADDRESS.sub(self._address, text)
 
 
