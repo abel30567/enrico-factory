@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, snapshot, steps
-from kit.lib import citedmedia, tickets
+from kit.lib import citedmedia, reviewfiles, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -320,7 +320,7 @@ def prepare(p, gh, root, role, number, task_file=None, now=None, pair_dir=None) 
     staged = []
     try:
         return _prepare(p, gh, Path(root), role, number, task_file, now, pair_dir, staged)
-    except (ProductionError, citedmedia.CitedError) as error:
+    except (ProductionError, citedmedia.CitedError, reviewfiles.ReviewError) as error:
         raise LaunchError(str(error)) from None
     finally:
         for path in staged:
@@ -452,10 +452,16 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
         branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
         if pull is None and _branch_exists(root, branch):
             raise LaunchError(f"branch {branch} already exists")
+    media_dir = state_dir / "runs" / f".media-{name}"
+    review_dir = state_dir / "runs" / f".review-{name}"
     cited = None
     if kind == "checker" and citedmedia.wanted(p.roles[role]["meta"]):
-        staged.append(state_dir / "runs" / f".media-{name}")
-        cited = citedmedia.place(p, gh, root, role, pull, issues, staged[0], run_dir / "media")
+        staged.append(media_dir)
+        cited = citedmedia.place(p, gh, root, role, pull, issues, media_dir, run_dir / "media")
+    review = None
+    if kind == "checker":
+        staged.append(review_dir)
+        review = reviewfiles.place(p, gh, root, role, ticket, pull, issues, review_dir)
 
     # The prompt, the model and the harness version: all read before anything is created.
     if task_file is not None:
@@ -471,8 +477,9 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
             found = jobs.of(p, root, state, ticket, pull)
             if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):
                 task = _cite_task(root, pull, found, task)
-    if cited is not None:
-        task = _joined([task, cited])
+    blocks = [b for b in (cited, review) if b is not None]
+    if blocks:
+        task = _joined([task, *blocks])
     issue = gh.issue(t)
     values = {
         "REPO": production.setting(p, "REPO"),
@@ -570,8 +577,12 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
             _write(run_dir / "mcp.json", b"")
             harness.write_mcp_config(run_dir / "mcp.json")
             (run_dir / "config").mkdir(mode=0o700)
-            if staged and staged[0].exists():
-                os.rename(staged[0], run_dir / "media")
+            if media_dir in staged and media_dir.exists():
+                os.rename(media_dir, run_dir / "media")
+            if review_dir.exists():
+                if os.path.lexists(workdir / "review"):
+                    raise LaunchError("review files: the pull's tree has review/")
+                os.rename(review_dir, workdir / "review")
         except OSError as error:
             raise LaunchError(f"run {name}: {error.strerror}") from None
         try:
