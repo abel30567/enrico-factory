@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, snapshot, steps
-from kit.lib import citedmedia, reviewfiles, tickets
+from kit.lib import citedmedia, lockrules, reviewfiles, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -198,7 +198,7 @@ def _cite_task(root, pull, found, task):
     return _joined([block, task])
 
 
-def _default_task(p, state, kind, ticket, pull, judged, blocked=None, base=None):
+def _default_task(p, state, kind, ticket, pull, judged, blocked=None, base=None, root=None):
     if kind == "orchestrator":
         return _orchestrator_task(p, ticket, pull, judged, blocked, base)
     if kind == "analyst":
@@ -226,9 +226,18 @@ def _default_task(p, state, kind, ticket, pull, judged, blocked=None, base=None)
     if kind == "checker":
         return f"Review pull request #{n} at head {pull['git']['head']}."
     entry = production.stage(p, ticket["room"], ticket["stage"])
-    if entry["blind"] and not tickets.is_locked(state, ticket["room"], ticket["stage"], ticket["unit"]):
-        return f"Judge pull request #{n}. Unit {ticket['unit']} has no locked version: judge its head alone."
-    return f"Judge pull request #{n}."
+    alone = f"Judge pull request #{n}. Unit {ticket['unit']} has no locked version: judge its head alone."
+    if entry["blind"]:
+        locked = tickets.is_locked(state, ticket["room"], ticket["stage"], ticket["unit"])
+        return f"Judge pull request #{n}." if locked else alone
+    if entry["unit"] != "amendment":
+        return f"Judge pull request #{n}."
+    # A judge of an amendment never gets a pair: the vote its class or the charter wants, else the head alone.
+    path = lockrules.vote_amendment(entry, pull, root)
+    if path is None:
+        return alone
+    return (f"Judge pull request #{n}. Put the amendment {path} to a vote: each seat votes for or against it, "
+            "and the marker is VOTE <for>-<against>.")
 
 
 def _fence(text):
@@ -472,7 +481,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
     elif kind == "operator":
         task = _operator_task(root, role, ticket, pull, requested)
     else:
-        task = _default_task(p, state, kind, ticket, pull, judged, blocked, (base, base_sha))
+        task = _default_task(p, state, kind, ticket, pull, judged, blocked, (base, base_sha), root=root)
         if kind == "maker" and pull is not None:
             found = jobs.of(p, root, state, ticket, pull)
             if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):

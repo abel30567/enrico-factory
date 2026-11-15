@@ -465,6 +465,48 @@ class AmendmentRuleTest(OneRule):
         self.assertOnly(w, 10, {2, 6}, "canon-reviewer has no counting APPROVED")
 
 
+class VoteAmendmentTest(OneRule):
+    """The amendment a pull puts to a vote, as rule 6 reads it."""
+
+    def vote(self, w, number, stage="bible"):
+        p, state = w.load()
+        return lockrules.vote_amendment(production.stage(p, "story", stage), state.pulls[number], w.root)
+
+    def test_charter_class(self):
+        w = World(self, (10,))
+        self.assertEqual(self.vote(w, 10), "bible/amendments/A-1.json")
+
+    def test_canon_class(self):
+        w = World(self, (12,))
+        self.assertIsNone(self.vote(w, 12))
+
+    def test_canon_class_that_changes_the_charter(self):
+        w = World(self, (12,), edits={12: {"bible/charter.md": "# Charter\n\n1. Kites may land.\n"}})
+        self.assertEqual(self.vote(w, 12), "bible/amendments/A-2.json")
+
+    def test_no_amendment_file(self):
+        w = World(self, (12,), edits={12: {"bible/amendments/A-2.json": None}})
+        self.assertIsNone(self.vote(w, 12))
+
+    def test_amendment_with_no_class(self):
+        w = World(self, (10,), edits={10: {"bible/amendments/A-1.json": '{"summary": "Add rule 2."}\n'}})
+        self.assertIsNone(self.vote(w, 10))
+
+    def test_style_pull(self):
+        w = World(self, (14,))
+        self.assertIsNone(self.vote(w, 14, "style"))
+
+    def test_added_amendments(self):
+        w = World(self, (10,))
+        _, state = w.load()
+        self.assertEqual(lockrules.added_amendments(state.pulls[10], w.root), ["bible/amendments/A-1.json"])
+
+    def test_amendment_class(self):
+        w = World(self, (12,))
+        _, state = w.load()
+        self.assertEqual(lockrules.amendment_class(state.pulls[12], w.root, "bible/amendments/A-2.json"), "canon")
+
+
 class AmendmentScopeTest(OneRule):
     """Criterion 3: which pulls need an amendment."""
 
