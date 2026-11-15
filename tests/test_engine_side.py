@@ -424,7 +424,7 @@ class StateTest(unittest.TestCase):
                                            "start": {"location": [-5, 0, 1.5], "rotation": [0, -10, 0]},
                                            "end": {"location": [-5, 0, 1.5], "rotation": [0, -10, 0]}})
         self.assertEqual((state["sun"], state["motion"], state["lipsync"], state["caches"], state["line_flips"]),
-                         (None, [], [], [], []))
+                         ({"elevation_deg": 45, "azimuth_deg": 210}, [], [], [], []))
 
         def raises(scene, job_, level_, message):
             with self.assertRaises(scenestate.SceneError) as caught:

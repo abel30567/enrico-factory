@@ -48,6 +48,8 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
 - A model sheet is `bible/style/characters/<id>.md` or `bible/style/places/<id>.md`: how the subject
   looks, with at least one reference image as a link to `media:<id>`. Where the production holds art
   of the subject, cite that art and design nothing. Design only a subject that has no art.
+- A sequence key is `bible/style/keys/<ep>/<Q>.json`, one per sequence the task names: `{luma, color, sun}`, `luma` above 0
+  and at most 1, `color` linear `[r, g, b]` each 0 to 1, `sun` null indoors or `{min_elevation_deg, max_elevation_deg}`.
 - Every image is referenced as `media:<id>` and is in `media/manifest.tsv`; every relative link
   resolves. Palette values are written out, never only shown in an image.
 - A model sheet or a design image of a new subject is asked for in `bible/style/requests/<id>.json`:
