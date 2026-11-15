@@ -1269,12 +1269,33 @@ class BlockedMakerLaunch(OrchestratorRefusal, unittest.TestCase):
         self.assertIn("\nhead: none\n", record["body"])
         workdir = w.state / "worktrees" / "showlead-5-1"
         self.assertEqual(run.worktree, workdir)
-        self.assertEqual(list(workdir.iterdir()), [])
+        self.assertEqual(sorted(p.name for p in workdir.iterdir()), ["base"])
+        self.assertEqual(tree(workdir / "base"), files_at(w, "trunk"))
+        charter = PRODUCTION / "bible" / "charter.md"
+        self.assertEqual((workdir / "base" / "bible" / "charter.md").read_text(), charter.read_text())
+        base = w.head("trunk")
+        self.assertIn(f"\nbase: {base}\n", record["body"])
         self.assertEqual(set(run.meta), RUN_KEYS | {"pulls"})
         self.assertEqual((run.meta["pull"], run.meta["head_sha"], run.meta["pulls"]), (None, None, []))
         text = (run.dir / "prompt.md").read_text()
         self.assertEqual(task_of(text), "Judgment 4, a blocked worker, on ticket #5. The launch it answers has no "
-                                        "pull request.\n\n" + self.BLOCKED.rstrip("\n"))
+                                        f"pull request. The base branch trunk at {base} is in base/.\n\n"
+                                        + self.BLOCKED.rstrip("\n"))
+
+    def test_on_a_ticket_reads_the_base_at_launch(self):
+        w = self.w
+        w.comment(5, 50, "2026-11-10T12:00:00Z", "showlead", "[SHOWLEAD] LAUNCH drafter 5-1\n")
+        w.comment(5, 51, "2026-11-10T12:30:00Z", "drafter", self.BLOCKED)
+        (w.root / "bible" / "charter.md").write_text("# Charter\n\nAmended.\n")
+        w.commit("amend the charter")
+        before = w.worktrees()
+        run = w.prepare("showlead", 5)
+        workdir = w.state / "worktrees" / "showlead-5-1"
+        self.assertEqual((workdir / "base" / "bible" / "charter.md").read_text(), "# Charter\n\nAmended.\n")
+        self.assertFalse(os.path.lexists(workdir / "base" / ".git"))
+        self.assertEqual(w.worktrees(), before)
+        launch.cleanup(w.root, run)
+        self.assertFalse(workdir.exists())
 
     def test_after_a_ruling_on_the_pull(self):
         # Seeded defect: the BLOCKED has its ruling; the maker is due, not the orchestrator.
