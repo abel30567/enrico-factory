@@ -21,13 +21,16 @@ HEX64 = re.compile(r"[0-9a-f]{64}")
 STAGE = {"maker": "writer", "checker": ["editor"], "judge": None, "lint": []}
 ROLES = {"writer": "maker", "editor": "checker"}
 NOW = "2026-11-11T10:00:00Z"
+SOMEONE = {"GIT_AUTHOR_NAME": "Someone", "GIT_AUTHOR_EMAIL": "s@example.invalid",
+           "GIT_COMMITTER_NAME": "Someone", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
 
 
 def isolated_env():
-    """No user or system git config, no FACTORY_NOW from the caller."""
+    """No user or system git config, no FACTORY_NOW and no git identity from the caller."""
     patch = mock.patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
     patch.start()
-    os.environ.pop("FACTORY_NOW", None)
+    for name in ("FACTORY_NOW", "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        os.environ.pop(name, None)
     return patch
 
 
@@ -109,6 +112,14 @@ class GitTest(RepoTest):
     def test_env_is_added(self):
         out = gitstate.git(self.root, "var", "GIT_AUTHOR_IDENT", env={"GIT_AUTHOR_NAME": "someone", "GIT_AUTHOR_EMAIL": "someone@example.invalid"})
         self.assertTrue(out.startswith("someone "))
+
+    def test_environ_drops_the_identity_of_the_caller(self):
+        os.environ.update(SOMEONE)
+        self.assertEqual([n for n in gitstate.IDENTITY if n in gitstate.environ()], [])
+        self.assertEqual(gitstate.environ({"GIT_AUTHOR_NAME": "x"})["GIT_AUTHOR_NAME"], "x")
+        env = gitstate.environ({"GIT_AUTHOR_NAME": "x"}, "writer")
+        self.assertEqual([env[n] for n in gitstate.IDENTITY],
+                         ["writer", "writer@factory.invalid", "writer", "writer@factory.invalid"])
 
     def test_no_shell_and_stdin_closed(self):
         calls = []
@@ -454,6 +465,21 @@ class CommitTest(RepoTest):
         self.assertEqual(self.read("notes.txt"), "kept out\n")
         ident = gitstate.git(self.root, "log", "-1", "--format=%an <%ae>|%cn <%ce>").strip()
         self.assertEqual(ident, "writer <writer@factory.invalid>|writer <writer@factory.invalid>")
+
+    def test_the_role_whatever_the_environment_and_the_config_name(self):
+        self.git("config", "author.name", "Configured")
+        self.git("config", "committer.name", "Configured")
+        os.environ.update(SOMEONE)
+        self.write("README.md", "edited\n")
+        gitstate.commit(self.root, ["README.md"], "role output", "writer")
+        ident = gitstate.git(self.root, "log", "-1", "--format=%an <%ae>|%cn <%ce>").strip()
+        self.assertEqual(ident, "writer <writer@factory.invalid>|writer <writer@factory.invalid>")
+
+    def test_source_names_the_identity_once(self):
+        names = ("user.name", "user.email", "GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME")
+        found = sorted(str(p.relative_to(ROOT)) for p in (ROOT / "kit").rglob("*.py")
+                       if any(n in p.read_text(encoding="utf-8") for n in names))
+        self.assertEqual(found, ["kit/lib/gitstate.py"])
 
     def test_deleted_path(self):
         os.remove(self.root / "old.txt")

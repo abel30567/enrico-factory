@@ -425,7 +425,7 @@ class Tick:
             gitstate.add_worktree(root, tree, old)
             try:
                 try:
-                    gitstate.git(tree, *github.GIT_IDENTITY, "merge", "--no-ff", "--no-edit", base)
+                    gitstate.git(tree, "merge", "--no-ff", "--no-edit", base, author="factory")
                 except gitstate.GitError:
                     if _merging(tree):
                         return f"NEED #{n} conflict with base"

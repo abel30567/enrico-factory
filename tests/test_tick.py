@@ -60,6 +60,8 @@ def step(match, result, files=None):
     return {"match": match, "result": result, "files": files or {}}
 
 
+SOMEONE = {"GIT_AUTHOR_NAME": "Someone", "GIT_AUTHOR_EMAIL": "s@example.invalid",
+           "GIT_COMMITTER_NAME": "Someone", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
 EVIDENCE = [{"criterion": "done", "result": "pass", "command": "cat"}]
 PAINTER_READY = step("You are the painter", {"marker": "READY", "summary": "Frames drawn.", "evidence": EVIDENCE},
                      {"production/ep03/frames.md": "# Frames of episode three\n\nThe pier at night.\n"})
@@ -84,6 +86,8 @@ class World:
         patch = mock.patch.dict(os.environ, env)
         patch.start()
         cleanup(patch.stop)
+        for name in SOMEONE:
+            os.environ.pop(name, None)
         self.root = self.tmp / "show"
         shutil.copytree(FIX / "production", self.root)
         self.git("init", "-q", "-b", "trunk")
@@ -307,6 +311,15 @@ class Lock(Case):
         comments = w.comments(8)
         self.assertEqual([c["role"] for c in comments], ["writer", "editor", "program:gate", "program:lock"])
         self.assertEqual(w.markers_lint(comments).status, lint.PASS)
+
+    def test_sync_merges_as_factory_whatever_the_environment_names(self):
+        w = self.world((7, 8))
+        ref = w.ref(8)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #7 gate PR #8"])
+        os.environ.update(SOMEONE)
+        self.assertEqual(lines(self.ticked(w, "--apply")), ["STEP #7 sync PR #8"])
+        self.assertEqual(w.git("log", "-1", "--format=%an <%ae>|%cn <%ce>", w.head(ref)).strip(),
+                         "factory <factory@factory.invalid>|factory <factory@factory.invalid>")
 
     def refused(self, w, line):
         out = self.ticked(w, "--apply")

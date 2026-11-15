@@ -15,6 +15,8 @@ CLEAN = FIXTURES / "clean"
 NOW = "2026-11-11T12:00:00Z"
 REPO = "owner/project"
 HERMETIC_GIT = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+SOMEONE = {"GIT_AUTHOR_NAME": "Someone", "GIT_AUTHOR_EMAIL": "s@example.invalid",
+           "GIT_COMMITTER_NAME": "Someone", "GIT_COMMITTER_EMAIL": "s@example.invalid"}
 
 _real_run = subprocess.run
 _gh_calls = []
@@ -60,6 +62,8 @@ class TmpCase(unittest.TestCase):
         env = mock.patch.dict(os.environ, {"FACTORY_NOW": NOW, **HERMETIC_GIT})
         env.start()
         self.addCleanup(env.stop)
+        for name in SOMEONE:
+            os.environ.pop(name, None)
 
     def copy_clean(self, name="gh-state") -> Path:
         d = self.tmp / name
@@ -288,6 +292,13 @@ class RecordedMergeTest(TmpCase):
         self.assertEqual((pull["state"], pull["merged_at"]), ("merged", NOW))
         self.assertEqual(log_lines(self.d), [{"op": "merge", "number": 3, "head_sha": self.tip}])
         self.assertEqual(self.git("status", "--porcelain"), "")
+
+    def test_merges_as_factory_whatever_the_environment_names(self):
+        os.environ.update(SOMEONE)
+        self.r.merge(self.repo, 3, self.tip)
+        self.assertEqual(self.git("log", "-1", "--format=%an <%ae>|%cn <%ce>|%at|%ct"),
+                         "factory <factory@factory.invalid>|factory <factory@factory.invalid>|"
+                         "1794398400|1794398400")
 
     def test_refuses_pull_not_open(self):
         p = json.loads((self.d / "pulls/3.json").read_text())
