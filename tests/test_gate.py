@@ -149,6 +149,17 @@ class World:
         return row, gitstate.head(self.root, "trunk")
 
 
+def ran(w, path):
+    """Commit on `trunk` a ledger with one ``run`` row DONE for the job file at ``path``."""
+    job = json.loads((w.root / path).read_text())
+    digest = hashlib.sha256(json.dumps(job, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    row = ledger.line({"time": "2026-11-02T08:00:00Z", "kind": "run", "hash": digest, "ticket": JOB_TICKET,
+                       "episode": "ep01", "tool": "renderbox", "usd": "1", "compute_min": "5",
+                       "caller": "renderer", "verdict": "DONE", "cap": "-"})
+    w.write(ledger.PATH, ledger.HEADER + "\n" + row + "\n")
+    w.commit("ledger: the job ran")
+
+
 class LockGateTest(unittest.TestCase):
     def setUp(self):
         self.w = World(self)
@@ -448,10 +459,12 @@ class JobGateTest(unittest.TestCase):
     def test_missing_checker_verdict(self):
         path = self.w.dir / "comments" / f"{JOB_PULL}.json"
         path.write_text(json.dumps([c for c in json.loads(path.read_text()) if c["role"] != "inspector"]))
-        code, out, err = self.w.gate(self.w.job())
+        job = self.w.job()
+        ran(self.w, job)
+        code, out, err = self.w.gate(job)
         self.assertEqual((code, err), (1, ""))
         self.assertRegex(out, r"^gate job [0-9a-f]{64}: STOP cap - reason verdicts\n$")
-        [row] = self.w.ledger_rows()
+        [row] = [r for r in self.w.ledger_rows() if r["kind"] == "job"]
         self.assertEqual((row["verdict"], row["cap"]), ("STOP", "-"))
         [gate] = self.w.gates(JOB_TICKET)
         lines = gate["body"].split("\n")
@@ -743,6 +756,87 @@ class RightsRefusalTest(unittest.TestCase):
         self.assertEqual((code, err), (0, ""))
         self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
         self.assertEqual(len(self.w.ledger_rows()), 2)
+
+
+
+class ReviewAfterTheRunTest(unittest.TestCase):
+    """ISSUE-490 behaviours 5 to 8: a job's checkers and judges count only once the ledger holds its run.
+
+    The `render` stage's only maker is the operator `renderer`, and pull 4 holds a lint PASS and the
+    inspector's APPROVED."""
+
+    PASS = ("PASS", "-", "within caps")
+    STOP = ("STOP", "-", "verdicts")
+
+    def setUp(self):
+        self.w = World(self)
+
+    def comments(self, keep, extra=()):
+        path = self.w.dir / "comments" / f"{JOB_PULL}.json"
+        found = [c for c in json.loads(path.read_text()) if keep(c)]
+        path.write_text(json.dumps(found + list(extra), indent=1) + "\n")
+
+    def checker(self, verb):
+        """``[INSPECTOR] <verb>`` on pull 4's head in place of the inspector's comment; None: no comment."""
+        self.comments(lambda c: c["role"] != "inspector")
+        if verb is not None:
+            body = f"[INSPECTOR] {verb}\nthe frames\nreviewed head {{head:4}} manifest none\n"
+            self.w.record(JOB_PULL, {"body": body,
+                                     "created_at": "2026-11-01T11:30:00Z", "id": 9, "role": "inspector"})
+
+    def without_lint(self):
+        self.comments(lambda c: c["role"] != "program:lint")
+
+    def with_a_maker(self):
+        path = self.w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "render":
+                entry["maker"] = ["painter", "renderer"]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        self.w.commit("a maker at render")
+
+    def outcome(self, path):
+        """``(exit, (verdict, cap, reason), stderr)`` of ``factory gate`` without ``--apply``."""
+        code, out, err = self.w.gate(str(self.w.root / path), apply=False)
+        m = LINE.match(out.rstrip("\n"))
+        return code, m.groups()[2:] if m else out, err
+
+    def test_operators_only_before_the_run(self):
+        for verb in (None, "BLOCKED", "NOTES"):
+            with self.subTest(verb=verb):
+                self.checker(verb)
+                self.without_lint()
+                self.assertEqual(self.outcome(CLEAN_JOB), (0, self.PASS, ""))
+
+    def test_operators_only_after_the_run(self):
+        ran(self.w, CLEAN_JOB)
+        self.checker(None)
+        self.assertEqual(self.outcome(CLEAN_JOB), (1, self.STOP, ""))
+        self.checker("APPROVED")
+        self.without_lint()
+        self.assertEqual(self.outcome(CLEAN_JOB), (0, self.PASS, ""))
+
+    def test_with_a_maker_the_lint_alone_before_the_run(self):
+        self.with_a_maker()
+        self.checker("BLOCKED")
+        self.assertEqual(self.outcome(CLEAN_JOB), (0, self.PASS, ""))
+        self.without_lint()
+        self.assertEqual(self.outcome(CLEAN_JOB), (1, self.STOP, ""))
+
+    def test_with_a_maker_after_the_run(self):
+        self.with_a_maker()
+        ran(self.w, CLEAN_JOB)
+        self.checker("BLOCKED")
+        self.assertEqual(self.outcome(CLEAN_JOB), (1, self.STOP, ""))
+        self.checker("APPROVED")
+        self.assertEqual(self.outcome(CLEAN_JOB), (0, self.PASS, ""))
+
+    def test_a_run_of_another_job_does_not_count(self):
+        self.with_a_maker()
+        ran(self.w, CLEAN_JOB)
+        self.checker("BLOCKED")
+        self.assertEqual(self.outcome(self.w.job(tool="renderbox-2")), (0, self.PASS, ""))
 
 
 if __name__ == "__main__":
