@@ -11,10 +11,10 @@ Rule ids: shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-
 Findings are on line 1 of the state, except a manifest whose `outputs` is not a list of outputs and every
 `skeleton` finding, which are on line 1 of the manifest. The manifest of a character (an asset state that is
 an object whose `kind` is `character`) has a `skeleton`, `{bones, weights_normalised}` with one root, unique
-bone names and normalised weights; it needs no rigging state. A state with a `shape` finding gets none of rules 2 to 5. At least one pose is tested,
-no joint-limit violation is found, no joint's `min` is above its `max` on an axis, and the worst
-penetration is at most `MAX_PENETRATION_MM`. The rig hash is the `sha256` of an output the rig job's
-manifest records.
+bone names and normalised weights; it needs no rigging state. A state with a `shape` finding gets none of
+rules 2 to 5. At least one pose is tested, no joint-limit violation is found, no joint's `min` is above its
+`max` on an axis, and the worst penetration is at most `MAX_PENETRATION_MM`. The rig hash is the `sha256` of
+an output the rig job's manifest records.
 """
 
 from __future__ import annotations
