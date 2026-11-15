@@ -23,12 +23,16 @@ from kit.lib import cmd_tick  # noqa: E402
 
 KIT = ROOT / "kit"
 SEQUENCE = '{"id": "Q"}\n'
+KEY = '{"luma": 0.4, "color": [0.4, 0.4, 0.4], "sun": null}\n'
 SCRATCH = {"episodes/ep01/sequences/Q1/sequence.json": SEQUENCE,
            "episodes/ep01/sequences/Q1/shots/Q1-1.json": "{}\n",
            "episodes/ep01/sequences/Q2/sequence.json": SEQUENCE,
            "episodes/ep01/sequences/Q10/sequence.json": SEQUENCE,
            "episodes/ep01/sequences/notes.md": "Notes.\n",
-           "episodes/ep02/sequences/Q1/sequence.json": SEQUENCE}
+           "episodes/ep02/sequences/Q1/sequence.json": SEQUENCE,
+           "bible/style/keys/ep01/Q1.json": KEY,
+           "bible/style/keys/ep01/Q10.json": KEY,
+           "bible/style/keys/ep01/Q2.json": KEY}
 
 
 def premise(format_id):
@@ -92,6 +96,7 @@ class Case(unittest.TestCase):
 
 BEATS_LOCKED = ([ticket(1, "beats", "ep01")], [pull(2, 1)])
 SEQUENCES_LOCKED = ([ticket(1, "sequences", "ep01")], [pull(2, 1)])
+STYLE = (1, 2, "story", "style", "ep01")
 BOARDS = [(1, 2, "story", "board", "ep01/Q1"), (1, 2, "story", "board", "ep01/Q10"),
           (1, 2, "story", "board", "ep01/Q2")]
 
@@ -155,7 +160,7 @@ class OnePerSequence(Case):
     def test_a_sequence_committed_on_the_base_is_filed(self):
         self.commit({"episodes/ep01/sequences/Q3/sequence.json": SEQUENCE})
         self.assertEqual(self.filed(make_state(*SEQUENCES_LOCKED)),
-                         BOARDS + [(1, 2, "story", "board", "ep01/Q3")])
+                         [STYLE] + BOARDS + [(1, 2, "story", "board", "ep01/Q3")])
 
 
 class NeverTwice(Case):
@@ -188,6 +193,72 @@ class NeverTwice(Case):
     def test_two_locked_tickets_for_the_same_unit_file_once_from_the_lower(self):
         state = make_state([ticket(5, "script", "ep01"), ticket(7, "script", "ep01")], [pull(6, 5), pull(8, 7)])
         self.assertEqual(self.filed(state), [(5, 6, "story", "sequences", "ep01")])
+
+
+STYLE_BODY = ("Do the stage style for unit ep01.\n\nWrite the sequence key bible/style/keys/ep01/Q10.json.\n"
+              "Write the sequence key bible/style/keys/ep01/Q2.json.\n"
+              "Add only these keys and change no other file under bible/style/.\n\n"
+              "Tool: grok-imagine. Expected cost: usd 0.1, compute_min 1.\n\n"
+              "Upstream: #1 sequences ep01, locked by PR #2.\nFiled by factory tick.\n")
+
+
+class SequenceKeys(Case):
+    """ISSUE-508: a locked ``sequences`` ticket files one ``style`` ticket for the missing sequence keys."""
+
+    MISSING = ("bible/style/keys/ep01/Q10.json", "bible/style/keys/ep01/Q2.json")
+
+    def setUp(self):
+        super().setUp()
+        self.commit({k: v for k, v in SCRATCH.items() if k not in self.MISSING})
+
+    def test_one_style_ticket_for_the_missing_keys(self):
+        state = make_state(*SEQUENCES_LOCKED)
+        self.assertEqual(self.filed(state), [STYLE] + BOARDS)
+        found = self.due(state)[0]
+        self.assertEqual(found["title"], "[STYLE-EP01] style for ep01")
+        self.assertEqual(found["labels"], ["tracked", "room:story", "stage:style", "unit:ep01"])
+        self.assertEqual(found["body"], STYLE_BODY)
+
+    def test_every_key_on_the_base_files_none(self):
+        self.commit({path: KEY for path in self.MISSING})
+        self.assertEqual(self.filed(make_state(*SEQUENCES_LOCKED)), BOARDS)
+
+    def test_a_key_only_in_the_working_tree_is_not_read(self):
+        self.write({self.MISSING[1]: KEY})
+        self.assertEqual(self.due(make_state(*SEQUENCES_LOCKED))[0]["body"], STYLE_BODY)
+
+    def test_never_twice(self):
+        found, locked = SEQUENCES_LOCKED
+        for other in (ticket(3, "style", "ep01", state="open"), ticket(3, "style", "ep01")):
+            with self.subTest(state=other["state"]):
+                self.assertEqual(self.filed(make_state(found + [other], locked)), BOARDS)
+
+    def test_two_locked_sequences_tickets_file_once_from_the_lower(self):
+        state = make_state([ticket(1, "sequences", "ep01"), ticket(3, "sequences", "ep01")],
+                           [pull(2, 1), pull(4, 3)])
+        self.assertEqual(self.filed(state), [STYLE] + BOARDS)
+
+    def test_no_style_stage_files_none(self):
+        pipeline = [e for e in roles.load_pipeline(KIT / "pipeline.json") if e["stage"] != "style"]
+        self.assertEqual(self.filed(make_state(*SEQUENCES_LOCKED), pipeline), BOARDS)
+
+    def test_through_the_tick_once(self):
+        gh = github.Recorded(self.tmp / "github")
+        record(gh, issue_record(1, "sequences", "ep01"), pull_record(2, 1))
+
+        def tick():
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                cmd_tick.Tick(self.p(), gh, True, production.now()).file(["story"])
+            return out.getvalue()
+
+        self.assertEqual(tick(), "STEP #1 file style ep01\nSTEP #1 file board ep01/Q1\n"
+                                 "STEP #1 file board ep01/Q10\nSTEP #1 file board ep01/Q2\n")
+        self.assertEqual(tick(), "")
+        made = [i for i in gh.issues("all") if i["number"] > 2 and i["title"].startswith("[STYLE-")]
+        self.assertEqual([(i["title"], i["body"]) for i in made], [("[STYLE-EP01] style for ep01", STYLE_BODY)])
+        parsed = tickets.parse(made[0])
+        self.assertEqual((parsed["stage"], parsed["unit"]), ("style", "ep01"))
 
 
 class OtherUnitTypes(Case):
