@@ -11,7 +11,9 @@ once per ``episodes/<unit>/sequences/<Q>/sequence.json`` in the tree of the base
 An ``episode`` stage after a ``sequence`` stage is filed once for the episode, only when every ``<Q>`` of
 the episode on the base has a locked ticket of the sequence stage with unit ``<episode>/<Q>``, and only
 from the lowest numbered of those tickets (the lowest numbered locked ticket of each ``<Q>``); its body
-has one ``Upstream:`` line per sequence. Any other pair files nothing. A room, stage and unit that some
+has one ``Upstream:`` line per sequence. The body of a stage whose makers name ``media-wrangler`` also names the
+tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MEDIA_COMPUTE_MIN`` (defaults
+``grok-imagine``, ``0.1`` and ``1``). Any other pair files nothing. A room, stage and unit that some
 ticket already has, open or closed, is never filed again. While a tracked issue does not parse, nothing
 is filed.
 
@@ -40,6 +42,8 @@ PACKAGE = ("story", "reel")
 INTAKE = ("production", "intake")
 EDIT_LIST = "episodes/{}/reel/edit-list.json"
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
+
+MEDIA_MAKER = "media-wrangler"
 
 PACKETS = {("story", "reel"): "intent-packet", ("distribution", "window"): "platform-notes"}
 
@@ -92,10 +96,19 @@ def _units(p, root, state: tickets.State, ticket: dict, pull: dict, upstream_uni
     return []
 
 
-def _filing(ticket: dict, pull: dict, upstreams: list, room: str, stage: str, unit: str) -> dict:
+def _tool(p, room: str, stage: str) -> str:
+    """The tool and expected cost line of a stage ``media-wrangler`` makes, with its empty line; else empty."""
+    if MEDIA_MAKER not in production.stage_roles(production.stage(p, room, stage) or {}, "maker"):
+        return ""
+    return (f"Tool: {production.setting(p, 'MEDIA_TOOL', 'grok-imagine')}. "
+            f"Expected cost: usd {production.setting(p, 'MEDIA_USD', '0.1')}, "
+            f"compute_min {production.setting(p, 'MEDIA_COMPUTE_MIN', '1')}.\n\n")
+
+
+def _filing(p, ticket: dict, pull: dict, upstreams: list, room: str, stage: str, unit: str) -> dict:
     lines = "".join(f"Upstream: #{t['number']} {t['stage']} {t['unit']}, locked by PR #{u['number']}.\n"
                     for t, u in upstreams)
-    body = f"Do the stage {stage} for unit {unit}.\n\n{lines}Filed by factory tick.\n"
+    body = f"Do the stage {stage} for unit {unit}.\n\n{_tool(p, room, stage)}{lines}Filed by factory tick.\n"
     return {"from": ticket["number"], "pull": pull["number"], "room": room, "stage": stage, "unit": unit,
             "title": f"[{key(stage, unit)}] {stage} for {unit}", "body": body,
             "labels": [tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]}
@@ -155,7 +168,7 @@ def _intake(p, root, ticket: dict, pull: dict, taken: set, order: dict) -> list:
         for unit in units.get(entry["unit"], []):
             if (room, entry["stage"], unit) not in taken:
                 taken.add((room, entry["stage"], unit))
-                candidates.append(_filing(ticket, pull, [(ticket, pull)], room, entry["stage"], unit))
+                candidates.append(_filing(p, ticket, pull, [(ticket, pull)], room, entry["stage"], unit))
     return sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
 
 
@@ -236,6 +249,6 @@ def due(p, state: tickets.State, root) -> list:
             for unit, upstreams in _units(p, root, state, ticket, pull, upstream_unit, entry):
                 if (room, entry["stage"], unit) not in taken:
                     taken.add((room, entry["stage"], unit))
-                    candidates.append(_filing(ticket, pull, upstreams, room, entry["stage"], unit))
+                    candidates.append(_filing(p, ticket, pull, upstreams, room, entry["stage"], unit))
         found += sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
     return found + _packets(p, state, root)
