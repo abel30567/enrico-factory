@@ -41,6 +41,7 @@ NOW = dt.datetime.now(dt.timezone.utc)
 MAX_LOAD = float(os.environ.get("TICK_MAX_LOAD", 9))
 MIN_FREE_PCT = float(os.environ.get("TICK_MIN_FREE_PCT", 20))
 MAX_AGENTS = int(os.environ.get("TICK_MAX_AGENTS", 6))
+MAX_REVIEWS = int(os.environ.get("TICK_MAX_REVIEWS", 0))   # verifiers + blast-radius reviews alive at once; 0 = no limit
 LIMIT_WINDOW_S = 3600        # hold after a rejection that names no reset time
 LIMIT_MAX_HOLD_S = 8 * 86400 # never hold longer than this, whatever the reset time says
 LIMIT_RE = re.compile(r"You've hit your [^\n]*limit|usage limit reached|out of extra usage|rate_limit[^\n]*\bresets\s|\"rate_limit_event\"[^\n]*\"rejected\"")
@@ -228,6 +229,23 @@ def guarded(desc):
     return bool(why)
 
 
+_reviews = None
+
+
+def reviews_full(desc):
+    """True when TICK_MAX_REVIEWS verifiers and blast-radius reviews are alive (set it while they run GATES on this machine)."""
+    global _reviews
+    if not MAX_REVIEWS:
+        return False
+    if _reviews is None:
+        _reviews = sum(1 for f in (STATE / "state").glob("*.pid") if re.match(r"(V|BR)\d+$", f.stem) and alive(f.stem))
+    if _reviews >= MAX_REVIEWS:
+        say("WAIT", f"{desc}: held, {_reviews} reviews alive (max {MAX_REVIEWS})")
+        return True
+    _reviews += 1
+    return False
+
+
 def stalled(w):
     """Minutes since worker `w` last wrote anything (pid file, logs, run JSON, session transcripts), when
     that is STALL_MIN or more; else 0. A headless worker writes its result only at the end."""
@@ -387,7 +405,7 @@ for p in prs:
         reason = lines[-1][1].removeprefix(tag).strip() if lines else ""
         if kind == "verifier":
             reason = "launch verifier"
-            if not guarded(f"{tag} launch verifier") and not capped(f"V{n}", head, tag):
+            if not guarded(f"{tag} launch verifier") and not reviews_full(f"{tag} launch verifier") and not capped(f"V{n}", head, tag):
                 iss = issue_of(p["body"], key)
                 body = sh("gh", "issue", "view", iss, "-R", R, "--json", "body", "--jq", ".body")[0] if iss else "(see the PR body)"
                 crit = (f"Ticket #{iss}. Its section 'Rulings from the orchestrator' and every [ORCHESTRATOR] comment on the "
@@ -403,7 +421,7 @@ for p in prs:
             act(f"{tag} hold after {step[1]} fix rounds", "gh", "pr", "edit", str(n), "-R", R, "--add-label", "merge:hold,status:blocked")
         elif kind == "br":
             reason = f"launch blast radius ({', '.join(step[1])})"
-            if not guarded(f"{tag} {reason}") and not capped(f"BR{n}", head, tag):
+            if not guarded(f"{tag} {reason}") and not reviews_full(f"{tag} {reason}") and not capped(f"BR{n}", head, tag):
                 launch(f"{tag} {reason}", str(ORCH / "orch"), "launch", "br", str(n),
                        "Prove by running code what this change cannot break outside its diff.")
         elif kind == "stalled":

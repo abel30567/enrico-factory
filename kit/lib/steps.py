@@ -11,7 +11,8 @@ to is at row 14. Row 13 and the choice among pulls at row 14 are read on the tic
 A pull with a request at a stage with an operator (``kit.lib.jobs``) has more rows: before the lint, a
 failed job, the operator's launch to write the jobs and its launch to report on them; in the place of
 row 14, a stopped job, the gate and the run of each job. A ``gate`` or ``run`` entry also has ``job``,
-the job path.
+the job path. While a job of the pull has not run, its gate and its run come right after the lint, before
+the checkers and the judges, which read what the jobs make.
 """
 
 from __future__ import annotations
@@ -285,6 +286,9 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         if not production.stage_roles(entry, "maker"):
             return _entry("notes", "none", None, n, f"{why} and stage {ticket['stage']} has no maker")
         return _entry("notes", "launch", _maker_of(p, entry, pull, root), n, why)
+    if found and any(job["run"] is None for job in found["jobs"]):
+        # The checkers and judges read what the jobs make: they come after every job has run.
+        return _job_steps(p, ticket, pull, found)
     stuck = None
     for role, verdict in summary["checkers"].items():
         if verdict is None:

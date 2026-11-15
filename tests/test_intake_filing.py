@@ -21,7 +21,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_init, cmd_tick, gitstate, production, tickets  # noqa: E402
+from kit.lib import cmd_init, cmd_launch, cmd_tick, gitstate, production, tickets  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "intake_filing"
 NOW = "2026-11-13T09:00:00Z"
@@ -43,6 +43,12 @@ WRITE = "STEP #1 write production/ep01/shots.json"
 SHOTS = "production/ep01/shots.json"
 WAITS = [f"WAIT #{n} waiting upstream stage intake is not locked for {unit}"
          for n, (_, unit) in zip(range(3, 10), UNITS)]
+SUBJECT_WAITS = [
+    "WAIT #7 waiting cheaper stage(s) not locked: assets for ama, assets for lighthouse, assets for tobi, "
+    "rigging for ama, rigging for tobi",
+    "WAIT #8 waiting cheaper stage(s) not locked: assets for ama, assets for harbour, rigging for ama",
+    "WAIT #9 waiting cheaper stage(s) not locked: assets for ama, assets for harbour, assets for tobi, "
+    "rigging for ama, rigging for tobi"]
 
 
 def file_lines(out):
@@ -171,8 +177,8 @@ class IntakeFiling(World):
         commits = self.git("rev-list", "--count", "main")
         code, out = self.tick()
         self.assertEqual(code, 0, out)
-        launches = [f"STEP #{n} launch {'asset-builder' if n < 7 else 'layout-artist'} on #{n}" for n in range(3, 10)]
-        self.assertEqual(out.splitlines(), [*launches, "tick: 7 steps, 0 need, 0 wait, 0 failed"])
+        launches = [f"STEP #{n} launch asset-builder on #{n}" for n in range(3, 7)]
+        self.assertEqual(out.splitlines(), [*launches, *SUBJECT_WAITS, "tick: 4 steps, 0 need, 3 wait, 0 failed"])
         for n in range(3, 10):
             issue = self.record("issues", n)
             self.set_record("issues", n, {**issue, "labels": sorted([*issue["labels"], "hold"])})
@@ -200,11 +206,81 @@ class IntakeFiling(World):
             return [tickets.upstream(p, state, state.tickets[n], self.root) for n in (3, 7)]
         self.assertEqual(upstream(), [
             (True, "upstream stage intake is held for ama: production/ep01/shots.json is on the base"),
-            (True, "upstream stage intake is held for ep01/Q1-1: production/ep01/shots.json is on the base")])
+            (False, "cheaper stage(s) not locked: assets for ama, assets for lighthouse, assets for tobi, "
+                    "rigging for ama, rigging for tobi")])
         self.set_record("pulls", 2, {**self.record("pulls", 2), "state": "closed", "merged_at": None})
         self.assertIsNotNone(self.on_main(SHOTS))
         self.assertEqual(upstream(), [(False, "upstream stage intake is not locked for ama"),
                                       (False, "upstream stage intake is not locked for ep01/Q1-1")])
+
+    def lock(self, issue, pull, stage, unit):
+        """Lock ``production/<stage>`` of ``unit``: a closed ticket ``issue`` when none exists, and its merged pull."""
+        key = f"{stage}-{unit.replace('/', '-')}".upper()
+        title = f"[{key}] {stage} for {unit}"
+        if not (self.github / "issues" / f"{issue}.json").is_file():
+            self.issue(issue, title, ["room:production", f"stage:{stage}", "tracked", f"unit:{unit}"],
+                       state="closed")
+        self.set_record("pulls", pull, {**self.record("pulls", 2), "number": pull, "ticket": issue,
+                                        "body": f"Ticket: #{issue}\n", "head_ref": f"{stage}/{key}-maker-1",
+                                        "title": title})
+
+    def shot_lines(self, out):
+        return [line for line in out.splitlines() if line.split()[1:2] in (["#7"], ["#8"], ["#9"])]
+
+    def launch(self, number):
+        """``(exit code, stderr)`` of ``factory launch layout-artist <number> --root <show>``."""
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            code = cmd_launch.main(["layout-artist", str(number), "--root", str(self.root)])
+        return code, err.getvalue()
+
+    def test_layout_waits_for_the_assets(self):
+        self.tick("--apply")
+        for issue, pull, unit in ((3, 11, "ama"), (4, 12, "harbour"), (5, 13, "lighthouse")):
+            self.lock(issue, pull, "assets", unit)
+        self.lock(15, 16, "rigging", "ama")
+        self.assertEqual(self.shot_lines(self.tick()[1]), [
+            "WAIT #7 waiting cheaper stage(s) not locked: assets for tobi, rigging for tobi",
+            "STEP #8 launch layout-artist on #8",
+            "WAIT #9 waiting cheaper stage(s) not locked: assets for tobi, rigging for tobi"])
+        self.assertEqual(self.launch(7),
+                         (1, "launch: cheaper stage(s) not locked: assets for tobi, rigging for tobi\n"))
+
+    def test_layout_launches_when_the_assets_lock(self):
+        self.tick("--apply")
+        for issue, pull, unit in ((3, 11, "ama"), (4, 12, "harbour"), (5, 13, "lighthouse")):
+            self.lock(issue, pull, "assets", unit)
+        self.lock(15, 16, "rigging", "ama")
+        self.lock(6, 14, "assets", "tobi")
+        self.lock(17, 18, "rigging", "tobi")
+        self.assertEqual(self.shot_lines(self.tick()[1]),
+                         [f"STEP #{n} launch layout-artist on #{n}" for n in (7, 8, 9)])
+        self.assertNotIn("cheaper stage(s)", self.launch(7)[1])
+
+    def test_animation_waits_too(self):
+        self.tick("--apply")
+        self.lock(8, 12, "layout", "ep01/Q1-2")
+        self.issue(13, "[ANIMATION-EP01-Q1-2] animation for ep01/Q1-2",
+                   ["room:production", "stage:animation", "tracked", "unit:ep01/Q1-2"])
+
+        def lines():
+            return [line for line in self.tick()[1].splitlines() if line.split()[1:2] == ["#13"]]
+        self.assertEqual(lines(), ["WAIT #13 waiting cheaper stage(s) not locked: assets for ama, "
+                                   "assets for harbour, rigging for ama"])
+        self.lock(3, 14, "assets", "ama")
+        self.lock(4, 15, "assets", "harbour")
+        self.lock(16, 17, "rigging", "ama")
+        self.assertEqual(lines(), ["STEP #13 launch animator on #13"])
+
+    def test_a_shot_with_no_subject(self):
+        rel = "episodes/ep01/sequences/Q1/shots/Q1-2.json"
+        for change in ({"files": {rel: dump({"id": "Q1-2", "characters": []})}}, {"removed": [rel]}):
+            with self.subTest(change=change):
+                self.make(["--rooms", "story,production"])
+                self.commit(**change)
+                self.tick("--apply")
+                self.assertEqual(self.shot_lines(self.tick()[1]),
+                                 [SUBJECT_WAITS[0], "STEP #8 launch layout-artist on #8", SUBJECT_WAITS[2]])
 
     def test_write_refused(self):
         self.git("checkout", "-q", "-b", "elsewhere")

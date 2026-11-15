@@ -120,6 +120,7 @@ Everything else an agent can do. Start the long ones in wave 4, as the build ord
 | 7 | Logins: a yearly token per inference account; the proxy logins when they end | minutes each | inference, Grok Imagine |
 | 8 | TikTok For Business account, a Business API app and an ad account | not verified | TikTok trend reads, and the optional watch-through |
 | 9 | Fermi: `FERMI_URL` and the key file `knowledge.fermi`, a bearer token that lasts (#216) | minutes, unless the token needs a change on the live server (D2) | the knowledge gateway; without it a run goes on with `GATEWAY=off` |
+| 10 | The fleet's own xAI login (#538). Done on 2026-11-15: the fleet has its own sign-in, separate from the orchestrator machine's, since a copy of that machine's login dies when either side refreshes it. If it breaks again, sign the fleet in again on its own; never copy the machine's login | done | verifiers and blast-radius reviews on fleet boxes of the development loop |
 
 ## 4. TikTok
 

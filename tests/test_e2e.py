@@ -1125,7 +1125,6 @@ class OperatorJob(Case):
         w.script(step("You are editorial", "READY", {self.REQUEST: self.request}, evidence=EVIDENCE),
                  step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n"},
                       evidence=EVIDENCE),
-                 editor_approved(),
                  step("You are the media wrangler", "READY", evidence=EVIDENCE),
                  step("You are editorial", "READY", evidence=EVIDENCE),
                  editor_approved())
@@ -1151,8 +1150,6 @@ class OperatorJob(Case):
         self.assertEqual(first(w.comments(4)[-1]), "[MEDIA-WRANGLER] READY")
         self.tick_line(w, ["STEP #3 lint PR #4"], apply=True)
         self.assertEqual(first(w.comments(4)[-1]), "[LINT] PASS")
-        self.tick_line(w, ["STEP #3 launch story-editor on PR #4"], apply=True)
-        self.assertEqual(first(w.comments(4)[-1]), "[STORY-EDITOR] APPROVED")
         self.tick_line(w, [f"STEP #3 gate {self.JOB} PR #4"], apply=True)
         gate = w.comments(3)[-1]
         self.assertEqual(gate["body"].split("\n")[:2], ["[PRODUCER] GATE PASS", f"covers: job {self.digest}"])
@@ -1186,7 +1183,6 @@ class OperatorJob(Case):
                  step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n",
                                                               "jobs/" + other: json.dumps(job, indent=1) + "\n"},
                       evidence=EVIDENCE),
-                 editor_approved(),
                  step("You are the media wrangler", "READY", evidence=EVIDENCE),
                  step("You are editorial", "READY", evidence=EVIDENCE),
                  editor_approved())
@@ -1197,13 +1193,13 @@ class OperatorJob(Case):
                 break
         r1, r2 = self.JOB, "jobs/" + other
         self.assertEqual(lines, ["STEP #3 launch editorial on #3", "STEP #3 launch media-wrangler on PR #4",
-                                 "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4",
+                                 "STEP #3 lint PR #4",
                                  f"STEP #3 gate {r1} PR #4", f"STEP #3 gate {r2} PR #4",
                                  f"STEP #3 run {r1} PR #4", f"STEP #3 run {r2} PR #4",
                                  "STEP #3 launch media-wrangler on PR #4", "STEP #3 launch editorial on PR #4",
                                  "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4", "STEP #3 gate PR #4",
                                  "STEP #3 sync PR #4", "STEP #3 lock PR #4"])
-        self.assertEqual(len(self.launched("story-editor")), 2)
+        self.assertEqual(len(self.launched("story-editor")), 1)
         self.assertEqual(self.fake_log.read_text().split(), [self.digest, digest])
 
     def test_the_report_needs_a_counting_pass(self):
@@ -1229,7 +1225,7 @@ class StyleJob(Case):
     CAPS = OperatorJob.CAPS
     HEADER = "PR #4 #3 story/style look: NO 1 rule(s)"
     LINES = ["STEP #3 launch art-director on #3", "STEP #3 launch media-wrangler on PR #4", "STEP #3 lint PR #4",
-             "STEP #3 launch look-reviewer on PR #4", f"STEP #3 gate {JOB} PR #4", f"STEP #3 run {JOB} PR #4",
+             f"STEP #3 gate {JOB} PR #4", f"STEP #3 run {JOB} PR #4",
              "STEP #3 launch media-wrangler on PR #4", "STEP #3 launch art-director on PR #4", "STEP #3 lint PR #4",
              "STEP #3 launch look-reviewer on PR #4", "STEP #3 gate PR #4", "STEP #3 sync PR #4",
              "STEP #3 lock PR #4"]
@@ -1248,13 +1244,12 @@ class StyleJob(Case):
         self.script(f"# Ama\n\nReference: ![ama](media:{self.media})\n")
 
     def script(self, sheet, first=None):
-        """The six launches; ``first`` adds files to the art director's first READY."""
+        """The five launches; ``first`` adds files to the art director's first READY."""
         w = self.w
         w.script(step("You are the art director", "READY", {self.REQUEST: self.request, **(first or {})},
                       evidence=EVIDENCE),
                  step("You are the media wrangler", "READY", {self.JOB: json.dumps(self.job, indent=1) + "\n"},
                       evidence=EVIDENCE),
-                 step("You are the look reviewer", "APPROVED", evidence=EVIDENCE),
                  step("You are the media wrangler", "READY", evidence=EVIDENCE),
                  step("You are the art director", "READY", {self.SHEET: sheet}, evidence=EVIDENCE),
                  step("You are the look reviewer", "APPROVED", evidence=EVIDENCE))
@@ -1335,7 +1330,7 @@ class StyleJob(Case):
 
     def test_a_job_that_has_not_run(self):
         w = self.w
-        self.ticks(w, self.LINES[:5])
+        self.ticks(w, self.LINES[:4])
         self.assertIn(self.rule_7(self.JOB), w.lock()[1].splitlines())
 
     def test_a_sheet_before_its_image(self):
