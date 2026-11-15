@@ -1,0 +1,85 @@
+{
+  "black": [],
+  "count": 24,
+  "fps": 24,
+  "frames": {
+    "first": 0,
+    "last": 23
+  },
+  "frames_sha256": [
+    "12f619f531d5e709b4f8943ab9b1c5e8336582ddbcd0f4ae8981333575246692",
+    "9c8bfc05e651335c817713211961e10e73c7bbc29891a0863ee7e882c4e5606e",
+    "cc0990f5092619c0d295b83d9f8b3ccf50b5821b48c7bd629beee4e58df257da",
+    "962e50808640fc7d43700bbbfbc2fa5c68e080869324c28c4be155252440d101",
+    "399cf4be157e207d2ee2b72b86c4fb07f6537c0e05225b012135efc318ef0718",
+    "663acdafa1cea31d55d823237e3e5d79973748c26db8034befbca4cd33c2bb39",
+    "22775306948c9a0ac6d0710e3395aa096b508ba831a2d65afc448dae51490f75",
+    "23db5e682e23170bd1b2a07e8b43201c062b56d8ffb981ca922064e0b61569ce",
+    "90fa5198827a3b15f17437b789bffa31238e9f6b21f64b710b08a024021e9730",
+    "c5dbf40773d6fbc45d8c5743543c141fa37b48324bee498433f6d0d9a807b718",
+    "eed9ce40dcdf8824a151e37427eba29d445531bab379717c2e7ab59d3b14747d",
+    "27c47e28f763dc7156f687a957d08183962ab2e1376561d13dbb114fac2ef68b",
+    "613f0df13eb1a97759b338be7076d4eef90ab0d5eb9cb2c3cb5c95cbd619b050",
+    "b804f0d5fcd1434104d61505dee35884190c711450eecd1359a8a197cd80bdbb",
+    "21e708584add68c9a33db989373882046f06b9c086314dc86092cae43ee4f8e6",
+    "40a2a682dab678b78644806a515c07da6ec56954a5b6d7924852aa3d4d0e91a2",
+    "164b646aee5c23fe345ee233d2e60c15b4d02f988d2f77e7d609838a9b88b1c8",
+    "b0dc80b812166c38a805747b908af52d47ebd9eac380c0de66df3e773a01617f",
+    "16398ed5e1baa77f67e9bb9b68b326666b53bed8d7c6471037097543e1a44aba",
+    "0000f588053400ffcaaa7609ab2f7bf65205de17a91774fa80d04c0cc4e46891",
+    "ee8ce7a41290daca9f460a532b0945cca668cd29905bd5ffc5225ebab653a2e3",
+    "eb32e936a1231536ca356374360af2b9db49e1da00eafb220aea5d7fb267cd47",
+    "afbf117ec5ecedd2788553033577ab46b35af7b7433b10173d2386a4042ac1d7",
+    "cf3d0b0a3d146288a37970bde6529f9be09c1fa1b1140aedaf30c1e9376b93c1"
+  ],
+  "height": 360,
+  "nan": [],
+  "rerender": {
+    "frames": [
+      0,
+      11,
+      23
+    ],
+    "metric": "metric-perceptual",
+    "scores": [
+      0.999999,
+      0.999444,
+      0.999337
+    ]
+  },
+  "samples": [
+    {
+      "clipped": 0.0,
+      "color": [
+        0.216236,
+        0.191823,
+        0.180041
+      ],
+      "frame": 0,
+      "luma": 0.196162
+    },
+    {
+      "clipped": 0.0,
+      "color": [
+        0.216404,
+        0.192003,
+        0.180223
+      ],
+      "frame": 11,
+      "luma": 0.19634
+    },
+    {
+      "clipped": 0.0,
+      "color": [
+        0.216292,
+        0.191896,
+        0.180119
+      ],
+      "frame": 23,
+      "luma": 0.196233
+    }
+  ],
+  "sequence_sha256": "6f83eab725c1a14b4ce63010f595519d5b8c330e4c8d9f3d4662c04182dffd8f",
+  "text": [],
+  "width": 640
+}
