@@ -235,6 +235,7 @@
       "rooms": ["production"],
       "wave": 5,
       "setup": "agent",
+      "optional": true,
       "checks": [{"kind": "setting", "name": "LIPSYNC_TOOL"}]
     },
     {
