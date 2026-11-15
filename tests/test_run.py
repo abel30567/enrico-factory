@@ -36,6 +36,9 @@ TICKET, PULL, BRANCH = 3, 4, "feat/RN-1-ep01"
 CLEAN_JOB = "jobs/clean.json"
 KEY = "seeded-key-5d1c0b7e"
 MANIFEST_HEADER = "id\tsha256\tbytes\tsource\n"
+BIN = hashlib.sha256(b"wren glb").hexdigest()
+WREN_PATH = "production/assets/wren/assets/state.json"
+WREN_TEXT = json.dumps({"asset": "wren", "kind": "character", "sha256": BIN}, indent=1) + "\n"
 
 
 def digest_of(path):
@@ -797,6 +800,67 @@ class RunOnPullTest(unittest.TestCase):
         self.assertEqual(self.command(cmd_run.main, self.JOB, "--pull", str(PULL)),
                          (2, "", f"run: input {self.SCRIPT} does not match its hash on pull #{PULL}\n"))
         self.assertEqual(self.w.fake_calls(), [])
+
+    def test_an_asset_input_is_read_on_the_base(self):
+        self.w.commit(WREN_PATH, WREN_TEXT)
+        job = {**self.job, "inputs": self.job["inputs"] + [{"path": "asset:wren", "sha256": BIN}]}
+        pulled = json.dumps({"asset": "wren", "kind": "character", "sha256": BIN, "triangles": 1}, indent=1) + "\n"
+        self.on_branch({self.JOB: json.dumps(job, indent=1), WREN_PATH: pulled})
+        self.assertEqual(self.command(cmd_gate.main, self.JOB, "--pull", str(PULL))[0], 0)
+        calls, real = [], cmd_run._call
+
+        def spy(tool, call, expected):
+            calls.append([(item["path"], item["text"]) for item in call["inputs"]])
+            return real(tool, call, expected)
+
+        with mock.patch.object(cmd_run, "_call", spy):
+            code, out, err = self.command(cmd_run.main, self.JOB, "--pull", str(PULL))
+        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual(calls, [[(self.SCRIPT, self.script), ("asset:wren", WREN_TEXT)]])
+
+
+class AssetInputTest(unittest.TestCase):
+    """ISSUE-536: an input `asset:<id>` reaches the tool as the asset's locked state on the base."""
+
+    def setUp(self):
+        self.calls, real = [], cmd_run._call
+
+        def spy(tool, call, expected):
+            self.calls.append([(item["path"], item["sha256"], item["text"]) for item in call["inputs"]])
+            return real(tool, call, expected)
+
+        patch = mock.patch.object(cmd_run, "_call", spy)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def world(self, state=WREN_TEXT, digest=BIN):
+        """A fresh world with ``state`` committed at the asset's state path (none when None); the job's path."""
+        self.w = World(self)
+        if state is not None:
+            self.w.commit(WREN_PATH, state)
+        inputs = json.loads((self.w.root / CLEAN_JOB).read_text())["inputs"]
+        return self.w.job("wren.json", inputs=inputs + [{"path": "asset:wren", "sha256": digest}])
+
+    def test_the_tool_gets_the_locked_state(self):
+        job = self.world()
+        digest = self.w.passed(job)
+        self.assertEqual(self.w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        [inputs] = self.calls
+        self.assertEqual(inputs[1], ("asset:wren", BIN, WREN_TEXT))
+        self.assertEqual(self.w.fake_calls(), [digest])
+
+    def test_no_state_or_another_sha256_calls_no_tool(self):
+        for args, reason in (((None,), "has no locked state on the base"),
+                             ((WREN_TEXT, "0" * 64), "does not match the sha256 of its locked state")):
+            with self.subTest(reason=reason):
+                job = self.world(*args)
+                self.calls.clear()
+                before = self.w.snapshot()
+                self.assertEqual(self.w.run(job), (2, "", f"run: input asset:wren {reason}\n"))
+                self.assertEqual(self.calls, [])
+                self.assertEqual(self.w.fake_calls(), [])
+                self.assertEqual(self.w.snapshot(), before)
+
 
 class ManifestInputTest(unittest.TestCase):
     """ISSUE-480: a job that names the manifest after its request runs after another job of the pull added rows."""

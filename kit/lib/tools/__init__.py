@@ -40,7 +40,9 @@ and may have:
 
 - ``hash``: the job's hash; ``ticket``: the ticket number; ``caller``: the operator role;
 - ``expected``: the job's ``{"compute_min", "usd"}``;
-- ``inputs``: the job's inputs, each ``{"path", "sha256", "text"}``, ``text`` the file's text on the base;
+- ``inputs``: the job's inputs, each ``{"path", "sha256", "text"}``, ``text`` the file's text where the job file
+  was read (the base, or the pull's head with ``--pull``); for an input ``asset:<id>``, the text of
+  ``production/assets/<id>/assets/state.json`` on the base;
 - ``out``: the path of an empty directory. Every regular file directly inside it when ``run`` returns is
   an output: non-empty, its name matching ``[a-z0-9][a-z0-9._-]*``;
 - ``record``: the path of an empty directory ``<job dir>/record/`` beside ``out``. After a DONE call it is empty,

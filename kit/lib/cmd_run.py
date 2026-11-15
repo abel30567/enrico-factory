@@ -18,6 +18,9 @@ without calling the tool again.
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
 amounts and a reason out of its own `REASONS` is repeated anywhere.
+
+An input `asset:<id>` reaches the tool as the text of its locked state on the base,
+`production/assets/<id>/assets/state.json`, with or without `--pull`.
 """
 
 import argparse
@@ -39,7 +42,7 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from kit.lib import (assets, cmd_gate, down, gitstate, github, ledger, media, posts, production,  # noqa: E402
-                     resources, tickets)
+                     registry, resources, tickets)
 from kit.lib.tools import Down, Failed  # noqa: E402
 from kit.lib import release  # noqa: E402
 
@@ -374,6 +377,14 @@ def _media(root, values, register, out, names):
             raise Refused(f"the media store did not take {name}: {error}") from None
 
 
+def _input_text(p, ref, path):
+    """The text a tool gets for the input ``path``: for `asset:<id>` the asset's state on the base, else the
+    file at ``ref``; None when there is none."""
+    if path.startswith(cmd_gate.ASSET):
+        return gitstate.show(p.root, production.base(p), registry.STATE.format(path[len(cmd_gate.ASSET):]))
+    return gitstate.show(p.root, ref, path)
+
+
 def _run(p, gh, state, rows, target, apply, number=None):
     request = cmd_gate._job_request(p, state, target, number)
     digest, name = request["hash"], request["tool"]
@@ -416,7 +427,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
         call = {
             "hash": digest, "ticket": request["ticket"]["number"], "caller": request["caller"],
             "expected": job["expected"],
-            "inputs": [{**item, "text": gitstate.show(p.root, request["ref"], item["path"])} for item in job["inputs"]],
+            "inputs": [{**item, "text": _input_text(p, request["ref"], item["path"])} for item in job["inputs"]],
             "out": str(out),
             "record": str(kept),
             "settings": {c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"},
