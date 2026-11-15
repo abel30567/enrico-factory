@@ -13,6 +13,7 @@ sleep are replaced, so no test waits. Nothing reaches a host other than 127.0.0.
 
 import base64
 import contextlib
+import copy
 import hashlib
 import io
 import json
@@ -50,6 +51,11 @@ JOB = "4f" * 32
 STAGE = "production/ep01/Q1-1/render"
 SIM = "production/ep01/Q1-1/simulation"
 EDIT = "episodes/ep01/reel/edit-list.json"
+# The asset of tests/test_asset_jobs.py.
+BIN = hashlib.sha256(b"wren glb").hexdigest()
+WREN = {"asset": "wren", "kind": "character", "sha256": BIN}
+# The sha256 of the clean job's state.json, measured on main at 51aee1b.
+CLEAN_STATE = "f3671acbd47faaecbf30672be2942bf8ed4d9237816379ec4caad7ab501105a9"
 FIRST, LAST, SAMPLED = 0, 23, [0, 11, 23]
 WIDTH, HEIGHT = 640, 360
 EXPIRES = (75 + 15) * 60
@@ -99,6 +105,27 @@ def tar(members):
 
 def item(path, text):
     return {"path": path, "sha256": sha(text.encode("utf-8")), "text": text}
+
+
+def asset_item(state, digest=BIN, text=None):
+    """The input `asset:wren` with ``sha256`` ``digest``; its text ``text``, else ``state`` as JSON (None for None)."""
+    if text is None and state is not None:
+        text = json.dumps(state, indent=1) + "\n"
+    return {"path": "asset:wren", "sha256": digest, "text": text}
+
+
+def with_wren(members, like, names=("scene.json",)):
+    """``members`` with an actor `wren`, a copy of the actor labelled ``like``, in each scene of ``names``."""
+    found = []
+    for name, data in sorted(members):
+        if name in names:
+            scene = json.loads(data.decode("utf-8"))
+            wren = copy.deepcopy(next(actor for actor in scene["actors"] if actor["label"] == like))
+            wren["label"] = "wren"
+            scene["actors"].append(wren)
+            data = (json.dumps(scene, sort_keys=True, indent=2) + "\n").encode("utf-8")
+        found.append((name, data))
+    return found
 
 
 class JobStore(AssetStore):
@@ -325,6 +352,49 @@ class Clean(Job):
         self.assertTrue(all(r["path"].startswith(f"/b/jobs/{driver.nonce}/") for r in self.store.requests))
 
 
+class Assets(Job):
+    """A job with the input `asset:wren` and an actor `wren` in its `scene.json` (#515)."""
+
+    def setUp(self):
+        super().setUp()
+        self.members = with_wren(self.members, "ball")
+        self.inputs.append(asset_item(WREN))
+
+    def test_the_actor_of_an_asset_takes_its_locked_state(self):
+        replay, driver, error, billed, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertEqual(billed, BILLED)
+        self.assertEqual(replay.next, 6)
+        actors = json.loads((self.out / "state.json").read_text())["actors"]
+        wren = next(actor for actor in actors if actor["id"] == "wren")
+        self.assertEqual((wren["kind"], wren["asset"], wren["sha256"]), ("character", "asset:wren", BIN))
+        with tarfile.open(fileobj=io.BytesIO(self.got["in.tar"])) as archive:
+            described = json.loads(archive.extractfile("job.json").read())
+        self.assertEqual(described["assets"], {"wren": BIN})
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertIn({"path": "asset:wren", "sha256": BIN}, manifest["inputs"])
+
+    def test_a_missing_or_other_state_is_refused_before_any_upload(self):
+        cases = (("no text", asset_item(None)), ("not json", asset_item(WREN, text="not json\n")),
+                 ("not an object", asset_item(WREN, text=json.dumps([WREN]))),
+                 ("another sha256", asset_item(WREN, "0" * 64)), ("another asset", asset_item(dict(WREN, asset="bo"))),
+                 ("no kind of KINDS", asset_item(dict(WREN, kind="tree"))))
+        for name, last in cases:
+            with self.subTest(name):
+                self.inputs[-1] = last
+                self.store.requests.clear()
+                self.assert_failed("input asset:wren does not match its locked state")
+                self.assertEqual([r for r in self.store.requests if r["method"] == "PUT"], [])
+                self.assertEqual(os.listdir(self.out), [])
+
+
+class NoAsset(Job):
+    def test_the_state_of_a_job_without_an_asset_is_as_before(self):
+        _, _, error, _, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertEqual(sha((self.out / "state.json").read_bytes()), CLEAN_STATE)
+
+
 class Links(Job):
     def test_every_link_expires_and_holds_no_secret(self):
         replay, driver, error, _, printed = self.session_run()
@@ -509,6 +579,15 @@ class Simulation(Job):
         self.assert_failed()
         self.assertEqual(os.listdir(self.out), [])
 
+    def test_the_rerun_state_takes_the_asset_too(self):
+        self.members = with_wren(self.members, "prop", ("scene.json", "rerun-scene.json"))
+        self.inputs.append(asset_item(WREN))
+        self.clean_run()
+        self.assertEqual((self.out / "rerun.json").read_bytes(), (self.out / "state.json").read_bytes())
+        actors = json.loads((self.out / "rerun.json").read_text())["actors"]
+        wren = next(actor for actor in actors if actor["id"] == "wren")
+        self.assertEqual((wren["kind"], wren["asset"], wren["sha256"]), ("character", "asset:wren", BIN))
+
 
 class Describe(unittest.TestCase):
     def job(self, *inputs):
@@ -561,6 +640,25 @@ class Describe(unittest.TestCase):
         self.assertEqual(found, {"hash": JOB, "shot": "Q1-1", "stage": "lighting", "fps": 24, "first": 24, "last": 47,
                                  "width": 1920, "height": 1080, "scripts": ["scripts/00.py", "scripts/01.py"],
                                  "assets": {}, "sampled": []})
+
+    def test_assets_of_the_inputs(self):
+        bo = {"asset": "bo", "kind": "prop", "sha256": "b" * 64}
+        bo_item = {"path": "asset:bo", "sha256": "b" * 64, "text": json.dumps(bo)}
+        job = self.production(asset_item(WREN), bo_item, text=SCENE.read_text(encoding="utf-8"))
+        self.assertEqual(renderjob.asset_states(job), {"wren": WREN, "bo": bo})
+        self.assertEqual(renderjob.describe(job, {"RENDER_RESOLUTION": "640x360"})["assets"],
+                         {"bo": "b" * 64, "wren": BIN})
+        cases = (("no text", dict(bo_item, text=None), "bo"),
+                 ("an upper-case sha256", {"path": "asset:bo", "sha256": "B" * 64,
+                                           "text": json.dumps(dict(bo, sha256="B" * 64))}, "bo"),
+                 ("an id that is not an ASSET_ID", {"path": "asset:Bo", "sha256": "b" * 64,
+                                                     "text": json.dumps(dict(bo, asset="Bo"))}, "Bo"))
+        for name, seeded, shown in cases:
+            with self.subTest(name):
+                job = self.production(asset_item(WREN), seeded, text=SCENE.read_text(encoding="utf-8"))
+                with self.assertRaises(renderjob.JobError) as raised:
+                    renderjob.describe(job, {"RENDER_RESOLUTION": "640x360"})
+                self.assertEqual(str(raised.exception), f"input asset:{shown} does not match its locked state")
 
     def test_refusals(self):
         scene = item(f"{STAGE}/scene.py", SCENE.read_text(encoding="utf-8"))

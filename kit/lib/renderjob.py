@@ -1,14 +1,15 @@
 """The render job of the driver `ec2` on the machine that runs `factory run` (docs/design/render-job.md).
 
-``describe(job, settings)`` is the job's `job.json`: the scene scripts are the inputs named `scene.py`, in
-input order, the stage is the directory of the last one and the shot the directory above it, the frames the
-shot's row of the first input ending `shots.json`, the size `RENDER_RESOLUTION`, `fps` that of the input
-`episodes/<ep>/reel/edit-list.json` (`<ep>` the directory above the shot's), else of the unit's `LEVEL` (the
-literal of the last script); both given, they must agree. ``in_tar`` packs `job.json`, the scripts as
-`scripts/<nn>.py`, `job.sh` and `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a
-directory, refusing any member that is not a regular file or a directory, whose path is absolute or holds `..`,
-or whose name is not one `job.sh` writes. ``finish`` checks the node's answer and writes the outputs into `out`, with
-`manifest.json` last. At `simulation` it also writes `rerun.json`, the state of the second build.
+``describe(job, settings)`` is the job's `job.json`: the scene scripts are the inputs named `scene.py`, in input order,
+the stage is the directory of the last one and the shot the directory above it, the frames the shot's row of the first
+input ending `shots.json`, the size `RENDER_RESOLUTION`, `fps` that of the input `episodes/<ep>/reel/edit-list.json`
+(`<ep>` the directory above the shot's), else of the unit's `LEVEL` (the literal of the last script); both given, they
+must agree. `assets` is `{<id>: <sha256>}` of the inputs `asset:<id>`, whose `text` must be the asset's locked state
+with that `sha256` (``asset_states``). ``in_tar`` packs `job.json`, the scripts as `scripts/<nn>.py`, `job.sh` and
+`build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a directory, refusing any member that is
+not a regular file or a directory, whose path is absolute or holds `..`, or whose name is not one `job.sh` writes.
+``finish`` checks the node's answer and writes the outputs into `out`, with `manifest.json` last. At `simulation` it
+also writes `rerun.json`, the state of the second build.
 
 A refusal or a failed job is ``JobError``; its text never holds a value of a setting or a secret.
 """
@@ -29,6 +30,7 @@ import tarfile
 from pathlib import Path
 
 from kit.lib import frames, scenestate
+from kit.lib.lints.assets import ASSET_ID, KINDS, SHA256
 
 ENGINE = Path(__file__).resolve().parent.parent / "engine"
 ENGINE_FILES = ("job.sh", "build.py")
@@ -45,6 +47,8 @@ EDIT_LIST = "episodes/{}/reel/edit-list.json"
 NO_FPS = "no input {} and the unit's LEVEL has no fps"
 BAD_FPS = "{} has no fps that is a whole number above zero"
 TWO_FPS = "the unit's LEVEL has fps {}, {} has fps {}"
+ASSET = "asset:"
+NOT_LOCKED = "input asset:{} does not match its locked state"
 # What job.sh packs into out.tar.
 NAMES = re.compile(r"scene\.json|rerun-scene\.json|node\.json|engine-build\.log|engine-render\.log"
                    r"|frame-[0-9]{6}\.(png|exr)|rerender-[0-9]{6}\.png")
@@ -141,6 +145,26 @@ def frame_rate(job, directory) -> int:
     return fps
 
 
+def asset_states(job) -> dict:
+    """``{<id>: <state>}`` of the inputs `asset:<id>` in input order, each ``text`` the asset's locked state with
+    the input's ``sha256``; ``JobError`` on the first that is not."""
+    found = {}
+    for item in job["inputs"]:
+        if not item["path"].startswith(ASSET):
+            continue
+        name = item["path"][len(ASSET):]
+        try:
+            state = json.loads(item["text"])
+        except (TypeError, ValueError):
+            state = None
+        if not (ASSET_ID.fullmatch(name) and isinstance(state, dict) and state.get("asset") == name
+                and state.get("kind") in KINDS and isinstance(state.get("sha256"), str)
+                and SHA256.fullmatch(state["sha256"]) and state["sha256"] == item["sha256"]):
+            raise JobError(NOT_LOCKED.format(name))
+        found[name] = state
+    return found
+
+
 def describe(job, settings) -> dict:
     """The job's `job.json`; ``JobError`` when an input or a setting it needs is missing."""
     scripts = _scripts(job)
@@ -151,9 +175,11 @@ def describe(job, settings) -> dict:
     if size is None:
         raise JobError(BAD_RESOLUTION)
     fps = frame_rate(job, directory)
+    assets = asset_states(job)
     return {"hash": job["hash"], "shot": shot, "stage": stage, "fps": fps, "first": first, "last": last,
             "width": int(size.group(1)), "height": int(size.group(2)),
-            "scripts": [f"scripts/{n:02d}.py" for n in range(len(scripts))], "assets": {},
+            "scripts": [f"scripts/{n:02d}.py" for n in range(len(scripts))],
+            "assets": {name: assets[name]["sha256"] for name in sorted(assets)},
             "sampled": sampled(stage, first, last)}
 
 
@@ -269,15 +295,16 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
     elif os.path.exists(os.path.join(unpacked, RERUN_SCENE)):
         raise JobError(JOB_FAILED)
     directory = stage_dir(job)
+    assets = asset_states(job)
     command = flags(node)
     out = job["out"]
     for name in sorted(os.listdir(unpacked)):
         if NAMES.fullmatch(name):
             shutil.copyfile(os.path.join(unpacked, name), os.path.join(out, name))
     try:
-        state = scenestate.state(scene, described, level(_scripts(job)[-1]["text"]))
+        state = scenestate.state(scene, described, level(_scripts(job)[-1]["text"]), assets)
         rerun_state = None if described["stage"] != RERUN_STAGE else scenestate.state(
-            rerun, described, level(_scripts(job)[-1]["text"]))
+            rerun, described, level(_scripts(job)[-1]["text"]), assets)
         measured = frames.measure(out, described["fps"], described["first"], described["last"],
                                   described["sampled"], run=run)
         metric = str(settings.get("PERCEPTUAL_METRIC", "")).strip()
