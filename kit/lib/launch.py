@@ -30,6 +30,8 @@ from kit.lib.prompt import PromptError
 BRANCHED = ("maker", "operator")
 # The one actor an analyst posts as (brief section 8, "Markers").
 ANALYST = "ANALYST"
+# The wake states of a BLOCKED checker or judge, and the kind each waits on.
+REVIEWERS = {"review": "checker", "judging": "judge"}
 
 
 class LaunchError(Exception):
@@ -128,11 +130,11 @@ def _orchestrator_task(p, ticket, pull, judged, blocked, base):
     if blocked is not None and pull is not None:
         n = pull["number"]
         return _joined([f"Judgment 4, a blocked worker, on pull request #{n} at head {pull['git']['head']}. "
-                        f"Its files are in pr-{n}/.", blocked["body"]])
+                        f"Its files are in pr-{n}/."] + [c["body"] for c in blocked])
     if blocked is not None:
         return _joined([f"Judgment 4, a blocked worker, on ticket #{ticket['number']}. "
                         "The launch it answers has no pull request. "
-                        f"The base branch {base[0]} at {base[1]} is in base/.", blocked["body"]])
+                        f"The base branch {base[0]} at {base[1]} is in base/."] + [c["body"] for c in blocked])
     if pull is not None:
         n = pull["number"]
         parts = [f"Judgment 1, a ruling after three rounds of notes, on pull request #{n} at head "
@@ -355,7 +357,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     if not ok:
         raise LaunchError(reason)
     # Checks 8 and 6 for an orchestrator: not running on the number given, and a judgment is due there:
-    # a ruling or a blocked maker on a pull, a selection or a blocked maker on the ticket.
+    # a ruling, a blocked maker or a blocked checker or judge on a pull, a selection or a blocked maker on the ticket.
     blocked = None
     if kind == "orchestrator":
         comments = pull["comments"] if pull is not None else state.ticket_comments.get(t, [])
@@ -364,14 +366,18 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         found = [e for e in steps.all_steps(p, state, ticket, root, now)
                  if e["pull"] == (number if pull is not None else None)]
         stuck = bool(found) and found[0]["state"] == "blocked" and found[0]["role"] == role
+        waking = (bool(found) and found[0]["state"] in REVIEWERS and found[0]["step"] == "wake"
+                  and found[0]["role"] == role)
         if pull is not None:
-            due = stuck or bool(found) and found[0]["state"] == "ruling"
+            due = stuck or waking or bool(found) and found[0]["state"] == "ruling"
             if stuck:
-                blocked = next(c for c in pull["comments"] if c["id"] == pull["summary"]["maker"]["id"])
+                blocked = [next(c for c in pull["comments"] if c["id"] == pull["summary"]["maker"]["id"])]
+            elif waking:
+                blocked = steps.blocked_reviewers(p, state, ticket, pull, REVIEWERS[found[0]["state"]])
         else:
             due = steps.next_step(p, state, ticket, root, now)["state"] == "selection"
             if not due and stuck:
-                due, blocked = True, steps.blocked_on_ticket(p, state, ticket)
+                due, blocked = True, [steps.blocked_on_ticket(p, state, ticket)]
         if not due:
             raise LaunchError(f"no judgment is due on #{number}")
     # Check 6

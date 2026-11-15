@@ -1342,6 +1342,12 @@ class BlockedJudgments(Case):
                     evidence=[{"criterion": "story-writer BLOCKED", "result": "ruled",
                                "command": "episodes/ep01/beats.md B5"}])
 
+    @staticmethod
+    def editor_blocked():
+        return step("You are the story editor", "BLOCKED",
+                    blocked={"missing": "the tide table", "tried": "the bible and the beats",
+                             "resume_from": "the flood beat"})
+
     def labels_added(self, w):
         return [(e["number"], e["label"]) for e in w.log() if e["op"] == "add_label"]
 
@@ -1426,6 +1432,33 @@ class BlockedJudgments(Case):
         self.assertEqual([b for _, b in self.firsts(w, 3, 4) if " LAUNCH showrunner " in b],
                          ["[SHOWRUNNER] LAUNCH showrunner 4-1"])
         self.assertEqual(w.record("pulls", 4)["state"], "open")
+
+    # -- ISSUE-466 behaviour 7: a checker BLOCKED on a pull
+
+    def test_blocked_checker_to_lock(self):
+        w = self.world()
+        w.script(writer_ready(fixture("beats-1.md")), self.editor_blocked(), self.ruling(), editor_approved())
+        need = "NEED #3 review story-editor is BLOCKED on #4"
+        ticks = [self.ticked(w, apply=True) for _ in range(5)]
+        self.assertEqual(ticks, [[line] for line in [
+            "STEP #3 launch story-writer on #3", "STEP #3 lint PR #4", "STEP #3 launch story-editor on PR #4", need,
+            need]])
+        self.assertIn(LABEL, w.record("issues", 3)["labels"])
+        self.assertEqual(w.run(cmd_launch.main, "showrunner", "4", "--root", str(w.show)),
+                         (0, "launched showrunner 4-1\nposted [SHOWRUNNER] RULING for launch 4-1\n", ""))
+        [blocked] = [c for c in w.comments(4) if first(c) == "[STORY-EDITOR] BLOCKED"]
+        text = (w.state / "runs" / "showrunner-4-1" / "prompt.md").read_text()
+        self.assertIn(f"Judgment 4, a blocked worker, on pull request #4 at head {w.head(REF)}. "
+                      "Its files are in pr-4/.", text)
+        self.assertIn(blocked["body"].rstrip("\n"), text)
+        ticks = to_lock(self, w)
+        self.assertEqual(ticks, [[line] for line in [
+            "STEP #3 launch story-editor on PR #4", "STEP #3 gate PR #4", "STEP #3 sync PR #4", "STEP #3 lock PR #4"]])
+        [ruling] = [c for c in w.comments(4) if first(c) == "[SHOWRUNNER] RULING"]
+        text = (w.state / "runs" / "story-editor-4-2" / "prompt.md").read_text()
+        self.assertTrue(text.endswith("\n## Ruling\n\n" + ruling["body"]), text)
+        self.assertEqual([b for _, b in self.firsts(w, 3, 4) if " LAUNCH showrunner " in b],
+                         ["[SHOWRUNNER] LAUNCH showrunner 4-1"])
 
 
 if __name__ == "__main__":

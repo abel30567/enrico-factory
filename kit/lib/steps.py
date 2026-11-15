@@ -365,6 +365,18 @@ def blocked_on_ticket(p, state, ticket):
     return _blocked_answer(p, marked, comment, m.args[0])
 
 
+def blocked_reviewers(p, state, ticket, pull, kind):
+    """The newest ``BLOCKED`` comment of each ``kind`` (``checker`` or ``judge``) of the stage that has no
+    counting verdict on the pull and is BLOCKED there (``_reviewer_blocked``), oldest first."""
+    entry = production.stage(p, ticket["room"], ticket["stage"])
+    marked = _marked(pull["comments"])
+    found = []
+    for role, verdict in pull["summary"][kind + "s"].items():
+        if verdict is None and _reviewer_blocked(p, state, ticket, entry, pull, role):
+            found.append([c for c, m in marked if m.actor == _actor(p, role) and m.verb == "BLOCKED"][-1])
+    return sorted(found, key=_order)
+
+
 def _ticket_step(p, state, ticket, entry, root):
     """Rows 1 to 4, or None."""
     number = ticket["number"]
