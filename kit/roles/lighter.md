@@ -3,8 +3,8 @@ role: lighter
 room: production
 kind: maker
 analog: lighting artist
-stage: lighting
-writes: production/*/*/lighting/scene.py
+stage: lighting, render
+writes: production/*/*/lighting/scene.py, production/*/*/lighting/requests/*.json, production/*/*/render/requests/*.json
 reads: bible/**, episodes/**, production/**
 checked_by: look-reviewer
 may_not: change the locked story package
@@ -35,9 +35,10 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/*/*/lighting/scene.py`. Files elsewhere are dropped by
-the launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher commits
-your files and posts your result.
+Write only inside your `writes`: `production/*/*/lighting/scene.py`,
+`production/*/*/lighting/requests/*.json` and, at `render`, `production/*/*/render/requests/*.json`.
+Files elsewhere are dropped by the launcher. Do not commit, push or open pull requests, and do not
+run `gh`: the launcher commits your files and posts your result.
 
 ## What you produce
 
@@ -46,6 +47,12 @@ your files and posts your result.
   as `asset:<id>` and any other object only by its sha256 in the asset store, and holds no
   Blueprint, no path outside the job's directory, no network call, no clock read and no random
   number without a seed. It never writes the state.
+- **request** `production/<ep>/<shot>/lighting/requests/*.json`: one per job the task names,
+  named after its tool (`render.json`): a JSON object with exactly the keys `for` (the ticket's
+  unit), `prompt` (what the job makes, in one sentence) and `refs` (as `media:<id>`, the reference
+  image of each character and of the set the shot file names; empty only when it names none).
+- At `render`, only a request `production/<ep>/<shot>/render/requests/*.json` of the same shape,
+  for the final frames of the locked lighting. The dailies reviewer checks those frames.
 - The job writes `lighting/state.json` (`lights`, `sun`), `lighting/render.json` from its preview
   frames and `lighting/manifest.json`. Match the key of the style lock.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the

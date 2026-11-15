@@ -228,7 +228,7 @@ rule 2, which only a checker opens.
 | production | `animation` | shot | animator, render-wrangler | foot slide, pops, interpenetration, lip sync within one frame; reads `animation/state.json` | performance-reviewer (blind against the last take) |
 | production | `simulation` | shot | sim-artist, render-wrangler | run twice, cache hashes match; velocity and energy in bounds; reads `simulation/state.json`, `simulation/rerun.json` | none: deterministic only |
 | production | `lighting` | shot | lighter, render-wrangler | exposure and color against the sequence key, clipping, time of day; reads `lighting/state.json`, `lighting/render.json` | look-reviewer |
-| production | `render` | shot | render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance; reads `render/render.json`, `shots.json` | dailies-reviewer |
+| production | `render` | shot | lighter, render-wrangler | frame count, no black or NaN frames, no engine text (OCR), sampled re-render inside tolerance; reads `render/render.json`, `shots.json` | dailies-reviewer |
 | production | `conform` | episode | sound-mixer, conform-editor, render-wrangler | loudness, true peak, captions aligned, edit list frame-exact; reads `conform/`, `reel/edit-list.json` | mix-reviewer |
 | production | `cross-shot` | sequence | none | world state at the end of shot N equals the start of shot N+1; reads each shot's `lighting/state.json` in `shots.json` order | continuity-supervisor |
 | post | `variant` | variant | platform-editor, reframe-artist, caption-writer, cta-writer, thumbnail-artist | platform gate: duration, aspect, safe zones, captions, CTA lint, spoiler lint, disclosure flag, brand | charter-judge, packaging-judge |

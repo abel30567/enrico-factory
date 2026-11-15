@@ -22,19 +22,26 @@ from kit.lib.frontmatter import as_list  # noqa: E402
 KIT = ROOT / "kit"
 FACTORY = KIT / "factory"
 
-# role id: (analog, stage, writes, checked_by), ruling 2 of the ticket.
+# role id: (analog, stage, writes, checked_by), ruling 2 of the ticket and ruling 1 of ISSUE-487.
 MAKERS = {
-    "asset-builder": ("asset modeller", "assets", "production/assets/*/assets/scene.py",
+    "asset-builder": ("asset modeller", "assets",
+                      "production/assets/*/assets/scene.py, production/assets/*/assets/requests/*.json",
                       "look-reviewer"),
-    "rigger": ("character rigger", "rigging", "production/assets/*/rigging/scene.py",
+    "rigger": ("character rigger", "rigging",
+               "production/assets/*/rigging/scene.py, production/assets/*/rigging/requests/*.json",
                "deformation-reviewer"),
-    "layout-artist": ("layout artist", "layout", "production/*/*/layout/scene.py",
+    "layout-artist": ("layout artist", "layout",
+                      "production/*/*/layout/scene.py, production/*/*/layout/requests/*.json",
                       "cinematography-reviewer"),
-    "animator": ("character animator", "animation", "production/*/*/animation/scene.py",
+    "animator": ("character animator", "animation",
+                 "production/*/*/animation/scene.py, production/*/*/animation/requests/*.json",
                  "performance-reviewer"),
-    "sim-artist": ("effects artist", "simulation", "production/*/*/simulation/scene.py",
+    "sim-artist": ("effects artist", "simulation",
+                   "production/*/*/simulation/scene.py, production/*/*/simulation/requests/*.json",
                    "dailies-reviewer"),
-    "lighter": ("lighting artist", "lighting", "production/*/*/lighting/scene.py",
+    "lighter": ("lighting artist", "lighting, render",
+                "production/*/*/lighting/scene.py, production/*/*/lighting/requests/*.json, "
+                "production/*/*/render/requests/*.json",
                 "look-reviewer"),
     "sound-mixer": ("re-recording mixer", "conform", "production/*/conform/scene.py",
                     "mix-reviewer"),
@@ -53,6 +60,16 @@ NOT_THEIRS = ("production/ep01/shots.json", "production/ep01/s01/layout/state.js
               "production/assets/fox/assets/state.json", "production/ep01/conform/requests/a.json",
               "episodes/ep01/reel/edit-list.json", "bible/style/characters/fox.md",
               "media/manifest.tsv", ".factory/roles/x.md")
+# One request per stage and the maker that writes it, ruling 6 of ISSUE-487.
+REQUESTS = {
+    "production/assets/fox/assets/requests/model3d.json": "asset-builder",
+    "production/assets/fox/rigging/requests/rig.json": "rigger",
+    "production/ep01/s01/layout/requests/render.json": "layout-artist",
+    "production/ep01/s01/animation/requests/render.json": "animator",
+    "production/ep01/s01/simulation/requests/render.json": "sim-artist",
+    "production/ep01/s01/lighting/requests/render.json": "lighter",
+    "production/ep01/s01/render/requests/render.json": "lighter",
+}
 ENGINE = "You do not run the engine."
 LINT_BLOCKER = "`[LINT]` blocker"
 VERBS = ("READY", "ADDRESSED", "BLOCKED")
@@ -221,6 +238,23 @@ class ProductionMakersTest(unittest.TestCase):
                              {p.stem for p in (full / ".factory" / "roles").glob("*.md")})
         lint = factory("lint", cwd=full, program=full / ".factory" / "factory")
         self.assertEqual(lint.returncode, 0, lint.stdout + lint.stderr)
+
+    def test_9_each_request_has_one_writer(self):
+        for path, role_id in REQUESTS.items():
+            with self.subTest(path=path):
+                self.assertEqual(writers(KIT, path), [role_id])
+        self.assertEqual(writers(KIT, "production/assets/fox/requests/model3d.json"), [])
+        kit = KitCopy(self)
+        kit.edit("animator", "production/*/*/animation/requests/*.json", "production/*/*/animation/*.json")
+        self.assertEqual(writers(kit.dir, "production/ep01/s01/animation/requests/render.json"), [])
+
+    def test_10_no_other_role_writes_a_request(self):
+        loaded = roles.load_roles(KIT / "roles")
+        for path, role_id in REQUESTS.items():
+            with self.subTest(path=path):
+                self.assertEqual(sorted(r for r, role in loaded.items()
+                                        if production.matches(path, as_list(role["meta"].get("writes")))),
+                                 [role_id])
 
 
 if __name__ == "__main__":
