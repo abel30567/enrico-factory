@@ -282,6 +282,8 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     noted = sorted(r for r, v in summary["checkers"].items() if v and v["verb"] == "NOTES")
     if lint and lint["verb"] == "FAIL" or noted:
         why = f"[LINT] FAIL on #{n}" if lint and lint["verb"] == "FAIL" else f"{noted[0]} NOTES on #{n}"
+        if not production.stage_roles(entry, "maker"):
+            return _entry("notes", "none", None, n, f"{why} and stage {ticket['stage']} has no maker")
         return _entry("notes", "launch", _maker_of(p, entry, pull, root), n, why)
     stuck = None
     for role, verdict in summary["checkers"].items():
@@ -411,6 +413,9 @@ def _steps(p, state, ticket, root, now, has_key):
     open_pulls = [pull for pull in tickets.pulls_of(state, number) if pull["state"] == "open"]
     if len(open_pulls) + pending < entry["pitches"]:
         makers = production.stage_roles(entry, "maker")
+        if not makers:
+            why = f"stage {ticket['stage']} has no maker and #{number} has no open pull"
+            return _entry("waiting", "none", reason=why), [], None
         makers = [r for r in makers if p.kinds.get(r) != "operator"] or makers
         role = next((r for r in makers if tickets.launches(state, number, r) == 0), makers[0])
         used = len(open_pulls) + pending

@@ -206,6 +206,71 @@ class BlindTest(ChainCase):
         self.assertEqual(short(self.next(has_key=self.no_key)), ("judging", "launch", "critic", 5))
 
 
+class NoMakerTest(ChainCase):
+    """A stage with no maker (#485): no pull is a wait, a FAIL or NOTES on a pull is a wait, the rest unchanged."""
+
+    FIXTURE, TICKET = "steps", 3
+
+    def no_maker(self):
+        pipeline = [{**e, "maker": ""} if e["stage"] == "beats" else e for e in self.w.p.pipeline]
+        self.w.p = dataclasses.replace(self.w.p, pipeline=pipeline)
+
+    def test_no_pull_waits(self):
+        self.until("merge-upstream")
+        self.no_maker()
+        expected = {"state": "waiting", "step": "none", "role": None, "pull": None,
+                    "reason": "stage beats has no maker and #3 has no open pull"}
+        self.assertEqual(self.next(), expected)
+        self.assertEqual(self.all(), [self.next()])
+
+    def test_no_pull_with_a_maker_launches(self):
+        self.until("merge-upstream")
+        self.assertEqual(short(self.next()), BEATS["merge-upstream"])
+
+    def test_upstream_first(self):
+        self.no_maker()
+        found = self.next()
+        self.assertEqual(short(found), BEATS["base"])
+        self.assertEqual(found["reason"], "upstream stage premise is not locked for ep01")
+
+    def test_lint_fail_waits(self):
+        self.until("lint-fail")
+        self.no_maker()
+        expected = {"state": "notes", "step": "none", "role": None, "pull": 5,
+                    "reason": "[LINT] FAIL on #5 and stage beats has no maker"}
+        self.assertEqual(self.next(), expected)
+
+    def test_lint_fail_with_a_maker_relaunches(self):
+        self.until("lint-fail")
+        self.assertEqual(short(self.next()), BEATS["lint-fail"])
+
+    def test_notes_wait(self):
+        self.until("notes-1")
+        self.no_maker()
+        found = self.next()
+        self.assertEqual(short(found), ("notes", "none", None, 5))
+        self.assertEqual(found["reason"], "editor NOTES on #5 and stage beats has no maker")
+
+    def test_notes_with_a_maker_relaunch(self):
+        self.until("notes-1")
+        self.assertEqual(short(self.next()), BEATS["notes-1"])
+
+    def test_a_pull_is_linted(self):
+        self.until("open-pull")
+        self.no_maker()
+        self.assertEqual(short(self.next()), ("lint", "lint", None, 5))
+
+    def test_a_judged_pull_is_lockable(self):
+        self.until("judged")
+        self.no_maker()
+        self.assertEqual(short(self.next()), BEATS["judged"])
+
+    def test_the_kit_stages_with_no_maker(self):
+        entries = json.loads((ROOT / "kit" / "pipeline.json").read_text())
+        found = [(e["room"], e["stage"]) for e in entries if not e["maker"]]
+        self.assertEqual(found, [("production", "intake"), ("production", "cross-shot")])
+
+
 class OperatorMakerTest(ChainCase):
     """A `maker` list with an operator after the maker: a free pitch launches the maker (#95)."""
 
