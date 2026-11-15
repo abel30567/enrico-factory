@@ -22,7 +22,7 @@ from kit.lib import media
 from kit.lib.tools import Down, Failed
 
 RESOURCE = "gen.image.login"
-MAX_REFS = 2
+MAX_REFS = 4
 TOO_MANY = f"refs over the limit of {MAX_REFS}"
 REASONS = ("not a request", TOO_MANY, "ref not in the manifest", "ref not fetched", "ref is not a PNG", "refused",
            "proxy error", "no image")

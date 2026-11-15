@@ -79,6 +79,11 @@ def row(name, data):
 
 
 MANIFEST_TEXT = HEADER + "".join(row(name, data) for name, data in PICTURES.items())
+REEF = png((200, 120, 40))
+MOSS = png((60, 140, 70))
+MANY = {**PICTURES, "reef-ref": REEF, "ama-two": AMA, "moss-ref": MOSS}
+MANY_TEXT = HEADER + "".join(row(name, data) for name, data in MANY.items())
+MANY_HELD = {sha(data): data for data in MANY.values()}
 
 
 def refs_request(*refs):
@@ -261,10 +266,33 @@ class ImageTest(unittest.TestCase):
                                            expected=COSTED)
         self.assert_done(w, job, digest, "0.07")
         self.assertEqual([r["body"] for r in proxy.requests], [form("two", [TIDE, AMA])])
-        three = HEADER + "".join(row(n, d) for n, d in PICTURES.items()) + row("ama-two", AMA)
+
+    def test_three_refs(self):
         w, proxy, job, digest = self.world(answer("refs-ok"), refs_request(
-            "media:ama-ref", "media:tide-ref", "media:ama-two"), manifest=three)
-        self.assert_failed(w, job, digest, "refs over the limit of 2")
+            "media:ama-ref", "media:tide-ref", "media:reef-ref"), manifest=MANY_TEXT, held=MANY_HELD,
+            expected=COSTED)
+        self.assert_done(w, job, digest, "0.07")
+        self.assertEqual(proxy.gets, [f"/media/{sha(AMA)}", f"/media/{sha(TIDE)}", f"/media/{sha(REEF)}"])
+        four = json.loads(form("four", [AMA, TIDE, REEF, AMA]))
+        four["images"].pop()
+        self.assertEqual([(r["path"], r["body"]) for r in proxy.requests],
+                         [("/v1/images/edits", json.dumps(four, sort_keys=True))])
+
+    def test_four_refs(self):
+        w, proxy, job, digest = self.world(with_usage({"cost_in_usd_ticks": 1000000000}), refs_request(
+            "media:tide-ref", "media:ama-ref", "media:reef-ref", "media:ama-two"), manifest=MANY_TEXT,
+            held=MANY_HELD, expected=COSTED)
+        self.assert_done(w, job, digest, "0.1")
+        self.assertEqual(proxy.gets, [f"/media/{sha(TIDE)}", f"/media/{sha(AMA)}", f"/media/{sha(REEF)}",
+                                      f"/media/{sha(AMA)}"])
+        self.assertEqual([(r["path"], r["authorization"], r["body"]) for r in proxy.requests],
+                         [("/v1/images/edits", f"Bearer {TOKEN}", form("four", [TIDE, AMA, REEF, AMA]))])
+
+    def test_five_refs_over_the_limit(self):
+        w, proxy, job, digest = self.world(answer("refs-ok"), refs_request(
+            "media:ama-ref", "media:tide-ref", "media:reef-ref", "media:ama-two", "media:moss-ref"),
+            manifest=MANY_TEXT, held=MANY_HELD)
+        self.assert_failed(w, job, digest, "refs over the limit of 4")
         self.assertEqual((proxy.gets, proxy.requests), ([], []))
 
     def test_request_and_manifest_failures(self):
@@ -375,7 +403,9 @@ class ImageTest(unittest.TestCase):
         tool = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(tool)
         self.assertEqual(tool.MAX_REFS, json.loads((FIX / "refs-form.json").read_text())["max_refs"])
-        self.assertEqual(tool.MAX_REFS, 2)
+        self.assertEqual(tool.MAX_REFS, 4)
+        self.assertEqual(tool.TOO_MANY, "refs over the limit of 4")
+        self.assertIs(tool.REASONS[1], tool.TOO_MANY)
 
     def test_cost(self):
         cases = [("0.08", with_usage({"cost_in_usd_ticks": 800000000})), ("0.07", answer("refs-ok")),
