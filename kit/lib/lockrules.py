@@ -19,7 +19,7 @@ import re
 from datetime import datetime, timedelta
 from typing import NamedTuple
 
-from kit.lib import blind, frontmatter, gitstate, jobs, lab, ledger, markers, posts, production, tickets
+from kit.lib import blind, cmd_run, frontmatter, gitstate, jobs, lab, ledger, markers, posts, production, shotfile, tickets
 
 NAMES = ("lint", "checkers", "judges", "upstream", "selected", "amendment", "writes", "repeat-notes", "gate",
          "base", "released", "bible-version", "keep", "pivot")
@@ -109,7 +109,9 @@ def judge_sides(p, state, pull):
 def cheaper_stages(p, state, ticket, root) -> str:
     """Section 9 rule 4: every cheaper stage of a shot is locked. For a ``shot`` stage, each earlier entry of
     the room that the format does not skip is locked: a ``shot`` entry for the unit, a ``sequence`` entry for
-    the shot's sequence. The reason, "" when it holds or the stage's unit is not ``shot``."""
+    the shot's sequence, the ``assets`` entry for each character and the set of the shot file and the
+    ``rigging`` entry for each character (``kit.lib.shotfile``). The reason, "" when it holds or the stage's
+    unit is not ``shot``."""
     room, unit = ticket["room"], ticket["unit"]
     entries = production.stages(p, room)
     names = [e["stage"] for e in entries]
@@ -119,13 +121,20 @@ def cheaper_stages(p, state, ticket, root) -> str:
     if sequence is None:
         return f"unit {unit} is not <episode>/<sequence>-<n>"
     skipped = tickets.skips(p, root, unit)
-    missing = []
+    missing, subjects = [], None
     for e in entries[:names.index(ticket["stage"])]:
         if e["stage"] in skipped:
             continue
-        target = {"shot": unit, "sequence": sequence}.get(e["unit"])
-        if target is not None and not tickets.is_locked(state, room, e["stage"], target):
-            missing.append(f"{e['stage']} for {target}")
+        if e["unit"] == "asset":
+            if subjects is None:
+                subjects = shotfile.subjects(p, root, unit)
+            characters, sets = subjects
+            targets = {"assets": sorted({*characters, *sets}), "rigging": characters}.get(e["stage"], [])
+        else:
+            target = {"shot": unit, "sequence": sequence}.get(e["unit"])
+            targets = [target] if target is not None else []
+        missing.extend(f"{e['stage']} for {target}" for target in targets
+                       if not tickets.is_locked(state, room, e["stage"], target))
     return f"cheaper stage(s) not locked: {', '.join(missing)}" if missing else ""
 
 
@@ -276,7 +285,9 @@ def _amendment(entry, pull, root):
 
 def operator_paths(p, state, ticket, pull, root) -> set:
     """The paths rule 7 takes from the operator and from ``factory run``: the job file of each ``DONE`` job,
-    its request when it is inside the stage's ``paths``, and the manifest when it keeps every row of the merge base and adds only rows of those jobs."""
+    its request when it is inside the stage's ``paths``, the manifest when it keeps every row of the merge base and adds only rows of those jobs,
+    and each file of the tool's ``STAGE_FILES`` in the ticket's production directory, as ``factory run``
+    commits it."""
     found = jobs.of(p, root, state, ticket, pull)
     if found is None:
         return set()
@@ -284,6 +295,14 @@ def operator_paths(p, state, ticket, pull, root) -> set:
     paths = production.stage(p, ticket["room"], ticket["stage"])["paths"]
     accepted = {job["path"] for job in done} | {job["request"] for job in done
                                                  if production.matches(job["request"], paths)}
+    directory = cmd_run._unit_dir(p, ticket["room"], ticket["stage"], ticket["unit"])
+    if directory is not None:
+        for job in done:
+            try:
+                tool = cmd_run._load_tool(job["job"]["tool"])
+            except cmd_run.Refused:
+                continue
+            accepted.update(f"{directory}/{name}" for name in getattr(tool, "STAGE_FILES", ()))
     if not done:
         return accepted
     head = pull["git"]["head"]
