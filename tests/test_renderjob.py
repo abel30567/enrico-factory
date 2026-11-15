@@ -35,18 +35,20 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import ec2, filing, golden, renderjob, sigv4  # noqa: E402
+from kit.lib import ec2, filing, golden, lint, renderjob, sigv4  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_ec2 import BILLED, KEY, NOON, SETTINGS, Ec2Replay, at, session  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "renderjob"
 FAKE = ROOT / "tests" / "fixtures" / "frames" / "fake_tool.py"
 SCENE = ROOT / "kit" / "evals" / "golden" / "lit-render" / "scene.py"
+DROP = ROOT / "kit" / "evals" / "golden" / "prop-drop" / "scene.py"
 TOOLS = ("ffmpeg", "ffprobe", "tesseract", "cvvdp")
 TOKEN = "seeded-pull-token-5d2e81"
 IMAGE = "registry.invalid/engine@sha256:" + "0" * 64
 JOB = "4f" * 32
 STAGE = "production/ep01/Q1-1/render"
+SIM = "production/ep01/Q1-1/simulation"
 EDIT = "episodes/ep01/reel/edit-list.json"
 FIRST, LAST, SAMPLED = 0, 23, [0, 11, 23]
 WIDTH, HEIGHT = 640, 360
@@ -70,13 +72,13 @@ def png(width, height, colour):
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
 
-def frames():
+def frames(first=FIRST, last=LAST, sampled=SAMPLED):
     """The frames of the clean job: one solid colour per frame, an EXR placeholder, the re-rendered frames."""
     found = {}
-    for frame in range(FIRST, LAST + 1):
-        found[f"frame-{frame:06d}.png"] = png(WIDTH, HEIGHT, (40 + frame * 5, 90, 160 - frame * 3))
+    for frame in range(first, last + 1):
+        found[f"frame-{frame:06d}.png"] = png(WIDTH, HEIGHT, ((40 + frame * 5) % 256, 90, (160 - frame * 3) % 256))
         found[f"frame-{frame:06d}.exr"] = b"fake exr"
-    for frame in SAMPLED:
+    for frame in sampled:
         found[f"rerender-{frame:06d}.png"] = found[f"frame-{frame:06d}.png"]
     return found
 
@@ -399,6 +401,11 @@ class Seeded(Job):
         exchanges = session("start-stop")
         self.assert_failed(exchanges=exchanges[:4] + [exchanges[5]] + exchanges[4:])
 
+    def test_a_rerun_scene_at_another_stage(self):
+        self.members.append(("rerun-scene.json", (FIX / "out-simulation" / "rerun-scene.json").read_bytes()))
+        self.assert_failed()
+        self.assertEqual(os.listdir(self.out), [])
+
     def test_node_json_without_the_ok_line(self):
         node = json.loads((FIX / "out-clean" / "node.json").read_text())
         node["steps"][0]["markers"] = []
@@ -422,6 +429,85 @@ class Seeded(Job):
     def test_an_edit_list_that_disagrees_with_the_level(self):
         self.inputs.insert(2, item(EDIT, json.dumps({"fps": 25})))
         self.assert_before_upload(f"the unit's LEVEL has fps 24, {EDIT} has fps 25")
+
+
+class Simulation(Job):
+    """The job at `simulation` (#500): the node builds twice and `finish` writes `rerun.json` beside `state.json`."""
+
+    def setUp(self):
+        super().setUp()
+        self.inputs = [item(f"{SIM}/requests/simulation.json", "{}\n"),
+                       item("production/ep01/shots.json", json.dumps([{"shot": "Q1-1", "first": 0, "last": 47}])),
+                       item(f"{SIM}/scene.py", DROP.read_text(encoding="utf-8"))]
+        self.members = sorted({**{p.name: p.read_bytes() for p in (FIX / "out-simulation").iterdir()},
+                               **frames(0, 47, [])}.items())
+
+    def replace(self, name, data):
+        self.members = [(n, data if n == name else d) for n, d in self.members]
+
+    def node_steps(self, steps):
+        node = json.loads((FIX / "out-simulation" / "node.json").read_text())
+        node["steps"] = steps(node["steps"])
+        self.replace("node.json", (json.dumps(node) + "\n").encode())
+
+    def clean_run(self):
+        replay, driver, error, billed, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertEqual(billed, BILLED)
+        self.assertEqual(replay.next, 6)
+        self.assertEqual(os.listdir(self.temp), [])
+
+    def tree(self):
+        """The stage directory of a production tree with the script and the job's files; the lint's findings."""
+        unit = self.tmp / "tree" / SIM
+        unit.mkdir(parents=True)
+        shutil.copyfile(DROP, unit / "scene.py")
+        for name in ("manifest.json", "state.json", "rerun.json"):
+            shutil.copyfile(self.out / name, unit / name)
+        result = lint.run(self.tmp / "tree", only=["simulation"])["simulation"]
+        return [(f.path, f.line, f.rule, f.message) for f in result.findings]
+
+    def test_the_clean_job_writes_rerun_json(self):
+        self.clean_run()
+        names = sorted([n for n, _ in self.members] + ["manifest.json", "render.json", "rerun.json", "state.json"])
+        self.assertEqual(sorted(os.listdir(self.out)), names)
+        for name, data in self.members:
+            self.assertEqual((self.out / name).read_bytes(), data)
+        self.assertEqual((self.out / "rerun.json").read_bytes(), (self.out / "state.json").read_bytes())
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertIn({"name": "rerun.json", "sha256": sha((self.out / "rerun.json").read_bytes()),
+                       "bytes": (self.out / "rerun.json").stat().st_size}, manifest["outputs"])
+        self.assertIn("rerun-scene.json", [o["name"] for o in manifest["outputs"]])
+        unit = self.tmp / "golden" / "prop-drop"
+        unit.mkdir(parents=True)
+        shutil.copyfile(DROP, unit / "scene.py")
+        for name in golden.RECORDED + ("rerun.json",):
+            shutil.copyfile(self.out / name, unit / name)
+        self.assertEqual(golden.unit_problems(unit.parent, "prop-drop"), [])
+        self.assertEqual(self.tree(), [])
+
+    def test_a_second_build_that_differs_fails_the_lint(self):
+        scene = json.loads((FIX / "out-simulation" / "rerun-scene.json").read_text())
+        scene["actors"][1]["location"][2] += 1.0
+        self.replace("rerun-scene.json", (json.dumps(scene, indent=2) + "\n").encode())
+        self.clean_run()
+        self.assertNotEqual((self.out / "rerun.json").read_bytes(), (self.out / "state.json").read_bytes())
+        self.assertEqual(self.tree(), [(f"{SIM}/rerun.json", 1, "rerun", f"actors differs from {SIM}/state.json")])
+
+    def test_rerun_scene_left_out_of_out_tar(self):
+        self.members = [(n, d) for n, d in self.members if n != "rerun-scene.json"]
+        self.assert_failed()
+        self.assertEqual(os.listdir(self.out), [])
+
+    def test_no_rebuild_step_in_node_json(self):
+        self.node_steps(lambda steps: [s for s in steps if s["step"] != "rebuild"])
+        self.assert_failed()
+        self.assertEqual(os.listdir(self.out), [])
+
+    def test_a_rebuild_step_without_the_ok_line(self):
+        self.node_steps(lambda steps: [dict(s, markers=[]) if s["step"] == "rebuild" else s for s in steps])
+        self.assert_failed()
+        self.assertEqual(os.listdir(self.out), [])
 
 
 class Describe(unittest.TestCase):

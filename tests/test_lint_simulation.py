@@ -212,6 +212,36 @@ class Simulation(LintCase):
         first = lint.text(lint.run(root, only=["simulation"]))
         self.assertEqual(first, lint.text(lint.run(root, only=["simulation"])))
 
+    # Rule 5 (#500)
+    def test_rule5_rerun_defects(self):
+        clean = load(RERUN)
+        without_sun = {k: v for k, v in clean.items() if k != "sun"}
+        cases = {
+            "fps 25": (dict(clean, fps=25), ["fps"]),
+            "sun removed": (without_sun, ["sun"]),
+            "fps 24.0": (dict(clean, fps=24.0), ["fps"]),
+            "two keys": (dict(clean, sun={"rotation": [0, 0, 0]}, actors=[{"id": "prop"}]), ["actors", "sun"]),
+        }
+        for name, (data, keys) in cases.items():
+            with self.subTest(name):
+                self.assertFindings(self.variant({RERUN: dump(data)}),
+                                    [(RERUN, 1, "rerun", f"{key} differs from {STATE}") for key in keys])
+
+    def test_rule5_reads_nothing_else(self):
+        self.assertPass(self.variant({RERUN: dump(dict(load(RERUN), solver="alpha"))}))
+        self.assertFindings(self.variant({RERUN: dump(dict(load(RERUN), stage="lighting"))}),
+                            [(RERUN, 1, "state", "stage is not 'simulation'")])
+
+    def test_rule5_units_in_order_and_deterministic(self):
+        rerun = dump(dict(load(RERUN), fps=25))
+        root = self.variant({RERUN: rerun, STATE.replace("ep01", "ep02"): (CLEAN / STATE).read_text(encoding="utf-8"),
+                             RERUN.replace("ep01", "ep02"): rerun})
+        self.assertFindings(root, [(f"production/{ep}/Q1-1/simulation/rerun.json", 1, "rerun",
+                                    f"fps differs from production/{ep}/Q1-1/simulation/state.json")
+                                   for ep in ("ep01", "ep02")])
+        first = lint.text(lint.run(root, only=["simulation"]))
+        self.assertEqual(first, lint.text(lint.run(root, only=["simulation"])))
+
 
 class JobFiles(LintCase):
     """`depends` on a `simulation/scene.py`: the files its job writes beside it (`lint.job_files`)."""

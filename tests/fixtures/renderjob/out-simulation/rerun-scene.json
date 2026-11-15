@@ -1,0 +1,118 @@
+{
+  "actors": [
+    {
+      "bounds": {
+        "extent": [
+          500.0,
+          500.0,
+          0.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "class": "StaticMeshActor",
+      "label": "floor",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        10.0,
+        10.0,
+        1.0
+      ]
+    },
+    {
+      "bounds": {
+        "extent": [
+          25.0,
+          25.0,
+          25.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          300.0
+        ]
+      },
+      "class": "StaticMeshActor",
+      "label": "prop",
+      "location": [
+        0.0,
+        0.0,
+        300.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ]
+    }
+  ],
+  "camera": {
+    "focal_mm": 35.0,
+    "label": "camera",
+    "location": [
+      -600.0,
+      0.0,
+      150.0
+    ],
+    "rotation": [
+      0.0,
+      -10.0,
+      0.0
+    ],
+    "sensor_mm": [
+      36.0,
+      20.25
+    ]
+  },
+  "cvars": {
+    "r.AntiAliasingMethod": 0,
+    "r.DynamicGlobalIlluminationMethod": 0,
+    "r.ReflectionMethod": 0
+  },
+  "lights": [
+    {
+      "class": "DirectionalLight",
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "intensity": 10.0,
+      "label": "key",
+      "location": [
+        0.0,
+        0.0,
+        500.0
+      ],
+      "rotation": [
+        0.0,
+        -45.0,
+        30.0
+      ],
+      "temperature_k": 6500.0,
+      "units": null
+    }
+  ],
+  "render": {
+    "spatial_samples": 1,
+    "temporal_samples": 1,
+    "warmup_frames": 0
+  }
+}

@@ -1,8 +1,8 @@
 #!/bin/bash
 # The engine side of one render job (docs/design/render-job.md, "The engine side of a job").
-# Reads WORK, IMAGE, LINKS, NODE_LOG and UE_EDITOR only. Builds the level with build.py, renders the
-# frames, re-renders the sampled frames at `render`, packs out.tar and puts out.tar, log.txt and
-# status.json last. bash 3.2: no bash 4 feature. Not `set -e`: a failed step still uploads.
+# Reads WORK, IMAGE, LINKS, NODE_LOG and UE_EDITOR only. Builds the level with build.py (twice at
+# `simulation`), renders the frames, re-renders the sampled frames at `render`, packs out.tar and puts
+# out.tar, log.txt and status.json last. bash 3.2: no bash 4 feature. Not `set -e`: a failed step still uploads.
 set -u
 export LC_ALL=C
 UE_EDITOR="${UE_EDITOR:-/home/ue4/UnrealEngine/Engine/Binaries/Linux/UnrealEditor-Cmd}"
@@ -74,6 +74,15 @@ if [ -z "$FAILED" ]; then
   fi
 fi
 
+# At simulation, a second build of the same job: its raw scene is rerun-scene.json, scene.json stays the first.
+if [ -z "$FAILED" ] && [ "$STAGE" = simulation ]; then
+  mv "$O/scene.json" "$O/first-scene.json"
+  ue rebuild 900 "$O/engine-build.log" -ExecutePythonScript=/work/job/build.py -RenderOffscreen
+  [ "$(grep -c 'FACTORY build ok' "$O/engine-build.log")" = 2 ] && [ -f "$O/scene.json" ] || fail rebuild
+  [ -f "$O/scene.json" ] && mv "$O/scene.json" "$O/rerun-scene.json"
+  mv "$O/first-scene.json" "$O/scene.json"
+fi
+
 if [ -z "$FAILED" ]; then
   : > "$O/engine-render.log"
   ue render 1800 "$O/engine-render.log" "MoviePipelineEntryMap?game=/Script/MovieRenderPipelineCore.MoviePipelineGameMode" -game -Multiprocess -NoLoadingScreen -FixedSeed -log -nohmd -windowed -ResX=$((10#$WIDTH)) -ResY=$((10#$HEIGHT)) -RenderOffscreen -MoviePipelineConfig=MovieRenderPipeline/QueueManifest.utxt
@@ -99,7 +108,7 @@ ENGINE=$(grep -a -m1 'Engine Version: ' "$O/engine-build.log" 2>/dev/null | tr -
 printf '{"editor": %s, "engine": %s, "image": %s, "result": "%s", "steps": [%s]}\n' \
   "$(js "$UE_EDITOR")" "$ENGINE" "$(js "$IMAGE")" "$R" "$STEPS" > "$O/node.json" || fail pack
 set --
-for f in $(ls -1 "$O" | grep -E '^(scene\.json|node\.json|engine-build\.log|engine-render\.log|frame-[0-9]+\.(png|exr)|rerender-[0-9]+\.png)$'); do
+for f in $(ls -1 "$O" | grep -E '^(scene\.json|rerun-scene\.json|node\.json|engine-build\.log|engine-render\.log|frame-[0-9]+\.(png|exr)|rerender-[0-9]+\.png)$'); do
   set -- "$@" "$f"
 done
 rm -f "$WORK/out.tar"
