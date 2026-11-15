@@ -129,10 +129,14 @@ def main():
     wid = os.environ.get("ORCH_KEY", "?") + (f" PR#{os.environ['ORCH_PR']}" if os.environ.get("ORCH_PR") else "")
     prompt, gh_repo = box_prompt(Path(pfile).read_text(), role, base)
     c = conf() if not dry else {}
-    account = c.get("FLEET_ACCOUNT", "tars")
+    model = os.environ.get("ORCH_MODEL") or None
+    # A grok-* model runs on the fleet's route "grok": the box starts its own model proxy from the fleet's stored
+    # login and takes no account (the launch API refuses an account on any route but "claude").
+    route = "grok" if (model or "").startswith("grok-") else "claude"
+    account = c.get("FLEET_ACCOUNT", "tars") if route == "claude" else None
     ttl = TTL.get(role, 3600)
     fields = {"prompt": prompt, "proof_contract": json.dumps({"kind": "artifact", "name": "result.md", "min_bytes": 20}),
-              "route": "claude", "account": account, "model": os.environ.get("ORCH_MODEL") or None,
+              "route": route, "account": account, "model": model,
               "instance_type": c.get("FLEET_INSTANCE", "t3.medium"), "repo": gh_repo, "branch": base,
               "budget_usd": 0.5, "ttl_seconds": ttl}
     if dry:
@@ -167,7 +171,7 @@ def main():
             if misses % 10 == 1:
                 print(f"status read failed ({misses}): {str(e)[:120]}", file=sys.stderr, flush=True)
             d = {}
-        if d and seen is None and agent.get("account") != account:
+        if d and seen is None and (agent.get("account") or None) != account:
             return finish(True, f"fleet box {aid} booted on account {agent.get('account')!r}, not {account!r}: DESTROY IT "
                                 f"(cloud_agent_destroy) and do not relaunch through this path", agent)
         note = next((e.get("note", "") for e in d.get("events", []) if "turns=" in e.get("note", "")), "")
