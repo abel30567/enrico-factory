@@ -91,7 +91,7 @@ class Ec2Replay:
     is read and the connection closed without a status line; its exchange answers the next request.
     ``requests`` holds the fields of every request."""
 
-    def __init__(self, test, exchanges, key, loose=("ClientToken",)):
+    def __init__(self, test, exchanges, key, loose=("ClientToken", "UserData")):
         self.exchanges, self.key, self.loose = list(exchanges), key, tuple(loose)
         self.mismatches, self.requests, self.cut, self.next = [], [], set(), 0
         replay = self
@@ -182,8 +182,14 @@ class Case(unittest.TestCase):
             self.addCleanup(shutil.rmtree, directory)
             key_file = os.path.join(directory, "render.key")
             Path(key_file).write_text("\n".join(key) + "\n", encoding="utf-8")
-        config = {"settings": {**SETTINGS, "RENDER_API_URL": url, **(settings or {})},
-                  "secrets": {"render.node": key_file}}
+        job = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, job)
+        Path(job, "engine.unreal").write_text("seeded-pull-token\n", encoding="utf-8")
+        Path(job, "store.assets").write_text("\n".join(KEY) + "\n", encoding="utf-8")
+        config = {"settings": {**SETTINGS, "RENDER_API_URL": url, "ASSET_STORE": "https://store.invalid/b",
+                               "UNREAL_IMAGE": "registry.invalid/engine@sha256:" + "0" * 64, **(settings or {})},
+                  "secrets": {"render.node": key_file, "engine.unreal": os.path.join(job, "engine.unreal"),
+                              "store.assets": os.path.join(job, "store.assets")}}
         driver = ec2.Node(key_file, config, record)
         moment = at(clock)
         driver.now = lambda: moment
@@ -398,8 +404,8 @@ class B6Request(Case):
         self.assertEqual(launch["MetadataOptions.HttpTokens"], "required")
         self.assertEqual(launch["BlockDeviceMapping.1.DeviceName"], "/dev/sda1")
         self.assertEqual(launch["BlockDeviceMapping.1.Ebs.DeleteOnTermination"], "true")
-        self.assertEqual(base64.b64decode(launch["UserData"]), b"#!/bin/bash\nshutdown -h +75\n")
-        self.assertEqual(driver.user_data(), "#!/bin/bash\nshutdown -h +75\n")
+        self.assertEqual(base64.b64decode(launch["UserData"]).decode("utf-8"), driver.user_data())
+        self.assertEqual(driver.user_data().splitlines()[:3], ["#!/bin/bash", driver.user_data().splitlines()[1], "shutdown -h +75"])
 
     def test_another_tag_mismatches(self):
         replay = self.replay(session("start-stop"))
@@ -494,6 +500,7 @@ class B7Record(Case):
             del fixture["source"]
             if "ClientToken" in fixture["request"]["params"]:
                 fixture["request"]["params"]["ClientToken"] = replay.requests[1]["ClientToken"]
+                fixture["request"]["params"]["UserData"] = exchange["request"]["params"]["UserData"]
             self.assertEqual(exchange, fixture)
         self.assertTrue(json.loads(Path(record, names[1]).read_text())["request"]["params"]["UserData"]
                         .startswith("sha256:"))
@@ -535,7 +542,8 @@ class B8Imports(unittest.TestCase):
             "import os, sys, tempfile; sys.path.insert(0, '.'); from kit.lib import ec2\n"
             "key = os.path.join(tempfile.mkdtemp(), 'k'); open(key, 'w').write('a\\nb\\nc\\n')\n"
             f"settings = {dict(SETTINGS, RENDER_API_URL=f'http://127.0.0.1:{port}/')!r}\n"
-            "driver = ec2.Node(key, {'settings': settings, 'secrets': {}})\n"
+            "settings['ASSET_STORE'] = 'https://store.invalid/b'\n"
+            "driver = ec2.Node(key, {'settings': settings, 'secrets': {'engine.unreal': key, 'store.assets': key}})\n"
             "try:\n    driver.start()\nexcept Exception as error:\n"
             "    print(type(error).__module__, type(error).__name__, 'kit.lib.node' in sys.modules)\n")
         self.assertEqual(self.python(code), "kit.lib.node Unavailable True")
@@ -544,13 +552,14 @@ class B8Imports(unittest.TestCase):
 class B9Interface(unittest.TestCase):
     def test_names(self):
         self.assertEqual(ec2.Node.NEEDS, ("RENDER_INSTANCE_TYPE", "RENDER_MACHINE_IMAGE", "RENDER_TAG",
-                                          "RENDER_USD_HOUR", "RENDER_MAX_MIN"))
-        self.assertEqual(ec2.Node.PROGRAMS, ())
+                                          "RENDER_USD_HOUR", "RENDER_MAX_MIN", "RENDER_RESOLUTION", "UNREAL_IMAGE",
+                                          "ASSET_STORE", "engine.unreal", "store.assets"))
+        self.assertEqual(ec2.Node.PROGRAMS, ("ffmpeg", "ffprobe", "tesseract"))
         self.assertEqual(str(ec2.Refused("user data too large")), "user data too large")
 
     def test_init_stores_and_run_is_later(self):
         driver = ec2.Node(None, None)
-        with self.assertRaises(NotImplementedError):
+        with self.assertRaises(ec2.Refused):
             driver.run({})
         self.assertEqual(driver.stop(), NOTHING)
         self.assertIsNotNone(ec2.Node.now().tzinfo)

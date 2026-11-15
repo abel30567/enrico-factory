@@ -1,6 +1,7 @@
 """The render node drivers: a GPU node a program starts for one job and stops after it.
 
-``PROVIDERS`` maps a value of the setting ``RENDER_PROVIDER`` to a driver class; the kit ships none. A
+``PROVIDERS`` maps a value of the setting ``RENDER_PROVIDER`` to a driver class; the kit ships ``ec2``
+(`kit/lib/ec2.py`), one instance of the cloud's compute API started for each job. A
 driver is made with the path of the key file ``render.node`` and ``config``, which is
 ``{"settings": {...}, "secrets": {...}}``: the settings of the call by name, and the path of each key file of
 the call by name, exactly as `factory run` gives them from the checks of the resource ``render.node``. A
@@ -20,7 +21,9 @@ A driver class has:
 
 import shutil
 
-PROVIDERS = {}
+from kit.lib import ec2
+
+PROVIDERS = {"ec2": ec2.Node}
 
 
 class Unavailable(Exception):
