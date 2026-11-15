@@ -21,6 +21,8 @@ TRACKED = "tracked"
 HOLD = "hold"
 LABEL_KEYS = ("room", "stage", "unit")
 SHOTS = "production/{}/shots.json"
+PACKAGE = ("story", "reel")
+INTAKE = ("production", "intake")
 
 _TITLE = re.compile(r"\[([^\[\]\s]+)\]\s+(\S.*)")
 _SHOT_UNIT = re.compile(r"([^/]+)/([^/]+)-[0-9]+")
@@ -192,11 +194,29 @@ def shots(p, root, unit: str) -> list:
     return found if unit == ep else [shot for shot in found if shot_sequence(shot) == unit]
 
 
+def _intake(p, state: State, unit_type: str, unit: str, root) -> str | None:
+    """The shot list ``production/<ep>/shots.json`` on the base of the unit's episode when a ``story/reel`` ticket
+    of it is locked; for an ``asset`` unit, the first over the episodes of locked ``story/reel`` tickets, sorted.
+    None when there is none."""
+    if unit_type == "asset":
+        episodes = sorted({episode(t["unit"]) for n, t in state.tickets.items()
+                           if (t["room"], t["stage"]) == PACKAGE and locked_pull(state, n) is not None})
+    else:
+        episodes = [episode(unit)] if is_locked(state, *PACKAGE, episode(unit)) else []
+    for ep in episodes:
+        path = SHOTS.format(ep)
+        if gitstate.show(root, production.base(p), path) is not None:
+            return path
+    return None
+
+
 def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     """Brief section 9 rule 4: the upstream stage of the same unit is locked, or the format skips it.
 
     An ``episode`` stage after a ``sequence`` stage needs it locked for every sequence of the episode on
     the base; a ``sequence`` stage after an ``episode`` stage needs it locked for the sequence's episode.
+    A stage after ``production/intake`` is held, in place of locked, by the shot list of a locked ``story/reel``
+    ticket's episode on the base (``_intake``); a ticket not held is not locked as before.
     """
     room, unit = ticket["room"], ticket["unit"]
     entry = production.stage(p, room, ticket["stage"])
@@ -208,6 +228,10 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     note = f"skipped by format {skipped_by}: " if skipped_by else ""
     if not after:
         return True, note + "no upstream stage"
+    if (room, after) == INTAKE:
+        path = _intake(p, state, entry["unit"], unit, root)
+        if path is not None:
+            return True, note + f"upstream stage {after} is held for {unit}: {path} is on the base"
     theirs_type, ours_type = production.stage(p, room, after)["unit"], entry["unit"]
     if ours_type == "episode" and theirs_type == "sequence":
         found = sequences(p, root, unit)
