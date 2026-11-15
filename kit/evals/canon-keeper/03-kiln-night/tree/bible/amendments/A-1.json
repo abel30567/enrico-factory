@@ -1,0 +1,10 @@
+{
+  "class": "charter",
+  "changes": {
+    "bible/charter.md": "states C1 and C2"
+  },
+  "why": "the owner approved the charter",
+  "evidence": {
+    "bible/charter.md": "C1 and C2"
+  }
+}

@@ -1,0 +1,9 @@
+subject	attribute	value	tag	source
+jem	job	net mender	text	sources/net-loft.md K1
+jem	needle	bone	text	sources/net-loft.md K2
+jem	mending since	childhood	inferred	sources/net-loft.md K3
+ros	job	carries the nets up to the net loft	text	sources/net-loft.md K4
+ros	counts	every net that goes up the stairs	text	sources/net-loft.md K5
+ros	knows	every boat by its nets	inferred	sources/net-loft.md K6
+net-loft	location	above the harbour fish market	text	sources/net-loft.md K7
+net-loft	window	one, facing the sea	text	sources/net-loft.md K8

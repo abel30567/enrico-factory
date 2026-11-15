@@ -1,0 +1,10 @@
+{
+  "class": "charter",
+  "changes": {
+    "bible/charter.md": "carries the owner's statements C1 to C5 and says what is not set"
+  },
+  "why": "the owner approved the charter; every later amendment rests on it",
+  "evidence": {
+    "sources/charter.md": "the owner's approved charter, statements C1 to C5 and what the owner did not decide"
+  }
+}

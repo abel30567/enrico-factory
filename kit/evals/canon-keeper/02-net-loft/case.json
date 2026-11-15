@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["structure", "provenance", "references", "canon", "media"], "expect_files": ["bible/amendments/A-2.json", "bible/canon/ledger.tsv", "bible/canon/characters/jem.md", "bible/canon/characters/ros.md", "bible/canon/places/net-loft.md"]}

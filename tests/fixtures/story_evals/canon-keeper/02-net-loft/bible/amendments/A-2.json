@@ -1,0 +1,14 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/jem.md": "adds Jem, from K1 to K3",
+    "bible/canon/characters/ros.md": "adds Ros, from K4 to K6",
+    "bible/canon/ledger.tsv": "adds one row for each of K1 to K8",
+    "bible/canon/places/net-loft.md": "adds the net loft, from K7 and K8"
+  },
+  "why": "the owner approved the draft; its statements K1 to K8 become canon and its pending items do not",
+  "evidence": {
+    "sources/net-loft.md": "statements K1 to K8, each with its tag",
+    "sources/rights.tsv": "the draft is the owner's own"
+  }
+}

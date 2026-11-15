@@ -1,0 +1,4 @@
+subject	attribute	value	tag	source
+nell	job	fires the big kiln	text	sources/kiln-night.md K1
+orrin	job	night watchman	text	sources/kiln-night.md K2
+kiln-yard	location	behind the pottery	text	sources/kiln-night.md K3
