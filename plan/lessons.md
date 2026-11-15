@@ -68,3 +68,8 @@
   ends "then orch launch fixer N" (`tick.py`, the BLOCKED branch of the PR state), and the fixer started
   35 minutes late, by hand. A block on an issue is relaunched by the tick; a block on a pull request is
   not. Read the NEED line to its end and do every step it names in the same wake.
+- **Never push to the production's main from a second clone while its tick runs.** On 2026-11-15 the
+  #185 lab controls were pushed to primal-sample from a /tmp clone while the production checkout held an
+  unpushed ledger commit; its `git pull --ff-only` then failed every tick from 21:08Z to 21:38Z and the
+  asset PRs on the path to #158 stood still. Commit in the production checkout itself, or after pushing
+  from elsewhere check `tail STATE/logs/tick.log` of the production for `Not possible to fast-forward`.
