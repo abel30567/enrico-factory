@@ -194,6 +194,29 @@ class Waiting(unittest.TestCase):
         self.accounts(w, {"acct-one": "2026-11-11T18:00:00Z", "acct-two": "2026-11-11T18:00:00Z"})
         self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
 
+    def test_other_out_of_usage(self):
+        """ISSUE-467, behaviour 3: slot OTHER waits on the time written under inference.other."""
+        w = World(self)
+        self.accounts(w, {"inference.other": "2026-11-11T17:00:00Z"})
+        before = {name: (w.state / name).read_bytes() for name in sorted(os.listdir(w.state))}
+        self.assertEqual(down.waiting(w.p, [], "judge", self.NOW), ("OTHER", "2026-11-11T17:00:00Z"))
+        self.assertEqual({name: (w.state / name).read_bytes() for name in sorted(os.listdir(w.state))}, before)
+        self.assertIsNone(down.waiting(w.p, [], "judge", "2026-11-11T17:00:00Z"))
+        self.assertIsNone(down.waiting(w.p, [], "critic", self.NOW))
+
+    def test_other_twins(self):
+        """ISSUE-467, behaviour 4."""
+        for data in ({}, {"acct-one": "2026-11-11T17:00:00Z"}, {"inference.other": "2026-11-11T17:00:00+00:00"},
+                     {"inference.other": 5}):
+            with self.subTest(data=data):
+                w = World(self)
+                self.accounts(w, data)
+                self.assertIsNone(down.waiting(w.p, [], "judge", self.NOW))
+        w = World(self, PROXY_URL="")
+        self.accounts(w, {"acct-one": "2026-11-11T17:00:00Z", "acct-two": "2026-11-11T18:00:00Z",
+                          "inference.other": "2026-11-11T19:00:00Z"})
+        self.assertEqual(down.waiting(w.p, [], "judge", self.NOW), ("CHECKER", "2026-11-11T17:00:00Z"))
+
 
 class Source(unittest.TestCase):
     """The label is spelled in one file of the kit."""

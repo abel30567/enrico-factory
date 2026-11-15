@@ -628,6 +628,32 @@ class ReadTest(unittest.TestCase):
                 self.assertEqual(harness.read(envelope(name), 1),
                                  harness.Outcome("out_of_usage", None, "account out of usage (exit 1)"))
 
+    def test_billing_refusal(self):
+        """ISSUE-467, behaviours 1 and 2: status 402 or a spent balance in the text is out of usage."""
+        self.assertEqual(harness.read(envelope("out-of-usage-billing.stdout"), 1),
+                         harness.Outcome("out_of_usage", None, "account out of usage (exit 1)"))
+        refused = json.loads(envelope("out-of-usage-billing.stdout"))
+        unreadable = ('API Error: 400 {"type":"error","error":{"type":"billing_error",'
+                      '"message":"Billing details could not be read"}}')
+        rows = [
+            ({"result": "Request refused"}, 1, "out_of_usage"),
+            ({"api_error_status": 400}, 1, "out_of_usage"),
+            ({"api_error_status": 400, "result": unreadable}, 1, "failed"),
+        ]
+        for text, status in (("Request refused: usage balance exhausted", "out_of_usage"),
+                             ("Your credit balance is too low", "out_of_usage"),
+                             ("Credits are depleted for this login", "out_of_usage"),
+                             ("Insufficient funds", "out_of_usage"),
+                             (unreadable, "failed"),
+                             ("Please check your billing details", "failed"),
+                             ("Balance: 12 credits left", "failed")):
+            rows.append(({"api_error_status": None, "result": text}, 1, status))
+        rows.append(({"api_error_status": None, "is_error": False}, 0, "failed"))
+        for change, exit_code, status in rows:
+            with self.subTest(change=change):
+                data = {k: v for k, v in dict(refused, **change).items() if v is not None}
+                self.assertEqual(harness.read(json.dumps(data), exit_code, "").status, status)
+
     def test_login_ended(self):
         for name in ("login-ended-status.stdout", "login-ended-text.stdout"):
             with self.subTest(name=name):

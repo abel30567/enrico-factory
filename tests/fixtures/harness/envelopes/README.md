@@ -21,7 +21,8 @@ on standard error. `kit.lib.harness.read` takes the last stdout line that is a J
 | `no-result-object.stdout` | synthetic | `failed`, reason `no result object` | `subtype` `success`, `is_error` false, no `structured_output`, `result` a string that is not JSON; exit 0 |
 | `with-log-lines.stdout` | synthetic | `ok` | non-JSON and non-result lines before the last line, an envelope with `structured_output` an object |
 | `out-of-usage-status.stdout` | synthetic | `out_of_usage` | `api_error_status` 429 |
-| `out-of-usage-text.stdout` | synthetic | `out_of_usage` | `is_error` true, no `api_error_status`, `result` matches `(?i)usage limit\|out of usage` |
+| `out-of-usage-text.stdout` | synthetic | `out_of_usage` | `is_error` true, no `api_error_status`, `result` matches `_USAGE` (`usage limit` or `out of usage`) |
+| `out-of-usage-billing.stdout` | synthetic | `out_of_usage` | `is_error` true, `api_error_status` 402, `result` an error of type `billing_error` whose message matches `_USAGE` (`usage balance exhausted`); `num_turns` 1; exit 1. Written from the shape of a refusal of the second family, ids invented |
 | `login-ended-status.stdout` | recorded, `2.1.290 (hbar)`, 2026-11-13 | `login_ended` | `api_error_status` 401 (403 is read the same way); `result` (`OAuth access token is invalid.`) matches no text pattern; exit 1 |
 | `login-ended-text.stdout` | synthetic | `login_ended` | `is_error` true, no `api_error_status`, `result` matches `(?i)token (has )?(expired\|been revoked)\|not logged in` |
 | `failed-subtype.stdout` | recorded, `2.1.290 (hbar)`, 2026-11-13 | `failed` | `subtype` `error_max_turns`, `is_error` true, no `result` key, `errors` a list; exit 1 |

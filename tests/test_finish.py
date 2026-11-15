@@ -1249,6 +1249,49 @@ class ResourceDown(unittest.TestCase):
         self.assertIn("Missing: a valid result (model proxy unreachable (exit 1))\n", self.w.by(5, "critic")[0]["body"])
         self.assertEqual(self.tokens, ["acct-one"])
 
+    # -- ISSUE-467, behaviours 5 to 7
+
+    BILLING = {"match": CRITIC, "stdout": (ENVELOPES / "out-of-usage-billing.stdout").read_text(), "exit": 1}
+
+    def accounts(self):
+        path = self.w.state / "accounts.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def test_billing_refusal_in_slot_other_waits(self):
+        w = self.w
+        self.other()
+        code, out, err = self.launch(dict(self.BILLING))
+        self.assertEqual(code, 3, out + err)
+        self.assertEqual(len(self.tokens), 1)
+        self.assertEqual(self.verbs(), ["BLOCKED"])
+        self.assertIn("Missing: a valid result (account out of usage (exit 1))\n", w.by(5, "critic")[0]["body"])
+        self.assertEqual(self.accounts(), {"inference.other": "2026-11-11T17:00:00Z"})
+        self.assertEqual((self.creates(), self.stopped()), ([], None))
+        before = self.snapshot()
+        code, out, err = self.launch(approved())
+        self.assertEqual((code, out, err), (1, "", "launch: slot OTHER is out of usage until 2026-11-11T17:00:00Z\n"))
+        self.assertEqual((len(self.tokens), w.calls()), (1, []))
+        self.assertEqual(self.snapshot(), before)
+        with mock.patch.dict(os.environ, {"FACTORY_NOW": "2026-11-11T17:00:00Z"}):
+            code, out, err = self.launch(approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(len(self.tokens), 2)
+        self.assert_private()
+
+    def test_billing_refusal_in_slot_checker_moves_to_the_next_account(self):
+        code, out, err = self.launch(dict(self.BILLING), approved())
+        self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.tokens, ["acct-one", "acct-two"])
+        self.assertEqual(self.accounts(), {"acct-one": "2026-11-11T17:00:00Z"})
+
+    def test_failed_run_in_slot_other_records_no_wait_twin(self):
+        self.other()
+        failed = {"match": CRITIC, "stdout": (ENVELOPES / "failed-error.stdout").read_text(), "exit": 1}
+        code, out, err = self.launch(failed)
+        self.assertEqual(code, 3, out + err)
+        self.assertIn("Missing: a valid result (run failed (exit 1))\n", self.w.by(5, "critic")[0]["body"])
+        self.assertIsNone(self.accounts())
+
     # -- behaviour 5
 
     def test_closed(self):
