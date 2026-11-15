@@ -615,3 +615,179 @@ class PacketsThroughTheTick(PacketCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+SHOT = {"characters": ["wren"], "set": "saltmarsh"}
+SHOW = {"bible/canon/characters/wren.md": "Wren.\n",
+        "bible/canon/places/saltmarsh.md": "Saltmarsh.\n",
+        "episodes/ep01/sequences/Q1/sequence.json": SEQUENCE,
+        "episodes/ep01/sequences/Q1/shots/Q1-1.json": json.dumps({"id": "Q1-1", **SHOT}) + "\n",
+        "episodes/ep01/sequences/Q1/shots/Q1-2.json": json.dumps({"id": "Q1-2", **SHOT}) + "\n",
+        "episodes/ep01/sequences/Q1/shots/requests/x.json": "{}\n",
+        "episodes/ep01/reel/edit-list.json": json.dumps({"events": [{"shot": "Q1-1"}, {"shot": "Q1-2"}]}) + "\n",
+        "production/ep01/shots.json": json.dumps([{"shot": "Q1-1"}, {"shot": "Q1-2"}]) + "\n"}
+SHOW_REEL = ([ticket(1, "reel", "ep01")], [pull(2, 1)])
+Q1_1 = "episodes/ep01/sequences/Q1/shots/Q1-1.json"
+ASSET_STATES = "production/assets/wren/assets/state.json, production/assets/saltmarsh/assets/state.json"
+RENDER_LINE = "Tool: render. Expected cost: usd 0.2, compute_min 20.\n"
+
+
+def production_ticket(number, stage, unit, state="closed"):
+    return ticket(number, stage, unit, state=state, room="production")
+
+
+class OperatorBodies(Case):
+    """ISSUE-486: the body of a ticket ``render-wrangler`` operates names the tool, the cost and the inputs."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit(SHOW)
+
+    def body(self, state, stage, unit, settings=None):
+        found = filing.due(self.p(settings=settings), state, self.root)
+        [made] = [f for f in found if (f["room"], f["stage"], f["unit"]) == ("production", stage, unit)]
+        return made["body"]
+
+    def after(self, stage, unit):
+        """The state with ``stage`` of ``unit`` locked as ticket #3 by PR #4."""
+        return make_state([production_ticket(3, stage, unit)], [pull(4, 3)])
+
+    def shot_body(self, stage, block, upstream):
+        return (f"Do the stage {stage} for unit ep01/Q1-1.\n\n{block}\n\n"
+                f"Upstream: #3 {upstream} ep01/Q1-1, locked by PR #4.\nFiled by factory tick.\n")
+
+    def test_assets_body(self):
+        state = make_state(*SHOW_REEL)
+        self.assertEqual(self.body(state, "assets", "wren"),
+                         "Do the stage assets for unit wren.\n\n"
+                         "Tool: model3d. Expected cost: usd 0.3, compute_min 1.\n"
+                         "Kind: character. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
+                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/characters/wren.md.\n\n"
+                         "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
+        self.assertEqual(self.body(state, "assets", "saltmarsh"),
+                         "Do the stage assets for unit saltmarsh.\n\n"
+                         "Tool: model3d. Expected cost: usd 0.3, compute_min 1.\n"
+                         "Kind: set. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
+                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/places/saltmarsh.md.\n\n"
+                         "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
+        self.git("rm", "-q", "bible/canon/characters/wren.md")
+        self.git("commit", "-q", "-m", "no sheet")
+        self.assertEqual(self.body(state, "assets", "wren"),
+                         "Do the stage assets for unit wren.\n\n"
+                         "Tool: model3d. Expected cost: usd 0.3, compute_min 1.\n"
+                         "Kind: prop. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
+                         "Inputs, in this order: the request, media/manifest.tsv.\n\n"
+                         "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
+
+    def test_rigging_body(self):
+        self.assertEqual(self.body(self.after("assets", "wren"), "rigging", "wren"),
+                         "Do the stage rigging for unit wren.\n\n"
+                         "Tool: rig. Expected cost: usd 0.55, compute_min 1.\n"
+                         "Kind: character. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
+                         "Inputs, in this order: the request (refs [\"asset:wren\"]), "
+                         "production/assets/wren/assets/state.json.\n\n"
+                         "Upstream: #3 assets wren, locked by PR #4.\nFiled by factory tick.\n")
+
+    def test_layout_body(self):
+        self.assertEqual(self.body(make_state(*SHOW_REEL), "layout", "ep01/Q1-1"),
+                         "Do the stage layout for unit ep01/Q1-1.\n\n"
+                         f"{RENDER_LINE}Shot file: {Q1_1}.\n"
+                         "Inputs, in this order: the request, production/ep01/Q1-1/layout/scene.py, "
+                         f"{Q1_1}, production/ep01/shots.json, {ASSET_STATES}.\n\n"
+                         "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
+
+    def test_animation_body(self):
+        self.assertEqual(self.body(self.after("layout", "ep01/Q1-1"), "animation", "ep01/Q1-1"), self.shot_body(
+            "animation", f"{RENDER_LINE}Shot file: {Q1_1}.\n"
+            "Inputs, in this order: the request, production/ep01/Q1-1/layout/scene.py, "
+            f"production/ep01/Q1-1/animation/scene.py, {Q1_1}, production/ep01/shots.json, "
+            f"production/ep01/Q1-1/layout/state.json, {ASSET_STATES}.", "layout"))
+
+    def test_simulation_body(self):
+        self.assertEqual(self.body(self.after("animation", "ep01/Q1-1"), "simulation", "ep01/Q1-1"), self.shot_body(
+            "simulation", f"{RENDER_LINE}Shot file: {Q1_1}.\n"
+            "Inputs, in this order: the request, production/ep01/Q1-1/layout/scene.py, "
+            "production/ep01/Q1-1/animation/scene.py, production/ep01/Q1-1/simulation/scene.py, "
+            f"{Q1_1}, production/ep01/shots.json, production/ep01/Q1-1/animation/state.json, {ASSET_STATES}.",
+            "animation"))
+
+    def test_lighting_body(self):
+        self.assertEqual(self.body(self.after("simulation", "ep01/Q1-1"), "lighting", "ep01/Q1-1"), self.shot_body(
+            "lighting", f"{RENDER_LINE}Shot file: {Q1_1}.\n"
+            "Inputs, in this order: the request, production/ep01/Q1-1/layout/scene.py, "
+            "production/ep01/Q1-1/animation/scene.py, production/ep01/Q1-1/simulation/scene.py, "
+            f"production/ep01/Q1-1/lighting/scene.py, {Q1_1}, production/ep01/shots.json, "
+            f"production/ep01/Q1-1/simulation/state.json, {ASSET_STATES}.", "simulation"))
+
+    def test_render_body(self):
+        self.assertEqual(self.body(self.after("lighting", "ep01/Q1-1"), "render", "ep01/Q1-1"), self.shot_body(
+            "render", f"{RENDER_LINE}Shot file: {Q1_1}.\n"
+            "Inputs, in this order: the request, production/ep01/Q1-1/layout/scene.py, "
+            "production/ep01/Q1-1/animation/scene.py, production/ep01/Q1-1/simulation/scene.py, "
+            f"production/ep01/Q1-1/lighting/scene.py, {Q1_1}, production/ep01/shots.json, "
+            f"production/ep01/Q1-1/lighting/state.json, {ASSET_STATES}.", "lighting"))
+
+    def test_settings(self):
+        state = make_state(*SHOW_REEL)
+        render = {"RENDER_USD": "0.5", "RENDER_COMPUTE_MIN": "45"}
+        self.assertIn("\n\nTool: render. Expected cost: usd 0.5, compute_min 45.\nShot file: ",
+                      self.body(state, "layout", "ep01/Q1-1", render))
+        self.assertIn("\n\nTool: model3d. Expected cost: usd 0.3, compute_min 1.\nKind: ",
+                      self.body(state, "assets", "wren", render))
+        model = {"MODEL3D_USD": "0.25"}
+        self.assertIn("\n\nTool: model3d. Expected cost: usd 0.25, compute_min 1.\nKind: ",
+                      self.body(state, "assets", "wren", model))
+        self.assertIn(f"\n\n{RENDER_LINE}Shot file: ", self.body(state, "layout", "ep01/Q1-1", model))
+        self.assertIn(f"\n\n{RENDER_LINE}Shot file: ", self.body(state, "layout", "ep01/Q1-1"))
+        self.assertIn("\n\nTool: model3d. Expected cost: usd 0.3, compute_min 1.\nKind: ",
+                      self.body(state, "assets", "wren"))
+        self.assertIn("\n\nTool: rig. Expected cost: usd 0.55, compute_min 1.\nKind: ",
+                      self.body(self.after("assets", "wren"), "rigging", "wren", render))
+
+    def test_no_shot_file(self):
+        self.assertEqual(self.body(self.after("layout", "ep01/Q9-1"), "animation", "ep01/Q9-1"),
+                         "Do the stage animation for unit ep01/Q9-1.\n\n"
+                         f"{RENDER_LINE}Shot file: none on the base.\n"
+                         "Inputs, in this order: the request, production/ep01/Q9-1/layout/scene.py, "
+                         "production/ep01/Q9-1/animation/scene.py, production/ep01/shots.json, "
+                         "production/ep01/Q9-1/layout/state.json.\n\n"
+                         "Upstream: #3 layout ep01/Q9-1, locked by PR #4.\nFiled by factory tick.\n")
+        self.commit({"bible/canon/characters/ghost.md": "Ghost.\n"})
+        self.assertEqual(self.body(self.after("assets", "ghost"), "rigging", "ghost"),
+                         "Do the stage rigging for unit ghost.\n\n"
+                         "Tool: rig. Expected cost: usd 0.55, compute_min 1.\n"
+                         "Kind: character. Shot file: none on the base.\n"
+                         "Inputs, in this order: the request (refs [\"asset:ghost\"]), "
+                         "production/assets/ghost/assets/state.json.\n\n"
+                         "Upstream: #3 assets ghost, locked by PR #4.\nFiled by factory tick.\n")
+
+    def test_rigging_only_for_a_character(self):
+        state = make_state([production_ticket(3, "assets", "wren"), production_ticket(5, "assets", "saltmarsh")],
+                           [pull(4, 3), pull(6, 5)])
+        self.assertEqual(self.filed(state), [(3, 4, "production", "rigging", "wren")])
+        self.commit({"bible/canon/characters/saltmarsh.md": "Saltmarsh.\n"})
+        self.assertEqual(self.filed(state), [(3, 4, "production", "rigging", "wren"),
+                                             (5, 6, "production", "rigging", "saltmarsh")])
+
+    def test_cross_shot(self):
+        one = [production_ticket(7, "lighting", "ep01/Q1-1")]
+        open_two = make_state(one + [production_ticket(9, "lighting", "ep01/Q1-2", state="open")], [pull(8, 7)])
+        self.assertNotIn("cross-shot", [f["stage"] for f in self.due(open_two)])
+        both = one + [production_ticket(9, "lighting", "ep01/Q1-2")]
+        found = self.due(make_state(both, [pull(8, 7), pull(10, 9)]))
+        self.assertEqual([(f["from"], f["pull"], f["stage"], f["unit"]) for f in found],
+                         [(7, 8, "cross-shot", "ep01/Q1"), (7, 8, "render", "ep01/Q1-1"),
+                          (9, 10, "render", "ep01/Q1-2")])
+        self.assertEqual(found[0]["title"], "[CROSS-SHOT-EP01-Q1] cross-shot for ep01/Q1")
+        self.assertEqual(found[0]["body"], "Do the stage cross-shot for unit ep01/Q1.\n\n"
+                                           "Upstream: #7 lighting ep01/Q1-1, locked by PR #8.\n"
+                                           "Upstream: #9 lighting ep01/Q1-2, locked by PR #10.\n"
+                                           "Filed by factory tick.\n")
+        for state in ("open", "closed"):
+            with self.subTest(cross_shot=state):
+                taken = make_state(both + [production_ticket(11, "cross-shot", "ep01/Q1", state=state)],
+                                   [pull(8, 7), pull(10, 9)])
+                self.assertNotIn("cross-shot", [f["stage"] for f in self.due(taken)])
+        self.git("rm", "-q", "production/ep01/shots.json")
+        self.git("commit", "-q", "-m", "no shots")
+        self.assertNotIn("cross-shot", [f["stage"] for f in self.due(make_state(both, [pull(8, 7), pull(10, 9)]))])

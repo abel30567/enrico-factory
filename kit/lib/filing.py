@@ -13,9 +13,15 @@ the episode on the base has a locked ticket of the sequence stage with unit ``<e
 from the lowest numbered of those tickets (the lowest numbered locked ticket of each ``<Q>``); its body
 has one ``Upstream:`` line per sequence. The body of a stage whose makers name ``media-wrangler`` also names the
 tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MEDIA_COMPUTE_MIN`` (defaults
-``grok-imagine``, ``0.1`` and ``1``). Any other pair files nothing. A room, stage and unit that some
-ticket already has, open or closed, is never filed again. While a tracked issue does not parse, nothing
-is filed.
+``grok-imagine``, ``0.1`` and ``1``). The body of a stage of ``TOOLS`` whose makers name ``render-wrangler`` (and not
+``media-wrangler``) names its tool and expected cost, the settings ``<TOOL>_USD`` and ``<TOOL>_COMPUTE_MIN`` (``<TOOL>``
+the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot file on the base and the job's inputs
+in order. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
+``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
+shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
+from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. Any other pair files
+nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again. While a tracked
+issue does not parse, nothing is filed.
 
 ``due`` also gives the two packets of brief section 3, as issues that are not tickets: the story intent packet
 when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
@@ -40,10 +46,20 @@ _KEY = re.compile(r"[^A-Za-z0-9]+")
 
 PACKAGE = ("story", "reel")
 INTAKE = ("production", "intake")
+RIGGING = ("production", "rigging")
 EDIT_LIST = "episodes/{}/reel/edit-list.json"
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 
 MEDIA_MAKER = "media-wrangler"
+OPERATOR = "render-wrangler"
+TOOLS = {"assets": ("model3d", "0.3", "1"), "rigging": ("rig", "0.55", "1"), "layout": ("render", "0.2", "20"),
+         "animation": ("render", "0.2", "20"), "simulation": ("render", "0.2", "20"),
+         "lighting": ("render", "0.2", "20"), "render": ("render", "0.2", "20")}
+SHOT_STAGES = ("layout", "animation", "simulation", "lighting", "render")
+SCENES = ("layout", "animation", "simulation", "lighting")
+CHARACTER = "bible/canon/characters/{}.md"
+PLACE = "bible/canon/places/{}.md"
+SHOT_FILE = re.compile(r"episodes/([^/]+)/sequences/([^/]+)/shots/([^/]+)\.json")
 
 PACKETS = {("story", "reel"): "intent-packet", ("distribution", "window"): "platform-notes"}
 
@@ -66,13 +82,11 @@ def _next(p, room: str, stage: str, skips: list) -> list:
     return found
 
 
-def _boards(p, root, state: tickets.State, ticket: dict) -> list:
-    """``(ticket, pull)`` of the lowest numbered locked ticket of the ticket's stage for each sequence of its
-    episode on the base, by unit id; empty when one is missing or ``ticket`` is not the lowest numbered."""
-    room, stage, episode = ticket["room"], ticket["stage"], tickets.episode(ticket["unit"])
+def _lowest(state: tickets.State, room: str, stage: str, units: list, ticket: dict) -> list:
+    """``(ticket, pull)`` of the lowest numbered locked ticket of ``room``/``stage`` for each of ``units``, in
+    order; empty when one is missing or ``ticket`` is not the lowest numbered of them."""
     found = []
-    for q in tickets.sequences(p, root, episode):
-        unit = f"{episode}/{q}"
+    for unit in units:
         number = next((n for n in sorted(state.tickets) if state.tickets[n]["room"] == room
                        and state.tickets[n]["stage"] == stage and state.tickets[n]["unit"] == unit
                        and tickets.locked_pull(state, n) is not None), None)
@@ -84,6 +98,14 @@ def _boards(p, root, state: tickets.State, ticket: dict) -> list:
     return found
 
 
+def _boards(p, root, state: tickets.State, ticket: dict) -> list:
+    """``(ticket, pull)`` of the lowest numbered locked ticket of the ticket's stage for each sequence of its
+    episode on the base, by unit id; empty when one is missing or ``ticket`` is not the lowest numbered."""
+    episode = tickets.episode(ticket["unit"])
+    units = [f"{episode}/{q}" for q in tickets.sequences(p, root, episode)]
+    return _lowest(state, ticket["room"], ticket["stage"], units, ticket)
+
+
 def _units(p, root, state: tickets.State, ticket: dict, pull: dict, upstream_unit: str, entry: dict) -> list:
     """``(unit, upstream (ticket, pull) pairs)`` of each ticket of ``entry`` to file from ``ticket``."""
     if entry["unit"] == upstream_unit:
@@ -93,22 +115,90 @@ def _units(p, root, state: tickets.State, ticket: dict, pull: dict, upstream_uni
     if upstream_unit == "sequence" and entry["unit"] == "episode":
         upstreams = _boards(p, root, state, ticket)
         return [(tickets.episode(ticket["unit"]), upstreams)] if upstreams else []
+    sequence = tickets.shot_sequence(ticket["unit"])
+    if upstream_unit == "shot" and entry["unit"] == "sequence" and sequence is not None:
+        upstreams = _lowest(state, ticket["room"], ticket["stage"], tickets.shots(p, root, sequence), ticket)
+        return [(sequence, upstreams)] if upstreams else []
     return []
 
 
-def _tool(p, room: str, stage: str) -> str:
-    """The tool and expected cost line of a stage ``media-wrangler`` makes, with its empty line; else empty."""
-    if MEDIA_MAKER not in production.stage_roles(production.stage(p, room, stage) or {}, "maker"):
+def _cost(tool: str, usd: str, compute_min: str) -> str:
+    return f"Tool: {tool}. Expected cost: usd {usd}, compute_min {compute_min}."
+
+
+def _on_base(p, root, path: str) -> bool:
+    return gitstate.show(root, production.base(p), path) is not None
+
+
+def _shot_file(p, root, unit: str, shot_unit: bool):
+    """``(path, data)`` of the first shot file on the base, by path, that is the shot ``unit`` (a shot unit) or
+    names the asset ``unit`` in its ``characters`` or as its ``set``; None when there is none."""
+    sha = gitstate.head(root, production.base(p))
+    out = gitstate.git(root, "--literal-pathspecs", "ls-tree", "-r", "-z", "--name-only", sha, "--", "episodes/")
+    episode, _, shot = unit.partition("/")
+    for path in sorted(out.split("\0")):
+        m = SHOT_FILE.fullmatch(path)
+        if m is None or (shot_unit and (m.group(1), m.group(3)) != (episode, shot)):
+            continue
+        data = _read(p, root, path)
+        if not isinstance(data, dict):
+            continue
+        names = data.get("characters") if isinstance(data.get("characters"), list) else []
+        if shot_unit or unit in names or data.get("set") == unit:
+            return path, data
+    return None
+
+
+def _operator(p, root, stage: str, unit: str) -> list:
+    """The lines of the block of a stage ``render-wrangler`` operates after its tool line, without the empty line."""
+    shot_unit = stage in SHOT_STAGES
+    found = _shot_file(p, root, unit, shot_unit)
+    shot_line = f"Shot file: {found[0]}." if found else "Shot file: none on the base."
+    if not shot_unit:
+        sheet = next((path.format(unit) for path in (CHARACTER, PLACE) if _on_base(p, root, path.format(unit))), None)
+        kind = {CHARACTER.format(unit): "character", PLACE.format(unit): "set"}.get(sheet, "prop")
+        if stage == "rigging":
+            inputs = [f'the request (refs ["asset:{unit}"])', f"production/assets/{unit}/assets/state.json"]
+        else:
+            inputs = ["the request", "media/manifest.tsv", *([sheet] if sheet else [])]
+        return [f"Kind: {kind}. {shot_line}", f"Inputs, in this order: {', '.join(inputs)}."]
+    index = SHOT_STAGES.index(stage)
+    inputs = ["the request", *(f"production/{unit}/{s}/scene.py" for s in SCENES[:index + 1])]
+    if found:
+        inputs.append(found[0])
+    inputs.append(f"production/{tickets.episode(unit)}/shots.json")
+    if index:
+        inputs.append(f"production/{unit}/{SHOT_STAGES[index - 1]}/state.json")
+    ids = []
+    if found:
+        names = found[1].get("characters") if isinstance(found[1].get("characters"), list) else []
+        for name in [*names, found[1].get("set")]:
+            if isinstance(name, str) and ID.fullmatch(name) and name not in ids:
+                ids.append(name)
+    inputs += [f"production/assets/{name}/assets/state.json" for name in ids]
+    return [shot_line, f"Inputs, in this order: {', '.join(inputs)}."]
+
+
+def _tool(p, root, room: str, stage: str, unit: str) -> str:
+    """The tool and expected cost line of a stage ``media-wrangler`` makes, or the block of a stage of ``TOOLS``
+    ``render-wrangler`` operates, with its empty line; else empty."""
+    makers = production.stage_roles(production.stage(p, room, stage) or {}, "maker")
+    if MEDIA_MAKER in makers:
+        return _cost(production.setting(p, "MEDIA_TOOL", "grok-imagine"), production.setting(p, "MEDIA_USD", "0.1"),
+                     production.setting(p, "MEDIA_COMPUTE_MIN", "1")) + "\n\n"
+    if OPERATOR not in makers or stage not in TOOLS:
         return ""
-    return (f"Tool: {production.setting(p, 'MEDIA_TOOL', 'grok-imagine')}. "
-            f"Expected cost: usd {production.setting(p, 'MEDIA_USD', '0.1')}, "
-            f"compute_min {production.setting(p, 'MEDIA_COMPUTE_MIN', '1')}.\n\n")
+    tool, usd, compute_min = TOOLS[stage]
+    first = _cost(tool, production.setting(p, f"{tool.upper()}_USD", usd),
+                  production.setting(p, f"{tool.upper()}_COMPUTE_MIN", compute_min))
+    return "\n".join([first, *_operator(p, root, stage, unit)]) + "\n\n"
 
 
-def _filing(p, ticket: dict, pull: dict, upstreams: list, room: str, stage: str, unit: str) -> dict:
+def _filing(p, root, ticket: dict, pull: dict, upstreams: list, room: str, stage: str, unit: str) -> dict:
     lines = "".join(f"Upstream: #{t['number']} {t['stage']} {t['unit']}, locked by PR #{u['number']}.\n"
                     for t, u in upstreams)
-    body = f"Do the stage {stage} for unit {unit}.\n\n{_tool(p, room, stage)}{lines}Filed by factory tick.\n"
+    tool = _tool(p, root, room, stage, unit)
+    body = f"Do the stage {stage} for unit {unit}.\n\n{tool}{lines}Filed by factory tick.\n"
     return {"from": ticket["number"], "pull": pull["number"], "room": room, "stage": stage, "unit": unit,
             "title": f"[{key(stage, unit)}] {stage} for {unit}", "body": body,
             "labels": [tickets.TRACKED, f"room:{room}", f"stage:{stage}", f"unit:{unit}"]}
@@ -168,7 +258,7 @@ def _intake(p, root, ticket: dict, pull: dict, taken: set, order: dict) -> list:
         for unit in units.get(entry["unit"], []):
             if (room, entry["stage"], unit) not in taken:
                 taken.add((room, entry["stage"], unit))
-                candidates.append(_filing(p, ticket, pull, [(ticket, pull)], room, entry["stage"], unit))
+                candidates.append(_filing(p, root, ticket, pull, [(ticket, pull)], room, entry["stage"], unit))
     return sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
 
 
@@ -247,8 +337,10 @@ def due(p, state: tickets.State, root) -> list:
         candidates = []
         for entry in _next(p, room, stage, tickets.skips(p, root, ticket["unit"])):
             for unit, upstreams in _units(p, root, state, ticket, pull, upstream_unit, entry):
+                if (room, entry["stage"]) == RIGGING and not _on_base(p, root, CHARACTER.format(unit)):
+                    continue
                 if (room, entry["stage"], unit) not in taken:
                     taken.add((room, entry["stage"], unit))
-                    candidates.append(_filing(p, ticket, pull, upstreams, room, entry["stage"], unit))
+                    candidates.append(_filing(p, root, ticket, pull, upstreams, room, entry["stage"], unit))
         found += sorted(candidates, key=lambda f: (order[(f["room"], f["stage"])], f["unit"]))
     return found + _packets(p, state, root)

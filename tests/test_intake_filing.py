@@ -158,8 +158,9 @@ class IntakeFiling(World):
             issue = self.record("issues", number)
             self.assertEqual((issue["state"], issue["title"]), ("open", title))
             self.assertEqual(issue["labels"], ["room:production", f"stage:{stage}", "tracked", f"unit:{unit}"])
-            self.assertEqual(issue["body"], f"Do the stage {stage} for unit {unit}.\n\n"
-                                            "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
+            self.assertTrue(issue["body"].startswith(f"Do the stage {stage} for unit {unit}.\n\nTool: "), issue["body"])
+            self.assertTrue(issue["body"].endswith("\n\nUpstream: #1 reel ep01, locked by PR #2.\n"
+                                                   "Filed by factory tick.\n"), issue["body"])
         self.assertEqual(self.record("issues", 10)["title"], "[INTENT-EP01] story intent packet for ep01")
         text = "".join(json.dumps(self.record("issues", n)) for n in self.issues())
         for name in ("mira", "tide-flats", "Q2-2"):
