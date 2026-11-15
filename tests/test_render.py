@@ -371,8 +371,8 @@ class RenderTest(unittest.TestCase):
 
 
 class NodeTest(unittest.TestCase):
-    def test_the_kit_ships_no_driver(self):
-        self.assertEqual(node.PROVIDERS, {})
+    def test_the_kit_ships_ec2(self):
+        self.assertEqual(sorted(node.PROVIDERS), ["ec2"])
         config = {"settings": {"RENDER_PROVIDER": "fake"}, "secrets": {"render.node": "render.node"}}
         self.assertIsNone(node.connect("fake", "render.node", config))
         with mock.patch.dict(node.PROVIDERS, {"fake": FakeNode}), mock.patch.object(FakeNode, "config", None):
