@@ -3,7 +3,8 @@
 The production is made by ``factory init --rooms story,production`` in a temporary directory, committed
 on ``main``. GitHub is recorded in the test: the intake ticket #1 (ep01) with the merged pull #2, the
 `assets` ticket #3 (wren), the `layout` ticket #4 (ep01/Q1-1), the `lighting` ticket #5 (ep01/Q1-1)
-with the merged pull #6 and the `render` ticket #7 (ep01/Q1-1). The harness is a copy of
+with the merged pull #6 and the `render` ticket #7 (ep01/Q1-1); a test may add the `cross-shot` ticket #8
+(ep01/Q1) with the merged pull #9, which a render waits for. The harness is a copy of
 tests/fixtures/harness/fake-harness, its steps written per test.
 """
 
@@ -38,6 +39,7 @@ TICKETS = {1: ("intake", "ep01", "IN-1", "closed"), 3: ("assets", "wren", "AS-1"
            4: ("layout", "ep01/Q1-1", "LA-1", "open"), 5: ("lighting", "ep01/Q1-1", "LI-1", "closed"),
            7: ("render", "ep01/Q1-1", "RN-1", "open")}
 MERGED = (1, 5)
+CROSS_SHOT = {8: ("cross-shot", "ep01/Q1", "XS-1", "closed")}
 
 
 def record(directory, kind, number, value):
@@ -49,7 +51,7 @@ def record(directory, kind, number, value):
 class World:
     """The production repository, its state directory, a fake harness and a recorded GitHub, all temporary."""
 
-    def __init__(self, test):
+    def __init__(self, test, extra=None):
         self.tmp = Path(os.path.realpath(tempfile.mkdtemp()))
         test.addCleanup(shutil.rmtree, self.tmp)
         self.root = self.tmp / "show"
@@ -64,15 +66,17 @@ class World:
                         "--rooms", "story,production"], check=True, capture_output=True, text=True)
         self.git("init", "-q", "-b", "main")
         self.commit("the production")
-        for number, (stage, unit, key, state) in TICKETS.items():
+        extra = extra or {}
+        found = {**TICKETS, **extra}
+        for number, (stage, unit, key, state) in found.items():
             record(self.dir, "issues", number, {
                 "body": f"Stage {stage} of {unit}.\n", "created_at": CREATED,
                 "labels": sorted(["tracked", "room:production", f"stage:{stage}", f"unit:{unit}"]),
                 "number": number, "state": state, "title": f"[{key}] {stage} of {unit}"})
-        for number in MERGED:
+        for number in MERGED + tuple(extra):
             record(self.dir, "pulls", number + 1, {
                 "base_ref": "main", "body": f"Ticket: #{number}\n", "created_at": CREATED,
-                "head_ref": f"feat/{TICKETS[number][2]}-work", "labels": [], "merged_at": MERGED_AT,
+                "head_ref": f"feat/{found[number][2]}-work", "labels": [], "merged_at": MERGED_AT,
                 "number": number + 1, "state": "merged", "ticket": number, "title": f"Work for #{number}"})
         self.harness = self.tmp / "harness"
         self.harness.mkdir()
@@ -171,8 +175,11 @@ class RequestsTest(unittest.TestCase):
         self.assertEqual(dropped_line(body), "Dropped (outside writes): none")
         self.assertEqual(w.next_step(4), ("jobs", "launch", "render-wrangler", pull))
 
+    def test_render_waits_for_its_cross_shot(self):
+        self.assertEqual(World(self).next_step(7), ("waiting", "none", None, None))
+
     def test_render_has_a_maker_before_its_operator(self):
-        w = World(self)
+        w = World(self, CROSS_SHOT)
         self.assertEqual(w.next_step(7), ("ready", "launch", "lighter", None))
         request = "production/ep01/Q1-1/render/requests/render.json"
         w.steps({"match": "You are the lighter", "files": {request: REQUEST},
