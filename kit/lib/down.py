@@ -4,7 +4,8 @@
 directory, ``{"<account>": <issue number>}``, under an exclusive lock on ``down.lock`` there. An account
 is stopped while its entry names an open issue that carries the label. ``blocking`` says whether a launch
 of a role must wait. ``waiting`` says whether a launch must wait because no account of its slot has usage
-left, and files nothing. A person closes the issue once the login is renewed or the proxy restarted; no
+left, and files nothing. For slot ``OTHER``, which has no account list, the time is the one written under
+``inference.other``. A person closes the issue once the login is renewed or the proxy restarted; no
 program closes, edits or comments on it, and a closed issue is never reused.
 
 Nothing written here holds an account name, a setting value, a token or a path: the issue names the
@@ -143,11 +144,18 @@ def blocking(p, issues, role):
 def waiting(p, issues, role, now):
     """``(slot, time it is usable again)`` when no account of the slot of ``role`` has usage left at
     ``now``, given the open ``issues``; else None. The time is the earliest written for an account not
-    stopped, as written. A setting or file that cannot be read is not a wait."""
+    stopped, as written. For slot ``OTHER``, which has no account list, the time is the one written under
+    ``inference.other``. A setting or file that cannot be read is not a wait."""
     try:
         meta = p.roles[role]["meta"]
         if harness.model(p.settings, meta)[1] == "other":
-            return None
+            until = exhausted(production.state_dir(p)).get(OTHER)
+            if until is None:
+                return None
+            datetime.strptime(until, production.TIME_FORMAT)
+            if harness.pick([OTHER], {OTHER: until}, now) is not None:
+                return None
+            return "OTHER", until
         slot = meta["model"].upper()
         state_dir = production.state_dir(p)
         held = _stopped_in(state_dir, issues)

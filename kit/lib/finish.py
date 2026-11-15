@@ -337,10 +337,12 @@ def _outcome(p, gh, root, run) -> Outcome:
             if resource is not None:
                 if not _report(p, gh, run, resource, outcome, account) or account is None:
                     return outcome
-            elif outcome.status != "out_of_usage" or account is None:
+            elif outcome.status != "out_of_usage":
                 return outcome
             else:
-                _exhaust(state_dir, account, now)
+                _exhaust(state_dir, down.OTHER if account is None else account, now)
+                if account is None:
+                    return outcome
         return outcome
     finally:
         if knowledge is not None:

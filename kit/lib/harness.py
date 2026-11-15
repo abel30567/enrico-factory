@@ -312,7 +312,8 @@ PHRASES = {
     "proxy_down": "model proxy unreachable",
     "failed": "run failed",
 }
-_USAGE = re.compile(r"(?i)usage limit|out of usage")
+_USAGE = re.compile(r"(?i)usage limit|out of usage|(balance|credit)s? (is |are |has been )?(exhausted|depleted|too low)"
+                    r"|insufficient (balance|credit|funds)")
 _LOGIN = re.compile(r"(?i)token (has )?(expired|been revoked)|not logged in")
 _REFUSED = re.compile(r"(?i)ECONNREFUSED|connection ?refused")
 
@@ -347,7 +348,7 @@ def _status(envelope, exit_code, stderr_text):
     text = envelope["result"] if isinstance(envelope.get("result"), str) else ""
     is_error = envelope.get("is_error") is True
     code = envelope.get("api_error_status")
-    if code == 429 or (is_error and _USAGE.search(text)):
+    if code in (402, 429) or (is_error and _USAGE.search(text)):
         return "out_of_usage"
     if code in (401, 403) or (is_error and _LOGIN.search(text)):
         return "login_ended"
