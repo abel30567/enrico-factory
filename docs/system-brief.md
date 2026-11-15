@@ -539,7 +539,9 @@ rows of the ledger on the base.
    operator.
 3. A job has no gate decision: `STEP #<n> gate <job file> PR #<pr>`. Every job is gated before any runs.
 4. A job has a counting PASS and no `run` row: `STEP #<n> run <job file> PR #<pr>`. The run commits the
-   job's manifest rows on the pull request's branch.
+   job's manifest rows on the pull request's branch. Once a job has run and every job has a counting
+   PASS, the other jobs run before step 2 comes again: the review is made once before the gates and
+   once after the operator's report (step 5), not between two runs.
 5. Every job ran `DONE` and a job's PASS is newer than the operator's last `LAUNCH`: the operator is
    launched again, before the lint, and reports. The head has moved, so the lint and the verdicts are
    made again.
