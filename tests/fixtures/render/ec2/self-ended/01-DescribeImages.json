@@ -1,0 +1,16 @@
+{
+ "request": {
+  "method": "POST",
+  "params": {
+   "Action": "DescribeImages",
+   "ImageId.1": "ami-1234567890abcdef0",
+   "Version": "2016-11-15"
+  },
+  "path": "/"
+ },
+ "response": {
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DescribeImagesResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\">\n    <requestId>00000000-0000-4000-8000-000000000001</requestId>\n    <imagesSet>\n        <item>\n            <imageId>ami-1234567890abcdef0</imageId>\n            <imageState>available</imageState>\n            <isPublic>false</isPublic>\n            <architecture>x86_64</architecture>\n            <imageType>machine</imageType>\n            <name>render-test</name>\n            <rootDeviceType>ebs</rootDeviceType>\n            <rootDeviceName>/dev/sda1</rootDeviceName>\n            <blockDeviceMapping>\n                <item>\n                    <deviceName>/dev/sda1</deviceName>\n                    <ebs>\n                        <volumeSize>100</volumeSize>\n                        <deleteOnTermination>true</deleteOnTermination>\n                        <volumeType>gp3</volumeType>\n                    </ebs>\n                </item>\n            </blockDeviceMapping>\n            <virtualizationType>hvm</virtualizationType>\n            <hypervisor>xen</hypervisor>\n        </item>\n    </imagesSet>\n</DescribeImagesResponse>\n",
+  "status": 200
+ },
+ "source": "written"
+}
