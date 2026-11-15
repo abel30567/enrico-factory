@@ -17,6 +17,7 @@ import tempfile
 from kit.lib import markers
 
 MANIFEST = "media/manifest.tsv"
+IDENTITY = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL")
 
 
 class GitError(Exception):
@@ -38,11 +39,19 @@ def _subcommand(args):
     return ""
 
 
-def _run(root, args, env=None, ok=(0,), binary=False):
-    full_env = None
-    if env:
-        full_env = dict(os.environ)
-        full_env.update(env)
+def environ(env=None, author=None):
+    """The environment of a git process: ``os.environ`` without ``IDENTITY``, then ``env``, then ``author``
+    as author and committer (``<author>@factory.invalid``) when given."""
+    full_env = {k: v for k, v in os.environ.items() if k not in IDENTITY}
+    full_env.update(env or {})
+    if author is not None:
+        email = author + "@factory.invalid"
+        full_env.update(zip(IDENTITY, (author, email, author, email)))
+    return full_env
+
+
+def _run(root, args, env=None, ok=(0,), binary=False, author=None):
+    full_env = environ(env, author)
     text = {} if binary else {"encoding": "utf-8", "errors": "surrogateescape"}
     proc = subprocess.run(["git", "-C", str(root)] + list(args), stdin=subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=full_env, **text)
@@ -52,9 +61,10 @@ def _run(root, args, env=None, ok=(0,), binary=False):
     return proc
 
 
-def git(root, *args, env=None):
-    """Standard output of ``git -C root *args`` as text; ``env`` adds variables to the environment."""
-    return _run(root, args, env=env).stdout
+def git(root, *args, env=None, author=None):
+    """Standard output of ``git -C root *args`` as text; ``env`` adds variables to the environment and
+    ``author`` names the author and committer of what it writes (``environ``)."""
+    return _run(root, args, env=env, author=author).stdout
 
 
 def _split(out):
@@ -202,8 +212,8 @@ def commit(worktree, paths, message, author):
         return None
     now = os.environ.get("FACTORY_NOW")
     env = {"GIT_AUTHOR_DATE": now, "GIT_COMMITTER_DATE": now} if now else None
-    git(worktree, "-c", "user.name=" + author, "-c", "user.email=%s@factory.invalid" % author,
-        "--literal-pathspecs", "commit", "-q", "-m", message, "--only", "--", *paths, env=env)
+    git(worktree, "--literal-pathspecs", "commit", "-q", "-m", message, "--only", "--", *paths, env=env,
+        author=author)
     return head(worktree)
 
 

@@ -39,6 +39,8 @@ import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
+from kit.lib import gitstate
+
 TICKET = re.compile(r"^Ticket: #(\d+)\s*$")
 ROLE = re.compile(r"^[a-z0-9:-]+$")
 ROLE_LINE = re.compile(r"^<!-- factory:role ([a-z0-9:-]+) -->$")
@@ -47,7 +49,6 @@ PULL_STATES = ("open", "closed", "merged", "all")
 ISSUE_FIELDS = "number,title,body,state,labels,createdAt"
 PULL_FIELDS = "number,title,body,state,labels,headRefName,baseRefName,createdAt,mergedAt"
 ISSUE_VIEW_FIELDS = ISSUE_FIELDS + ",url"
-GIT_IDENTITY = ("-c", "user.name=factory", "-c", "user.email=factory@factory.invalid")
 REPO_NAME = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 FACTORY_LOGIN = "factory"
 LABEL_MAX = 50
@@ -294,11 +295,10 @@ class Recorded:
         staged = git("diff", "--cached", "--quiet")
         if staged.returncode != 0:
             raise refuse("index is not clean", staged)
-        env = dict(os.environ)
-        if os.environ.get("FACTORY_NOW"):
-            env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = os.environ["FACTORY_NOW"]
+        now = os.environ.get("FACTORY_NOW")
+        env = gitstate.environ({"GIT_AUTHOR_DATE": now, "GIT_COMMITTER_DATE": now} if now else None, "factory")
         merged = subprocess.run(
-            ["git", *GIT_IDENTITY, "-C", str(root), "merge", "--no-ff", "--no-edit",
+            ["git", "-C", str(root), "merge", "--no-ff", "--no-edit",
              "-m", f"Merge pull request #{number}", pull["head_ref"]],
             capture_output=True, text=True, stdin=subprocess.DEVNULL, env=env)
         if merged.returncode != 0:
