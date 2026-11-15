@@ -449,7 +449,7 @@ class OperatorRowsTest(ChainCase):
         self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
         self.check(("lint", "lint", None, 5))
         self.post("program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
-        self.check(("review", "launch", "editor", 5))
+        self.check(("gate", "gate", None, 5))
 
     def test_a_request_changed_after_its_job_is_uncovered(self):
         self.written()
@@ -587,6 +587,76 @@ class OperatorRowsTest(ChainCase):
         self.post("chief", "[CHIEF] LAUNCH chief 5-1\n")
         self.post("chief", "[CHIEF] RULING\nUse the spare account.\n")
         self.check(("blocked", "launch", "fetcher", 5), "the maker is BLOCKED on #5 and has a ruling")
+
+    def linted(self):
+        """ISSUE-490: the fetcher wrote the job and reported READY, and the lint passed; no other verdict."""
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        digest = self.write_job()
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.verdicts("program:lint")
+        return digest
+
+    def ran_and_cited(self):
+        """``linted``, then the job's PASS and run, the report, the cite and the lint again."""
+        digest = self.linted()
+        self.gated(digest)
+        self.ran(digest)
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-2\n")
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.post("chief", "[CHIEF] LAUNCH writer 5-3\n")
+        self.post("writer", "[WRITER] READY\nhead {head:5}\n")
+        self.verdicts("program:lint")
+        return digest
+
+    def test_the_job_runs_before_the_checker(self):
+        # ISSUE-490 behaviour 1: the checker reads what the job makes, so the gate and the run come first.
+        digest = self.linted()
+        self.check(("gate", "gate", None, 5), f"job {self.JOB} has no gate decision")
+        self.gated(digest)
+        self.check(("run", "run", None, 5))
+        self.ran(digest)
+        self.check(("report", "launch", "fetcher", 5))
+
+    def test_a_blocked_checker_before_the_run(self):
+        # ISSUE-490 behaviour 2, seeded: a checker BLOCKED before the run does not stop the job.
+        self.linted()
+        self.post("chief", "[CHIEF] LAUNCH editor 5-1\n")
+        self.post("editor", "[EDITOR] BLOCKED\nMissing: the charter\n")
+        self.check(("gate", "gate", None, 5))
+
+    def test_a_stop_before_the_checker_wakes(self):
+        self.gated(self.linted(), "STOP")
+        self.check(("job-stopped", "wake", "chief", 5), f"job {self.JOB} stopped at the gate on #5")
+        comments = self.w.load().pulls[5]["comments"]
+        self.assertEqual([c for c in comments if c["body"].startswith("[CHIEF] LAUNCH editor")], [])
+
+    def test_the_checker_after_the_run(self):
+        # ISSUE-490 behaviour 3: after the run the checkers and the judges come as today.
+        self.ran_and_cited()
+        self.check(("review", "launch", "editor", 5), "editor has no counting verdict on #5")
+        self.post("chief", "[CHIEF] LAUNCH editor 5-4\n")
+        self.verdicts("editor")
+        self.check(("judging", "launch", "critic", 5), "critic has no counting verdict on #5")
+        self.post("chief", "[CHIEF] LAUNCH critic 5-5\n")
+        self.verdicts("critic")
+        self.check(("lockable", "lock", None, 5), "#5 has every counting verdict")
+
+    def test_a_blocked_checker_after_the_run_wakes(self):
+        self.ran_and_cited()
+        self.post("chief", "[CHIEF] LAUNCH editor 5-4\n")
+        self.post("editor", "[EDITOR] BLOCKED\nMissing: the charter\n")
+        self.check(("review", "wake", "chief", 5), "editor is BLOCKED on #5")
+
+    def test_the_lint_still_comes_first(self):
+        # ISSUE-490 behaviour 4: the rows before the gate do not move.
+        self.requested()
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-1\n")
+        self.write_job()
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("lint", "lint", None, 5), "no counting [LINT] verdict on #5")
+        self.post("program:lint", "[LINT] FAIL\nstructure: fail\nreviewed head {head:5} manifest none\n")
+        self.check(("notes", "launch", "writer", 5), "[LINT] FAIL on #5")
 
 
 class PitchesChainTest(ChainCase):

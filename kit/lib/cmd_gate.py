@@ -182,19 +182,20 @@ def _read(p, job, ref):
     return text_of
 
 
-def _verdicts(state, number, lint=True):
+def _verdicts(state, number, lint=True, reviews=True):
     """True when the ticket has one open pull and its lint (unless ``lint`` is false), checkers and judges
-    all say yes."""
+    (unless ``reviews`` is false) all say yes."""
     pulls = [pull for pull in tickets.pulls_of(state, number) if pull["state"] == "open"]
     if len(pulls) != 1:
         return False
     s = pulls[0]["summary"]
     return ((not lint or (s["lint"] is not None and s["lint"]["verb"] == "PASS"))
-            and all(v is not None and v["verb"] == "APPROVED" for v in s["checkers"].values())
-            and all(v is not None for v in s["judges"].values()))
+            and (not reviews
+                 or (all(v is not None and v["verb"] == "APPROVED" for v in s["checkers"].values())
+                     and all(v is not None for v in s["judges"].values()))))
 
 
-def _job_request(p, state, path_text, number=None):
+def _job_request(p, state, path_text, number=None, rows=None):
     """The request for a job file; with ``number``, the file and its inputs are read on that pull."""
     if number is None:
         job, digest = _job(p, path_text)
@@ -223,11 +224,13 @@ def _job_request(p, state, path_text, number=None):
         raise Refused(f"caller {caller} is not a gated operator of stage {ticket['room']}/{ticket['stage']}")
     # At a stage whose makers are all operators the check runs on what the job uploads: no lint comes first.
     operators_only = all(p.kinds.get(role) == "operator" for role in production.stage_roles(entry, "maker"))
+    # The checkers and judges read what the job makes: they count only for a job that has a run row.
+    ran = rows is None or any(r["kind"] == "run" and r["hash"] == digest for r in rows)
     return {"kind": "job", "hash": digest, "ticket": ticket, "target": ticket["number"],
             "comments": state.ticket_comments.get(ticket["number"], []), "tool": job["tool"],
             "usd": Decimal(str(job["expected"]["usd"])),
             "compute_min": Decimal(str(job["expected"]["compute_min"])),
-            "caller": caller, "verdicts": _verdicts(state, ticket["number"], lint=not operators_only),
+            "caller": caller, "verdicts": _verdicts(state, ticket["number"], lint=not operators_only, reviews=ran),
             "job": job, "ref": ref, "on": pull}
 
 
@@ -313,7 +316,7 @@ def _gate(p, gh, state, now, rows, target, apply, number=None):
             print(covered)
             return 0
     else:
-        request = _job_request(p, state, target, number)
+        request = _job_request(p, state, target, number, rows)
     ticket = request["ticket"]
     if request["verdicts"]:
         # The request's own earlier rows are left out: its cost is added once, as this request.
