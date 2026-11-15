@@ -287,6 +287,23 @@ class B8NoChange(Review):
         self.assertNotIn("Files of the job", self.prompt(run))
         self.assertEqual(self.store.requests, [])
 
+    def test_a_leftover_is_not_adopted_by_a_checker(self):
+        stale = self.w.state / "runs" / ".review-reviewer-7-1"
+        stale.mkdir(parents=True)
+        (stale / "planted.txt").write_text("stale\n")
+        run = self.w.prepare("reviewer", 7)
+        self.assertFalse((run.worktree / "review").exists())
+        self.assertNotIn("Files of the job", self.prompt(run))
+        self.assertFalse(stale.exists())
+
+    def test_a_leftover_is_not_adopted_by_a_maker(self):
+        stale = self.w.state / "runs" / ".review-drafter-7-2"
+        stale.mkdir(parents=True)
+        (stale / "planted.txt").write_text("stale\n")
+        run = self.w.prepare("drafter", 7)
+        self.assertFalse((run.worktree / "review").exists())
+        self.assertNotIn("Files of the job", self.prompt(run))
+
     def test_a_task_file_keeps_its_text(self):
         task = self.w.tmp / "task.md"
         text = "Check the tide.\n\n\n"

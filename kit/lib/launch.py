@@ -579,7 +579,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
             (run_dir / "config").mkdir(mode=0o700)
             if media_dir in staged and media_dir.exists():
                 os.rename(media_dir, run_dir / "media")
-            if review_dir.exists():
+            if review is not None and review_dir.exists():
                 if os.path.lexists(workdir / "review"):
                     raise LaunchError("review files: the pull's tree has review/")
                 os.rename(review_dir, workdir / "review")
