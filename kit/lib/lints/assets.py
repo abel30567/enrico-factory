@@ -1,27 +1,40 @@
 """Assets: every asset state has its shape, its id, its canon sheet, its budgets, its height and its
 skeleton (brief section 6, row `assets`, and section 16).
 
-Rule ids: shape (1), naming (2), references (3), budgets (4), scale (5), skeleton (6), depends (7). The
-check reads every `production/assets/<asset>/assets/state.json` of the tree, the canon sheets and
-`bible/canon/ledger.tsv`. Every finding is on line 1 of the state, except one on a scene script. A state
-with a `shape` finding gets no other finding, and one with a `naming` finding none of rules 3 to 6. A
-character needs its canon sheet under `bible/canon/characters/`, a set its sheet under
-`bible/canon/places/`. A character's height is the ledger row `height` of its id, written `<number> m`;
-a set's is checked where it has such a row, a prop's never. A character's skeleton is checked when it is
-not null; rigging requires one. Rule 7 holds each `assets/scene.py` to `JOB_FILES` (`lint.job_files`),
-on line 1 of the script.
+Rule ids: shape (1), naming (2), references (3), budgets (4), scale (5), skeleton (6), depends (7),
+requests (8). The check reads every `production/assets/<asset>/assets/state.json` of the tree, the canon
+sheets and `bible/canon/ledger.tsv`. Every finding is on line 1 of the state, except one on a scene
+script and those of rule 8. A state with a `shape` finding gets no other finding, and one with a `naming`
+finding none of rules 3 to 6. A character needs its canon sheet under `bible/canon/characters/`, a set
+its sheet under `bible/canon/places/`. A character's height is the ledger row `height` of its id, written
+`<number> m`; a set's is checked where it has such a row, a prop's never. A character's skeleton is
+checked when it is not null; rigging requires one. Rule 7 holds each `assets/scene.py` to `JOB_FILES`
+(`lint.job_files`), on line 1 of the script.
+
+Rule 8 reads every `production/assets/<asset>/assets/requests/model3d.json`, whether or not a state
+exists, with the model sheets under `bible/style/` and `media/manifest.tsv`, on line 1 of the request: it
+is `{for, prompt, refs}` for its asset, names at least one reference image as `media:<id>` with a row in
+the manifest, and every one is of its subject: a character's or a set's model sheet cites each of them,
+and no model sheet cites a prop's (a prop has none).
 """
 
 from __future__ import annotations
 
+import json
 import re
 from decimal import Decimal
 from pathlib import Path
 
-from ..lint import Finding, files, job_files, read_json, read_tsv
+from ..lint import Finding, files, job_files, link_targets, markdown_lines, read_json, read_text, read_tsv
+from .references import MEDIA
+from .structure import SHEET
 
 STATE = re.compile(r"^production/assets/([^/]+)/assets/state\.json$")
 SCENE = re.compile(r"^production/assets/[^/]+/assets/scene\.py$")
+REQUEST = re.compile(r"^production/assets/([^/]+)/assets/requests/model3d\.json$")
+REQUEST_KEYS = ["for", "prompt", "refs"]
+MEDIA_MANIFEST = "media/manifest.tsv"
+MODEL_SHEETS = {"character": "bible/style/characters", "set": "bible/style/places"}
 JOB_FILES = ("manifest.json", "state.json")
 CANON_LEDGER = "bible/canon/ledger.tsv"
 KEY_COLUMNS = ("subject", "attribute", "value")
@@ -154,15 +167,70 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
     return found
 
 
+def _cited(root: Path, rel: str) -> set[str]:
+    """The media ids a sheet cites as a link to `media:<id>`."""
+    return {m.group(1) for _, line in markdown_lines(read_text(root, rel)) for target in link_targets(line)
+            if (m := MEDIA.match(target))}
+
+
+def _request(root: Path, rel: str, asset: str, present: set[str], ids: set[str], sheets) -> list[str]:
+    """Rule 8 on one request of ``asset``; ``sheets`` is ``[(path, ids it cites)]`` of the model sheets."""
+    try:
+        data = json.loads(read_text(root, rel))
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or sorted(data) != REQUEST_KEYS or not isinstance(data["refs"], list):
+        return ["request is not {for, prompt, refs}"]
+    if not data["refs"]:
+        return ["request names no reference image"]
+    found = []
+    if data["for"] != asset:
+        named = data["for"] if isinstance(data["for"], str) else json.dumps(data["for"])
+        found.append(f"request for {named} is not for asset {asset}")
+    kind = next((k for k, folder in SHEETS.items() if f"{folder}/{asset}.md" in present), "prop")
+    sheet = f"{MODEL_SHEETS[kind]}/{asset}.md" if kind in MODEL_SHEETS else None
+    own = dict(sheets).get(sheet)
+    if sheet is not None and own is None:
+        found.append(f"{kind} {asset} has no model sheet {sheet}")
+    for k, ref in enumerate(data["refs"]):
+        mid = ref[len("media:"):] if isinstance(ref, str) and ref.startswith("media:") else ""
+        if not mid:
+            found.append(f"refs[{k}] is not media:<id>")
+            continue
+        if mid not in ids:
+            found.append(f"refs[{k}] media:{mid} has no row in {MEDIA_MANIFEST}")
+            continue
+        other = next((path for path, cited in sheets if path != sheet and mid in cited), None)
+        if sheet is None:
+            if other is not None:
+                found.append(f"refs[{k}] media:{mid} is cited by {other}, the model sheet of another subject")
+        elif own is not None and mid not in own:
+            found.append(f"refs[{k}] media:{mid} is cited by {other}, not by {sheet}" if other
+                         else f"refs[{k}] media:{mid} is not cited by {sheet}")
+    return found
+
+
+def _requests(root: Path, present: set[str]) -> list[Finding]:
+    requests = sorted((rel, m.group(1)) for rel in present if (m := REQUEST.match(rel)))
+    if not requests:
+        return []
+    ids = set()
+    if MEDIA_MANIFEST in present:
+        ids = {fields[0] for _, fields in read_tsv(root, MEDIA_MANIFEST)[1:]}
+    sheets = [(rel, _cited(root, rel)) for rel in sorted(present)
+              if rel.startswith("bible/style/") and SHEET.match(rel)]
+    return [Finding(rel, 1, "requests", message)
+            for rel, asset in requests for message in _request(root, rel, asset, present, ids, sheets)]
+
+
 def check(root: Path) -> list[Finding]:
     present = {p.as_posix() for p in files(root)}
     states = sorted((rel, m.group(1)) for rel in present if (m := STATE.match(rel)))
     found = [f for rel in sorted(present) if SCENE.match(rel) for f in job_files(present, rel, JOB_FILES)]
-    if not states:
-        return found
-    heights = _heights(root, present)
-    for rel, directory in states:
-        _, data = read_json(root, rel)
-        found += [Finding(rel, 1, rule, message)
-                  for rule, message in _state(rel, directory, data, present, heights)]
-    return found
+    if states:
+        heights = _heights(root, present)
+        for rel, directory in states:
+            _, data = read_json(root, rel)
+            found += [Finding(rel, 1, rule, message)
+                      for rule, message in _state(rel, directory, data, present, heights)]
+    return found + _requests(root, present)

@@ -1,4 +1,4 @@
-"""assets: rules 1 to 6."""
+"""assets: rules 1 to 8."""
 
 import json
 import sys
@@ -21,6 +21,28 @@ SCRIPT = "import unreal\n"
 ALONE = [(SCENE, 1, "depends", f"production/assets/ama/assets/{name}.json is missing and no request is under "
                                "production/assets/ama/assets/requests/") for name in ("manifest", "state")]
 CLEAN = json.loads((FIX / "clean" / STATE).read_text(encoding="utf-8"))
+MEDIA = "media/manifest.tsv"
+AMA_SHEET = "bible/style/characters/ama.md"
+HARBOUR_SHEET = "bible/style/places/harbour.md"
+
+
+def request(asset, *refs, **changes):
+    """`production/assets/<asset>/assets/requests/model3d.json` and a request of ``refs`` for it."""
+    body = dict({"for": asset, "prompt": f"{asset}, standing, as drawn", "refs": list(refs)}, **changes)
+    return f"production/assets/{asset}/assets/requests/model3d.json", json.dumps(body, indent=1) + "\n"
+
+
+def sheet(title, *ids):
+    """A model sheet citing ``ids`` as links to `media:<id>`."""
+    return f"# {title}\n\n" + "".join(f"- [{i}](media:{i})\n" for i in ids)
+
+
+def manifest(*ids):
+    return "id\tsha256\tbytes\tsource\n" + "".join(f"{i}\t{'0' * 64}\t10\tupload\n" for i in ids)
+
+
+SUBJECTS = {AMA_SHEET: sheet("Ama", "ama-ref"), HARBOUR_SHEET: sheet("The harbour", "harbour-ref", "harbour-pier"),
+            MEDIA: manifest("ama-ref", "harbour-ref", "harbour-pier", "lantern-ref", "harbour-sketch")}
 
 
 def state(**changes):
@@ -34,6 +56,7 @@ def bones(*pairs):
 
 
 class Assets(LintCase):
+    maxDiff = None
     def assets(self, root):
         return lint.run(root, only=["assets"])["assets"]
 
@@ -229,6 +252,81 @@ class Assets(LintCase):
         found = self.found(files, drop=[STATE])
         self.assertEqual(found, ALONE + [(bo, 1, "depends", m.replace("/ama/", "/bo/")) for *_, m in ALONE])
         self.assertEqual(self.found(files, drop=[STATE]), found)
+
+    def requests(self, *files, drop=()):
+        """The (path, rule, message) of `assets` on the clean fixture with the model sheets, the manifest and
+        ``files`` (``(path, text)`` pairs) over it, less ``drop``; every finding on line 1."""
+        found = self.found(dict(SUBJECTS, **dict(files)), drop=drop)
+        self.assertEqual({line for _, line, _, _ in found} - {1}, set())
+        return [(path, rule, message) for path, _, rule, message in found]
+
+    def test_requests_1_shape(self):
+        rel, body = request("ama", "media:ama-ref")
+        self.assertEqual(self.requests((rel, body)), [])
+        self.assertEqual(self.requests((rel, body), drop=[STATE]), [])
+        cases = [
+            ("[]\n", "request is not {for, prompt, refs}"),
+            (request("ama", "media:ama-ref", **{"for": "tobi"})[1], "request for tobi is not for asset ama"),
+            (request("ama")[1], "request names no reference image"),
+            (request("ama", 7)[1], "refs[0] is not media:<id>"),
+            (request("ama", "media:ama-sketch")[1], "refs[0] media:ama-sketch has no row in media/manifest.tsv"),
+        ]
+        for text, message in cases:
+            with self.subTest(message):
+                self.assertEqual(self.requests((rel, text)), [(rel, "requests", message)])
+        self.assertEqual(self.requests((rel, request("ama", "media:ama-ref", **{"for": 7})[1]), drop=[STATE]),
+                         [(rel, "requests", "request for 7 is not for asset ama")])
+        not_a_request = [(rel, "requests", "request is not {for, prompt, refs}")]
+        for text in ("{", json.dumps({"for": "ama", "refs": []}),
+                     json.dumps({"for": "ama", "prompt": "", "refs": "x"})):
+            with self.subTest(text):
+                self.assertEqual(self.requests((rel, text)), not_a_request)
+        self.assertEqual(self.requests((rel, request("tobi")[1])),
+                         [(rel, "requests", "request names no reference image")])
+
+    def test_requests_2_another_subject(self):
+        rel, body = request("harbour", "media:ama-ref")
+        result = self.assertGives(self.variant(dict(SUBJECTS, **{rel: body}), base=FIX / "clean"), [
+            "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, not by bible/style/places/harbour.md"],
+            path=rel)
+        self.assertEqual(lint.blockers({"assets": result}), [
+            f"B1 assets {rel}:1 refs[0] media:ama-ref is cited by bible/style/characters/ama.md, "
+            "not by bible/style/places/harbour.md"])
+        self.assertEqual(self.requests(request("harbour", "media:harbour-ref", "media:harbour-sketch")), [
+            (rel, "requests", "refs[1] media:harbour-sketch is not cited by bible/style/places/harbour.md")])
+        self.assertEqual(self.requests(request("harbour", "media:harbour-ref", "media:harbour-pier")), [])
+
+    def test_requests_3_no_sheet_and_props(self):
+        rel, body = request("ama", "media:ama-ref", "media:harbour-ref", "media:ama-sketch")
+        self.assertEqual(self.requests((rel, body), drop=[AMA_SHEET]), [
+            (rel, "requests", "character ama has no model sheet bible/style/characters/ama.md"),
+            (rel, "requests", "refs[2] media:ama-sketch has no row in media/manifest.tsv")])
+        lantern, body = request("lantern", "media:ama-ref")
+        self.assertEqual(self.requests((lantern, body)), [
+            (lantern, "requests",
+             "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, the model sheet of another subject")])
+        self.assertEqual(self.requests(request("lantern", "media:lantern-ref")), [])
+
+    def test_requests_4_other_files_and_order(self):
+        for rel in ("production/assets/ama/assets/requests/rig.json", "production/assets/ama/requests/model3d.json",
+                    "production/assets/ama/assets/requests/old/model3d.json"):
+            with self.subTest(rel):
+                self.assertEqual(self.requests((rel, "[]\n")), [])
+        files = [request("lantern", "media:ama-ref"), request("harbour", "media:ama-ref", **{"for": "ama"}),
+                 ("bible/style/characters/wickabel.md", sheet("Wickabel of Skarrowfen", "ama-ref"))]
+        found = self.requests(*files)
+        self.assertEqual(found, [
+            (files[1][0], "requests", "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, "
+                                      "not by bible/style/places/harbour.md"),
+            (files[1][0], "requests", "request for ama is not for asset harbour"),
+            (files[0][0], "requests", "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, "
+                                      "the model sheet of another subject")])
+        root = self.variant(dict(SUBJECTS, **dict(files)), base=FIX / "clean")
+        self.assertEqual([f.message for f in assets_lint.check(root) if f.path == files[1][0]], [
+            "request for ama is not for asset harbour",
+            "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, not by bible/style/places/harbour.md"])
+        self.assertEqual(self.requests(*files), found)
+
 
 if __name__ == "__main__":
     unittest.main()

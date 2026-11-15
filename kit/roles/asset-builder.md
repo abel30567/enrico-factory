@@ -49,8 +49,9 @@ your result.
   number without a seed. It never writes the state.
 - **request** `production/assets/<asset>/assets/requests/*.json`: one file per job the task
   names, named after its tool (`model3d.json`): a JSON object with exactly the keys `for` (the
-  asset id), `prompt` (what the model shows, in one paragraph) and `refs` (a list; first the
-  asset's reference image as `media:<id>`, from its model sheet or the production's own art).
+  asset id), `prompt` (what the model shows, in one paragraph) and `refs` (a list of `media:<id>`:
+  each one the asset's model sheet cites, and for a prop none another subject's sheet cites; first
+  a picture of the asset alone, with no card frame, name plate or text: the job sends only that one).
 - The job writes `assets/state.json` (`triangles`, `materials`, `textures`, `height_m`, `skeleton`)
   and `assets/manifest.json`. Build the asset to the size of its canon sheet; a character has a
   skeleton.
@@ -104,7 +105,7 @@ End with one JSON object, the result object, and nothing after it:
 ## Blocked
 
 Return `BLOCKED` only when you cannot do the work from the files: the asset has no locked canon
-sheet. Fill `blocked` with:
+sheet, or its model sheet cites no picture of the asset alone. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
