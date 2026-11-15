@@ -363,5 +363,95 @@ class LockProductionTest(unittest.TestCase):
         self.assertEqual(shotfile.subjects(p, w.root, "ep01/Q1-2"), (["ama"], ["lighthouse"]))
 
 
+class CrossShotLockTest(unittest.TestCase):
+    """The ``cross-shot`` stage has no maker: it locks with its lint and checker, and a render waits for it."""
+
+    def review(self, w, approved=True):
+        """``[LINT] PASS`` and, when ``approved``, ``[CONTINUITY-SUPERVISOR] APPROVED`` on pull #16, both on its
+        current head."""
+        head = w.git("rev-parse", "feat/XS-2-cross-shot").strip()
+        reviewed = f"reviewed head {head} manifest none\n"
+        comments = [{"body": "[LINT] PASS\nChecks required by stage cross-shot: cross-shot\n" + reviewed,
+                     "created_at": "2026-11-06T10:00:00Z", "id": 1601, "role": "program:lint"}]
+        if approved:
+            comments.append({"body": "[CONTINUITY-SUPERVISOR] APPROVED\n" + reviewed,
+                             "created_at": "2026-11-06T11:00:00Z", "id": 1602, "role": "continuity-supervisor"})
+        (w.dir / "comments" / "16.json").write_text(json.dumps(comments, indent=1, sort_keys=True) + "\n")
+
+    def ready(self, w):
+        w.merge(20)
+        self.review(w)
+
+    def failed(self, w):
+        return [(r.number, r.name, r.reason) for r in w.rules(16) if not r.ok]
+
+    def test_cross_shot_locks_with_no_maker(self):
+        w = World(self)
+        self.ready(w)
+        self.assertEqual(self.failed(w), [])
+        self.assertTrue(lockrules.lockable(w.rules(16)))
+
+    def test_cross_shot_without_approval(self):
+        w = World(self)
+        w.merge(20)
+        self.review(w, approved=False)
+        self.assertEqual(self.failed(w), [(2, "checkers", "checker continuity-supervisor has no counting verdict")])
+
+    def test_cross_shot_pull_that_changes_a_file(self):
+        w = World(self)
+        path = "production/ep01/Q2-1/lighting/state.json"
+        w.git("checkout", "-q", "feat/XS-2-cross-shot")
+        (w.root / path).parent.mkdir(parents=True, exist_ok=True)
+        (w.root / path).write_text("{}\n")
+        w.commit("a file on the cross-shot pull")
+        w.git("checkout", "-q", "main")
+        self.ready(w)
+        self.assertEqual(self.failed(w),
+                         [(7, "writes", f"stage cross-shot has no maker and the pull changes files: {path}")])
+
+    def test_factory_lock_locks_the_cross_shot(self):
+        w = World(self)
+        self.ready(w)
+        command = [sys.executable, str(w.root / ".factory" / "factory"), "lock", "--root", str(w.root)]
+        proc = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("PR #16 #15 production/cross-shot ep01/Q2: LOCKABLE", proc.stdout.splitlines())
+        proc = subprocess.run(command + ["--apply"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(proc.stdout.splitlines()[-1].startswith("locked PR #16 at "), proc.stdout)
+        p, state = w.load()
+        self.assertTrue(tickets.is_locked(state, "production", "cross-shot", "ep01/Q2"))
+
+    def test_render_waits_for_cross_shot(self):
+        w = World(self)
+        p, state = w.load()
+        self.assertEqual(tickets.upstream(p, state, state.tickets[13], w.root),
+                         (True, "upstream stage lighting is locked for ep01/Q1-2"))
+        w.unmerge(12)
+        p, state = w.load()
+        self.assertEqual(tickets.upstream(p, state, state.tickets[13], w.root),
+                         (False, "cheaper stage(s) not locked: cross-shot for ep01/Q1"))
+
+    def test_render_waits_for_cross_shot_after_its_assets(self):
+        w = World(self)
+        w.shot_file("Q1-2", {"characters": ["ama"], "set": "lighthouse"})
+        w.unmerge(12)
+        reason = ("cheaper stage(s) not locked: assets for ama, assets for lighthouse, rigging for ama, "
+                  "cross-shot for ep01/Q1")
+        p, state = w.load()
+        self.assertEqual(tickets.upstream(p, state, state.tickets[13], w.root), (False, reason))
+        self.assertEqual(w.rule4(14).reason, reason)
+
+    def test_no_other_stage_waits_for_cross_shot(self):
+        w = World(self)
+        w.unmerge(12)
+        p, state = w.load()
+        for stage in ("layout", "animation", "simulation", "lighting"):
+            with self.subTest(stage=stage):
+                ticket = {"room": "production", "stage": stage, "unit": "ep01/Q1-2"}
+                _, reason = tickets.upstream(p, state, ticket, w.root)
+                self.assertNotIn("cross-shot", reason)
+
+
 if __name__ == "__main__":
     unittest.main()
