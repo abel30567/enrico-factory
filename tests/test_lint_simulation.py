@@ -213,5 +213,61 @@ class Simulation(LintCase):
         self.assertEqual(first, lint.text(lint.run(root, only=["simulation"])))
 
 
+class JobFiles(LintCase):
+    """`depends` on a `simulation/scene.py`: the files its job writes beside it (`lint.job_files`)."""
+
+    STAGE, NAMES = "simulation", ('manifest.json', 'state.json')
+    SCRIPT, FILE = "import unreal\n", "{}\n"
+
+    def unit(self, shot="Q1-9", stage="simulation"):
+        return f"production/ep01/{shot}/{stage}"
+
+    def found(self, files):
+        root = self.variant(files, base=FIX / "clean")
+        result = lint.run(root, only=[self.STAGE])[self.STAGE]
+        self.assertNotEqual(result.status, lint.ERROR, result.reason)
+        return [(f.path, f.line, f.rule, f.message) for f in result.findings]
+
+    def alone(self, shot="Q1-9"):
+        d = self.unit(shot)
+        return [(f"{d}/scene.py", 1, "depends", f"{d}/{name} is missing and no request is under {d}/requests/")
+                for name in self.NAMES]
+
+    def test_job_files_1_a_scene_script_alone_fails(self):
+        d = self.unit()
+        self.assertEqual(self.found({f"{d}/scene.py": self.SCRIPT}), self.alone())
+
+    def test_job_files_2_a_request_holds_it_back(self):
+        d = self.unit()
+        self.assertEqual(self.found({f"{d}/scene.py": self.SCRIPT, f"{d}/requests/job.json": self.FILE}), [])
+        for request in (f"{d}/requests/job.txt", f"{d}/requests/old/job.json",
+                        f"{self.unit('Q1-8')}/requests/job.json"):
+            with self.subTest(request=request):
+                self.assertEqual(self.found({f"{d}/scene.py": self.SCRIPT, request: self.FILE}), self.alone())
+
+    def test_job_files_3_after_a_run_each_missing_file_is_named(self):
+        d = self.unit()
+        found = self.found({f"{d}/scene.py": self.SCRIPT, f"{d}/requests/job.json": self.FILE,
+                            f"{d}/manifest.json": self.FILE})
+        self.assertEqual(found, [(f"{d}/scene.py", 1, "depends", f"{d}/{name} is missing")
+                                 for name in self.NAMES if name != "manifest.json"])
+
+    def test_job_files_4_a_complete_stage_passes(self):
+        d = self.unit("Q1-1")
+        self.assertEqual(self.found({f"{d}/scene.py": self.SCRIPT, f"{d}/manifest.json": self.FILE}), [])
+
+    def test_job_files_5_other_directories_are_not_read(self):
+        others = [self.unit("Q1-9", s) for s in ("layout", "animation", "simulation", "lighting") if s != self.STAGE]
+        for d in (f"production/assets/ama/{self.STAGE}", "production/ep01/conform", *others):
+            with self.subTest(directory=d):
+                self.assertEqual(self.found({f"{d}/scene.py": self.SCRIPT}), [])
+
+    def test_job_files_6_deterministic(self):
+        files = {f"{self.unit(shot)}/scene.py": self.SCRIPT for shot in ("Q1-9", "Q1-8")}
+        first = self.found(files)
+        self.assertEqual(first, self.alone("Q1-8") + self.alone("Q1-9"))
+        self.assertEqual(self.found(files), first)
+
+
 if __name__ == "__main__":
     unittest.main()

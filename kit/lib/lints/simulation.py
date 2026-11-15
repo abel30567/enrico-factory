@@ -1,9 +1,10 @@
 """Simulation: a shot's simulation ran twice from the same inputs gives the same caches, and the locked
 run's caches stay in bounds (brief sections 6 and 16).
 
-Rule ids: depends (1), state (2), hashes (3), bounds (4). Findings in JSON files are on line 1. A run
-file is `production/<ep>/<shot>/simulation/state.json` (the locked run) or `rerun.json` (a second run of
-the same job); `production/assets/` holds assets, not shots, and is not read. Caches are matched by
+Rule ids: depends (1), state (2), hashes (3), bounds (4). Rule 1 also holds each `simulation/scene.py` to
+`JOB_FILES` (`lint.job_files`), on line 1 of the script. Findings in JSON files are on line 1. A run file is
+`production/<ep>/<shot>/simulation/state.json` (the locked run) or `rerun.json` (a second run of the same
+job); `production/assets/` holds assets, not shots, and is not read. Caches are matched by
 `id`; only `state.json` is held to the bounds.
 """
 
@@ -13,9 +14,11 @@ import math
 import re
 from pathlib import Path
 
-from ..lint import Finding, files, read_json
+from ..lint import Finding, files, job_files, read_json
 
 RUN_FILE = re.compile(r"^production/([^/]+)/([^/]+)/simulation/(state|rerun)\.json$")
+SCENE = re.compile(r"^production/(?!assets/)[^/]+/[^/]+/simulation/scene\.py$")
+JOB_FILES = ("manifest.json", "state.json")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_SPEED_M_S = 30
 ENERGY_GAIN = 1.1
@@ -102,20 +105,21 @@ def _bounds(rel: str, caches: dict[str, dict]) -> list[Finding]:
 
 
 def check(root: Path) -> list[Finding]:
+    have = {p.as_posix() for p in files(root)}
     units: dict[tuple[str, str], set[str]] = {}
-    for rel in files(root):
-        m = RUN_FILE.match(rel.as_posix())
+    for rel in sorted(have):
+        m = RUN_FILE.match(rel)
         if m and m.group(1) != "assets":
             units.setdefault((m.group(1), m.group(2)), set()).add(m.group(3))
     found = []
     for ep, shot in sorted(units):
-        unit, have = f"production/{ep}/{shot}", units[(ep, shot)]
+        unit, runs = f"production/{ep}/{shot}", units[(ep, shot)]
         rels = {run: f"{unit}/simulation/{run}.json" for run in ("state", "rerun")}
         caches = {}
         for run, other in (("state", "rerun"), ("rerun", "state")):
-            if run not in have:
+            if run not in runs:
                 continue
-            if other not in have:
+            if other not in runs:
                 found.append(Finding(rels[run], 1, "depends", f"{rels[other]} is missing"))
             findings, caches[run] = _state(rels[run], shot, read_json(root, rels[run])[1])
             found += findings
@@ -125,4 +129,7 @@ def check(root: Path) -> list[Finding]:
             found += _hashes(rels["state"], caches["state"], rels["rerun"], caches["rerun"])
         if caches.get("state") is not None:
             found += _bounds(rels["state"], caches["state"])
+    for rel in sorted(have):
+        if SCENE.match(rel):
+            found += job_files(have, rel, JOB_FILES)
     return found

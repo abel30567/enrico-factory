@@ -1,9 +1,10 @@
 """Animation: foot slide, pops, interpenetration and lip sync within one frame (brief sections 6 and 16).
 
-Reads, of the files git would commit, only each shot's `production/<ep>/<shot>/animation/state.json`, in
-sorted order. Of a state it reads `shot`, `stage`, `motion` and `lipsync`. Every other key is ignored.
+Reads, of the files git would commit, each shot's `production/<ep>/<shot>/animation/state.json`, in
+sorted order, and holds each `animation/scene.py` to `JOB_FILES` (rule 4, `lint.job_files`, on line 1 of the
+script). Of a state it reads `shot`, `stage`, `motion` and `lipsync`. Every other key is ignored.
 
-Rule ids: state (1), motion (2), lipsync (3). Findings are on line 1. An entry with a `state` finding is
+Rule ids: state (1), motion (2), lipsync (3), depends (4). Findings are on line 1. An entry with a `state` finding is
 not checked for its values; every other entry is. Limits are inclusive and compared on the value as read.
 Penetration, float and joint-limit violations are from `docs/research/04-3d-pipeline.md` section 5
 ("penetration and float at or under 5 mm, zero joint-limit violations"); the lip sync offset from brief
@@ -17,7 +18,7 @@ import math
 import re
 from pathlib import Path
 
-from ..lint import Finding, files, read_json
+from ..lint import Finding, files, job_files, read_json
 
 MAX_LIMIT_VIOLATIONS = 0
 MAX_PENETRATION_MM = 5
@@ -26,6 +27,8 @@ MAX_FOOT_SLIDE_MM = 5
 MAX_STEP_DEG = 30
 MAX_OFFSET_FRAMES = 1
 STATE = re.compile(r"^production/([^/]+)/([^/]+)/animation/state\.json$")
+SCENE = re.compile(r"^production/(?!assets/)[^/]+/[^/]+/animation/scene\.py$")
+JOB_FILES = ("manifest.json", "state.json")
 MEASURES = ("foot_slide_mm", "penetration_mm", "float_mm", "max_step_deg")
 MOTION_SHAPE = "is not {actor, foot_slide_mm, penetration_mm, float_mm, limit_violations, max_step_deg}"
 LIPSYNC_SHAPE = "is not {line, actor, offset_frames}"
@@ -101,9 +104,13 @@ def _state(rel: str, shot: str, data) -> list[Finding]:
 
 
 def check(root: Path) -> list[Finding]:
+    paths = [p.as_posix() for p in files(root)]
+    have = set(paths)
     found = []
-    for rel in (p.as_posix() for p in files(root)):
+    for rel in paths:
         if m := STATE.match(rel):
             _, data = read_json(root, rel)
             found += _state(rel, m.group(2), data)
+        elif SCENE.match(rel):
+            found += job_files(have, rel, JOB_FILES)
     return found

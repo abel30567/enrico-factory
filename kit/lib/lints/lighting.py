@@ -8,12 +8,13 @@ render it reads `samples`, and of each sample `frame`, `luma`, `clipped` and `co
 (`elevation_deg`, `azimuth_deg`); of a key, `luma`, `color` and `sun` (`min_elevation_deg`,
 `max_elevation_deg`). Every other key is ignored; a state with no render is not read.
 
-Rule ids: render (1), state (2), key (3), exposure (4), color (5), clipping (6), time-of-day (7).
+Rule ids: render (1), state (2), key (3), exposure (4), color (5), clipping (6), time-of-day (7), depends (8).
 Findings are on line 1. Each sample's `luma` is within `LUMA_SHARE` of the key's, its `color` within
 `DELTA_E_MAX` delta-E 2000 of the key's, and its `clipped` at most `CLIPPED_MAX`; the state's sun
 elevation is inside the key's band, or both are null. The three limits are placeholders until #130
 measures them. A missing or bad key stops rules 4 to 7 of its shots, a missing key every other rule
-too; a render finding stops rules 4 to 6 of its file and a state finding stops rule 7.
+too; a render finding stops rules 4 to 6 of its file and a state finding stops rule 7. Rule 8 holds each
+`lighting/scene.py` to `JOB_FILES` (`lint.job_files`), on line 1 of the script.
 """
 
 from __future__ import annotations
@@ -22,12 +23,14 @@ import math
 import re
 from pathlib import Path
 
-from ..lint import Finding, files, read_json
+from ..lint import Finding, files, job_files, read_json
 
 LUMA_SHARE = 0.10
 DELTA_E_MAX = 1
 CLIPPED_MAX = 0.001
 RENDER = re.compile(r"^production/([^/]+)/([^/]+)/lighting/render\.json$")
+SCENE = re.compile(r"^production/(?!assets/)[^/]+/[^/]+/lighting/scene\.py$")
+JOB_FILES = ("manifest.json", "render.json", "state.json")
 SHOT_ID = re.compile(r"^(.+)-[0-9]+$")
 SAMPLE_SHAPE = "is not {frame, luma, clipped, color} with values from 0 to 1"
 LIGHT_SHAPE = "is not {id, kind, intensity, unit, color, temperature_k}"
@@ -234,4 +237,7 @@ def check(root: Path) -> list[Finding]:
             found += _samples(rel, render["samples"], key)
         if not state_found:
             found += _time_of_day(state_rel, seq, state["sun"], key["sun"])
+    for rel in sorted(rels):
+        if SCENE.match(rel):
+            found += job_files(rels, rel, JOB_FILES)
     return found
