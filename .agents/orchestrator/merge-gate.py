@@ -194,8 +194,13 @@ def train(ready, ci):
 
 subprocess.run(["git", "-C", REPO, "fetch", "-q", "origin", BASE])
 base_sha = rev(f"origin/{BASE}")
-prs = json.loads(gh("pr", "list", "-R", R, "--state", "open", "--base", BASE, "--limit", "100",
-                    "--json", "number,title,labels,headRefOid,mergeable,isDraft,comments")[0] or "[]")
+for _ in range(4):
+    prs = json.loads(gh("pr", "list", "-R", R, "--state", "open", "--base", BASE, "--limit", "100",
+                        "--json", "number,title,labels,headRefOid,mergeable,isDraft,comments")[0] or "[]")
+    # GitHub computes mergeability only when asked, after BASE moves: the first answer is UNKNOWN. Ask again.
+    if not any(p["mergeable"] == "UNKNOWN" for p in prs):
+        break
+    time.sleep(5)
 prs = sorted((p for p in prs if TITLE_RE.match(p["title"])), key=lambda p: p["number"])
 ready = []
 for p in prs:
