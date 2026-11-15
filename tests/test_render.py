@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cmd_run, gitstate, ledger, lint, node, production, resources  # noqa: E402
+from kit.lib import cmd_run, ec2, gitstate, ledger, lint, node, production, resources  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_run import BRANCH, FIX, NOW, TICKET, World, line  # noqa: E402
 
@@ -33,11 +33,9 @@ PULL_TOKEN = "seeded-pull-token-7c1e"
 NODE_SETTINGS = {"RENDER_INSTANCE_TYPE": "g9.test", "RENDER_MACHINE_IMAGE": "image-test", "RENDER_TAG": "project=test",
                  "RENDER_USD_HOUR": "0.526", "RENDER_MAX_MIN": "75", "RENDER_RESOLUTION": "640x360",
                  "UNREAL_IMAGE": "registry.invalid/engine@sha256:" + "0" * 64}
-# The checks of render.node once the orchestrator adds what a driver needs (#460, "For the orchestrator").
-NODE_CHECKS = [{"kind": "setting", "name": "RENDER_PROVIDER"}, {"kind": "secret", "name": "render.node"},
-               *({"kind": "setting", "name": name} for name in NODE_SETTINGS),
-               {"kind": "secret", "name": "engine.unreal"}, {"kind": "setting", "name": "ASSET_STORE"},
-               {"kind": "secret", "name": "store.assets"}]
+# The checks of render.node in kit/resources.json, in order (#539).
+NODE_CHECKS = [("setting", "RENDER_PROVIDER"), ("secret", "render.node"), *(("setting", name) for name in NODE_SETTINGS),
+               ("secret", "engine.unreal"), ("setting", "ASSET_STORE"), ("secret", "store.assets")]
 STAGE_DIR = "production/ep01/render"
 STAGE_PATHS = [f"{STAGE_DIR}/manifest.json", f"{STAGE_DIR}/render.json"]
 FRAMES = ["frame-0000.bin", "frame-0001.bin"]
@@ -96,7 +94,7 @@ class RenderTest(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
         self.store = AssetStore(self)
-        self.settings(RENDER_PROVIDER="fake")
+        self.settings()
         self.write_key("render.node", NODE_KEY)
         self.write_key("store.assets", f"{KEY_ID}\n{SECRET}\n{REGION}\n")
         self.write_key("engine.unreal", PULL_TOKEN + "\n")
@@ -111,7 +109,7 @@ class RenderTest(unittest.TestCase):
 
     def settings(self, **changes):
         self.w.local(**{"STATE_DIR": self.w.state, "SECRETS_DIR": self.w.secrets,
-                        "ASSET_STORE": self.store.url("/b"), **NODE_SETTINGS, **changes})
+                        "RENDER_PROVIDER": "fake", "ASSET_STORE": self.store.url("/b"), **NODE_SETTINGS, **changes})
 
     def write_key(self, name, text):
         path = self.w.secrets / name
@@ -123,17 +121,6 @@ class RenderTest(unittest.TestCase):
         for secret in (NODE_KEY, PULL_TOKEN, KEY_ID, SECRET, REGION):
             self.assertNotIn(secret, out + err)
         return code, out, err
-
-    def node_checks(self):
-        """Patch the register to a copy of kit/resources.json whose render.node has ``NODE_CHECKS``."""
-        register = json.loads((ROOT / "kit" / "resources.json").read_text())
-        [found] = [r for r in register["resources"] if r["id"] == "render.node"]
-        found["checks"] = NODE_CHECKS
-        path = self.w.tmp / "resources.json"
-        path.write_text(json.dumps(register, indent=2) + "\n")
-        patch = mock.patch.object(resources, "REGISTER", path)
-        patch.start()
-        self.addCleanup(patch.stop)
 
     def output(self, name):
         data = (NODE_FIX / name).read_bytes().replace(b"{job}", self.digest.encode())
@@ -191,19 +178,41 @@ class RenderTest(unittest.TestCase):
     # 1
     def test_clean(self):
         self.assert_clean()
-        self.assertEqual(FakeNode.config, {"settings": {"RENDER_PROVIDER": "fake"},
-                                           "secrets": {"render.node": str(self.w.secrets / "render.node")}})
-        self.assertTrue(Path(FakeNode.config["secrets"]["render.node"]).is_absolute())
-
-    def test_clean_with_the_checks_a_driver_needs(self):
-        self.node_checks()
-        self.assert_clean()
-        self.assertEqual(sorted(FakeNode.config["settings"]),
-                         sorted(["RENDER_PROVIDER", *NODE_SETTINGS, "ASSET_STORE"]))
-        self.assertEqual(len(FakeNode.config["settings"]), 9)
-        self.assertEqual({name: FakeNode.config["settings"][name] for name in NODE_SETTINGS}, NODE_SETTINGS)
-        self.assertEqual(sorted(FakeNode.config["secrets"]), ["engine.unreal", "render.node", "store.assets"])
+        self.assertEqual(FakeNode.config, {
+            "settings": {"RENDER_PROVIDER": "fake", **NODE_SETTINGS, "ASSET_STORE": self.store.url("/b")},
+            "secrets": {name: str(self.w.secrets / name) for name in ("render.node", "engine.unreal", "store.assets")}})
+        for path in FakeNode.config["secrets"].values():
+            self.assertTrue(Path(path).is_absolute())
         self.assertEqual(Path(FakeNode.config["secrets"]["engine.unreal"]).read_text(), PULL_TOKEN + "\n")
+
+    def test_the_register_holds_the_twelve_checks(self):
+        register = json.loads((ROOT / "kit" / "resources.json").read_text())
+        [found] = [r for r in register["resources"] if r["id"] == "render.node"]
+        self.assertEqual([(c["kind"], c["name"]) for c in found["checks"]], NODE_CHECKS)
+        self.assertEqual(sorted(name for _, name in NODE_CHECKS[2:]), sorted(ec2.Node.NEEDS))
+
+    def test_render_node_lacks_one_check(self):
+        for kind, name in NODE_CHECKS[2:]:
+            with self.subTest(name=name):
+                if kind == "setting":
+                    self.settings(**{name: ""})
+                    reason = f"setting {name} is empty"
+                else:
+                    path = self.w.secrets / name
+                    text = path.read_text()
+                    path.unlink()
+                    reason = f"secret {name}: missing"
+                for apply in (False, True):
+                    self.assertEqual(self.render(apply),
+                                     (2, "", f"run: resource render.node is not usable: {reason}\n"))
+                self.assertEqual(FakeNode.calls, [])
+                self.assertFalse(self.w.job_dir(self.digest).exists())
+                self.assertEqual(self.rows(), [])
+                if kind == "setting":
+                    self.settings()
+                else:
+                    self.write_key(name, text)
+        self.assert_clean()
 
     def test_stage_file_already_there_is_written_over(self):
         tree = self.w.tmp / "maker"
@@ -306,13 +315,13 @@ class RenderTest(unittest.TestCase):
         self.assert_down([])
 
     def test_driver_needs_a_setting_the_call_lacks(self):
-        FakeNode.NEEDS = ("RENDER_TAG",)
+        FakeNode.NEEDS = ("RENDER_API_URL",)
+        self.settings(RENDER_API_URL="http://127.0.0.1:9/")
         self.assert_down([])
         self.assertIsNone(FakeNode.config)
 
     def test_driver_needs_a_setting_the_call_has(self):
         FakeNode.NEEDS = ("RENDER_TAG", "engine.unreal")
-        self.node_checks()
         self.assert_clean()
         self.assertEqual(FakeNode.config["settings"]["RENDER_TAG"], "project=test")
 
@@ -328,7 +337,7 @@ class RenderTest(unittest.TestCase):
     # 8
     def test_store_not_usable(self):
         (self.w.secrets / "store.assets").unlink()
-        message = "run: resource store.assets is not usable: secret store.assets: missing\n"
+        message = "run: resource render.node is not usable: secret store.assets: missing\n"
         for apply in (False, True):
             with self.subTest(apply=apply):
                 self.assertEqual(self.render(apply), (2, "", message))

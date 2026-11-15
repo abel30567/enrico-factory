@@ -158,7 +158,20 @@
       "rooms": ["production"],
       "wave": 4,
       "setup": "owner",
-      "checks": [{"kind": "setting", "name": "RENDER_PROVIDER"}, {"kind": "secret", "name": "render.node"}]
+      "checks": [
+        {"kind": "setting", "name": "RENDER_PROVIDER"},
+        {"kind": "secret", "name": "render.node"},
+        {"kind": "setting", "name": "RENDER_INSTANCE_TYPE"},
+        {"kind": "setting", "name": "RENDER_MACHINE_IMAGE"},
+        {"kind": "setting", "name": "RENDER_TAG"},
+        {"kind": "setting", "name": "RENDER_USD_HOUR"},
+        {"kind": "setting", "name": "RENDER_MAX_MIN"},
+        {"kind": "setting", "name": "RENDER_RESOLUTION"},
+        {"kind": "setting", "name": "UNREAL_IMAGE"},
+        {"kind": "secret", "name": "engine.unreal"},
+        {"kind": "setting", "name": "ASSET_STORE"},
+        {"kind": "secret", "name": "store.assets"}
+      ]
     },
     {
       "id": "store.assets",
