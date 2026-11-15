@@ -12,18 +12,21 @@ A pull with a request at a stage with an operator (``kit.lib.jobs``) has more ro
 failed job, the operator's launch to write the jobs and its launch to report on them; in the place of
 row 14, a stopped job, the gate and the run of each job. A ``gate`` or ``run`` entry also has ``job``,
 the job path. While a job of the pull has not run, its gate and its run come right after the lint, before
-the checkers and the judges, which read what the jobs make.
+the checkers and the judges, which read what the jobs make. A job of a shot stage waits while a cheaper stage of
+its shot is not locked (``lockrules.cheaper_stages``), and its run waits while the resource of its tool has an
+open down issue. A job stopped at the gate on a cap that was not set is gated again once that cap has a value.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 
-from kit.lib import harness, jobs, markers, production, tickets
+from kit.lib import cmd_gate, cmd_run, down, harness, jobs, lockrules, markers, production, tickets
 
 RUN_TIMEOUT_MIN = "120"
 RUN_ATTEMPTS = 2
 RUN_MARGIN_MIN = 10
+NOT_SET = "cap not set"
 # The reasons of a launcher's BLOCKED for an outage that the launch checks wait out (a resource down, no
 # usage left): the role is launched again, as before ISSUE-327.
 OUTAGES = tuple(harness.PHRASES[s] for s in ("login_ended", "out_of_usage", "proxy_down")) + (
@@ -222,19 +225,50 @@ def _job_rows(p, ticket, entry, pull, found, root):
     return None
 
 
-def _job_steps(p, ticket, pull, found):
+def _set_since(p, job):
+    """The cap a ``STOP`` of ``job`` named as not set that has a value now, else None."""
+    lines = job["gate_comment"]["body"].split("\n")
+    for name, value in production.caps(p).items():
+        if cmd_gate._cap_line(name, NOT_SET) in lines and value is not None:
+            return name
+    return None
+
+
+def _down(p, state, job):
+    """``(resource id, issue number)`` while the resource of the job's tool has an open down issue, else None."""
+    issues = [i for i in state.others if i["state"] == "open" and down.LABEL in i["labels"]]
+    if not issues:
+        return None
+    try:
+        resource = cmd_run._load_tool(job["job"]["tool"]).RESOURCE
+    except cmd_run.Refused:
+        return None
+    found = down._matching(issues, resource)
+    return (resource, found[0]) if found else None
+
+
+def _job_steps(p, state, ticket, pull, found, root):
     """The rows read in the place of row 14 for a pull with a request, or None."""
     n = pull["number"]
     for job in found["jobs"]:
-        if job["gate"] == "STOP":
+        if job["gate"] == "STOP" and _set_since(p, job) is None:
             return _wake(p, ticket, "job-stopped", n, f"job {job['path']} stopped at the gate on #{n}")
-    for job in found["jobs"]:
-        if job["gate"] is None:
-            return {**_entry("gate", "gate", None, n, f"job {job['path']} has no gate decision"), "job": job["path"]}
-    for job in found["jobs"]:
-        if job["run"] is None:
-            return {**_entry("run", "run", None, n, f"job {job['path']} has a PASS and has not run"),
-                    "job": job["path"]}
+    waiting = [job for job in found["jobs"] if job["gate"] != "PASS" or job["run"] is None]
+    held = lockrules.cheaper_stages(p, state, ticket, root) if waiting else ""
+    for job in waiting:
+        if job["gate"] != "PASS":
+            if held:
+                return _entry("gate", "none", None, n, held)
+            why = (f"job {job['path']} has no gate decision" if job["gate"] is None
+                   else f"job {job['path']} stopped at the gate on {_set_since(p, job)}, which is set now")
+            return {**_entry("gate", "gate", None, n, why), "job": job["path"]}
+    for job in waiting:
+        if held:
+            return _entry("run", "none", None, n, held)
+        stopped = _down(p, state, job)
+        if stopped:
+            return _entry("run", "none", None, n, f"resource {stopped[0]} is down (#{stopped[1]})")
+        return {**_entry("run", "run", None, n, f"job {job['path']} has a PASS and has not run"), "job": job["path"]}
     return None
 
 
@@ -271,7 +305,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
             return row
         # Section 12, step 5: once a gated job has run, the other jobs run before the review is made again.
         if all(job["gate"] == "PASS" for job in found["jobs"]) and any(job["run"] for job in found["jobs"]):
-            row = _job_steps(p, ticket, pull, found)
+            row = _job_steps(p, state, ticket, pull, found, root)
             if row:
                 return row
     lint = summary["lint"]
@@ -288,7 +322,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         return _entry("notes", "launch", _maker_of(p, entry, pull, root), n, why)
     if found and any(job["run"] is None for job in found["jobs"]):
         # The checkers and judges read what the jobs make: they come after every job has run.
-        return _job_steps(p, ticket, pull, found)
+        return _job_steps(p, state, ticket, pull, found, root)
     stuck = None
     for role, verdict in summary["checkers"].items():
         if verdict is None:
@@ -310,7 +344,7 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
     if stuck:
         return _wake(p, ticket, "judging", n, f"{stuck} is BLOCKED on #{n}")
     if found:
-        row = _job_steps(p, ticket, pull, found)
+        row = _job_steps(p, state, ticket, pull, found, root)
         if row:
             return row
     return _entry("lockable", "lock", None, n, f"#{n} has every counting verdict")
