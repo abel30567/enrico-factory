@@ -440,7 +440,7 @@ class StateTest(unittest.TestCase):
         state = scenestate.state(scene, job, level)
         self.assertEqual(sorted({row["actor"] for row in state["framing"]}), ["block", "floor"])
         raises(self.scene(), dict(job, assets={"fox": "b" * 64}), level,
-               "scene names asset:fox; this version builds engine primitives only")
+               "scene names asset:fox; it has no locked state")
         raises(self.scene(), job, None, "actor ball has no kind: no level names it")
         scene = self.scene()
         next(l for l in scene["lights"] if l["label"] == "fill")["units"] = "UNITLESS"

@@ -10,7 +10,8 @@ null when the scene has none. A light with no temperature gets the correlated co
 `color` (McCamy, on CIE xy). Nothing moves in this version, so each
 transform's `start` equals its `end` and `motion`, `lipsync`, `caches` and `line_flips` are empty.
 `framing` projects the 8 corners of each actor's bounds through the camera on every frame; an actor with a
-corner behind the camera, or whose box is empty on the frame, has no row.
+corner behind the camera, or whose box is empty on the frame, has no row. An actor whose label is the id of
+a job asset takes its `kind`, `asset` and `sha256` from that asset's locked state.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 
+from kit.lib.lints.assets import KINDS
 from kit.lib.lints.lighting import RGB_TO_XYZ
 
 LIGHT_KINDS = {"DirectionalLight": "directional", "PointLight": "point", "SpotLight": "spot",
@@ -141,11 +143,9 @@ def _sun(lights: list):
             "azimuth_deg": 0 if azimuth == 360 else azimuth}
 
 
-def state(scene: dict, job: dict, level: dict | None = None) -> dict:
-    """The 14 keys of the scene state from `scene.json`, the job's `job.json` and the unit's `LEVEL`."""
-    assets = sorted(job.get("assets") or {})
-    if assets:
-        raise SceneError(f"scene names asset:{assets[0]}; this version builds engine primitives only")
+def state(scene: dict, job: dict, level: dict | None = None, assets: dict | None = None) -> dict:
+    """The 14 keys of the scene state from `scene.json`, the job's `job.json`, the unit's `LEVEL` and
+    `assets`, the locked state of each asset by id."""
     camera = scene.get("camera")
     if not camera or camera.get("label") != "camera":
         raise SceneError("no actor labelled camera")
@@ -156,12 +156,24 @@ def state(scene: dict, job: dict, level: dict | None = None) -> dict:
         if labels.count(label) > 1:
             raise SceneError(f"two actors labelled {label}")
     kinds = _kinds(level)
+    named = {}
+    for name, digest in sorted((job.get("assets") or {}).items()):
+        found = (assets or {}).get(name)
+        if not isinstance(found, dict) or found.get("sha256") != digest or found.get("kind") not in KINDS:
+            raise SceneError(f"scene names asset:{name}; it has no locked state")
+        if not any(row["label"] == name for row in rows):
+            raise SceneError(f"scene names asset:{name}; no actor is labelled {name}")
+        named[name] = found
     actors = []
     for row in rows:
-        if row["label"] not in kinds:
+        found = named.get(row["label"])
+        if found is None and row["label"] not in kinds:
             raise SceneError(f"actor {row['label']} has no kind: no level names it")
+        kind = kinds[row["label"]] if found is None else found["kind"]
+        asset = None if found is None else f"asset:{row['label']}"
         place = _transform(row)
-        actors.append({"id": row["label"], "kind": kinds[row["label"]], "asset": None, "sha256": None,
+        actors.append({"id": row["label"], "kind": kind, "asset": asset,
+                       "sha256": None if found is None else found["sha256"],
                        "scale": [_num(v, 4) for v in row["scale"]],
                        "height_m": _num(2 * row["bounds"]["extent"][2] / 100, 4),
                        "start": place, "end": dict(place)})
