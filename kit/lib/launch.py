@@ -123,7 +123,7 @@ def _judged(state, ticket, pull):
     return sorted(found, key=lambda x: x["number"])
 
 
-def _orchestrator_task(p, ticket, pull, judged, blocked):
+def _orchestrator_task(p, ticket, pull, judged, blocked, base):
     entry = production.stage(p, ticket["room"], ticket["stage"])
     if blocked is not None and pull is not None:
         n = pull["number"]
@@ -131,7 +131,8 @@ def _orchestrator_task(p, ticket, pull, judged, blocked):
                         f"Its files are in pr-{n}/.", blocked["body"]])
     if blocked is not None:
         return _joined([f"Judgment 4, a blocked worker, on ticket #{ticket['number']}. "
-                        "The launch it answers has no pull request.", blocked["body"]])
+                        "The launch it answers has no pull request. "
+                        f"The base branch {base[0]} at {base[1]} is in base/.", blocked["body"]])
     if pull is not None:
         n = pull["number"]
         parts = [f"Judgment 1, a ruling after three rounds of notes, on pull request #{n} at head "
@@ -195,9 +196,9 @@ def _cite_task(root, pull, found, task):
     return _joined([block, task])
 
 
-def _default_task(p, state, kind, ticket, pull, judged, blocked=None):
+def _default_task(p, state, kind, ticket, pull, judged, blocked=None, base=None):
     if kind == "orchestrator":
-        return _orchestrator_task(p, ticket, pull, judged, blocked)
+        return _orchestrator_task(p, ticket, pull, judged, blocked, base)
     if kind == "analyst":
         return f"Report the symptoms ticket #{ticket['number']} asks for, for unit {ticket['unit']}. Write no file."
     if kind == "maker" and pull is None:
@@ -431,6 +432,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         raise LaunchError(f"run {name} already exists")
     workdir = Path(pair_dir) if pair_dir is not None else trees / name
     base = production.base(p)
+    base_sha = gitstate.head(root, base)
     head = pull["git"]["head"] if pull is not None else None
     branch = None
     judged = _judged(state, ticket, pull) if kind == "orchestrator" else []
@@ -450,7 +452,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
     elif kind == "operator":
         task = _operator_task(root, role, ticket, pull, requested)
     else:
-        task = _default_task(p, state, kind, ticket, pull, judged, blocked)
+        task = _default_task(p, state, kind, ticket, pull, judged, blocked, (base, base_sha))
         if kind == "maker" and pull is not None:
             found = jobs.of(p, root, state, ticket, pull)
             if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):
@@ -489,7 +491,6 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         version = harness.version(p.settings)
     except HarnessError as error:
         raise LaunchError(str(error)) from None
-    base_sha = gitstate.head(root, base)
     orchestrator = production.orchestrator(p, ticket["room"])
     record = _record(text, name, orchestrator, [
         f"[{p.actors[orchestrator]}] LAUNCH {role} {run_id}",
@@ -521,6 +522,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             os.chmod(workdir, 0o700)
             for x in judged:
                 gitstate.export(root, x["git"]["head"], workdir / f"pr-{x['number']}")
+            if pull is None and blocked is not None:
+                gitstate.export(root, base_sha, workdir / "base")
         except GitError as error:
             _undo(root, run_dir, created, None, plain)
             raise LaunchError(f"worktree: {error}") from None
