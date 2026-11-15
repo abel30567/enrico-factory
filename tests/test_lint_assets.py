@@ -16,6 +16,10 @@ STATE = "production/assets/ama/assets/state.json"
 LEDGER = "bible/canon/ledger.tsv"
 HEADER = "subject\tattribute\tvalue\ttag\tsource\n"
 AMA_ROW = "ama\theight\t1.62 m\tinvented\t\n"
+SCENE = "production/assets/ama/assets/scene.py"
+SCRIPT = "import unreal\n"
+ALONE = [(SCENE, 1, "depends", f"production/assets/ama/assets/{name}.json is missing and no request is under "
+                               "production/assets/ama/assets/requests/") for name in ("manifest", "state")]
 CLEAN = json.loads((FIX / "clean" / STATE).read_text(encoding="utf-8"))
 
 
@@ -185,6 +189,46 @@ class Assets(LintCase):
         rules = {f.rule for f in lint.run(root, only=["assets"])["assets"].findings}
         self.assertEqual(rules, {"naming", "references", "budgets", "scale", "skeleton"})
 
+
+    def found(self, files, drop=()):
+        """The (path, line, rule, message) of `assets` on the clean fixture with `files` over it, less `drop`."""
+        root = self.variant(files, base=FIX / "clean")
+        for rel in drop:
+            (root / rel).unlink()
+        return [(f.path, f.line, f.rule, f.message) for f in self.assets(root).findings]
+
+    def test_job_files_1_scene_alone(self):
+        self.assertEqual(self.found({SCENE: SCRIPT}, drop=[STATE]), ALONE)
+
+    def test_job_files_2_request(self):
+        d = "production/assets/ama/assets"
+        self.assertEqual(self.found({SCENE: SCRIPT, f"{d}/requests/job.json": "{}\n"}, drop=[STATE]), [])
+        for request in (f"{d}/requests/job.txt", f"{d}/requests/old/job.json",
+                        "production/assets/lamp/assets/requests/job.json"):
+            with self.subTest(request):
+                self.assertEqual(self.found({SCENE: SCRIPT, request: "{}\n"}, drop=[STATE]), ALONE)
+
+    def test_job_files_3_after_a_run(self):
+        d = "production/assets/ama/assets"
+        self.assertEqual(self.found({SCENE: SCRIPT}), [(SCENE, 1, "depends", f"{d}/manifest.json is missing")])
+        files = {SCENE: SCRIPT, f"{d}/requests/job.json": "{}\n", f"{d}/manifest.json": "{}\n"}
+        self.assertEqual(self.found(files, drop=[STATE]), [(SCENE, 1, "depends", f"{STATE} is missing")])
+
+    def test_job_files_4_complete(self):
+        self.assertEqual(self.found({SCENE: SCRIPT, "production/assets/ama/assets/manifest.json": "{}\n"}), [])
+
+    def test_job_files_5_other_directories(self):
+        for rel in ("production/assets/tobi/rigging/scene.py", "production/assets/tobi/assets/old/scene.py",
+                    "production/ep01/Q1-9/assets/scene.py", "assets/tobi/assets/scene.py"):
+            with self.subTest(rel):
+                self.assertEqual(self.found({rel: SCRIPT}), [])
+
+    def test_job_files_6_deterministic(self):
+        bo = "production/assets/bo/assets/scene.py"
+        files = {SCENE: SCRIPT, bo: SCRIPT}
+        found = self.found(files, drop=[STATE])
+        self.assertEqual(found, ALONE + [(bo, 1, "depends", m.replace("/ama/", "/bo/")) for *_, m in ALONE])
+        self.assertEqual(self.found(files, drop=[STATE]), found)
 
 if __name__ == "__main__":
     unittest.main()

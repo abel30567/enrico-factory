@@ -280,6 +280,36 @@ class Rows(Case):
         self.assertEqual(w.log(), [])
 
 
+class NoMaker(Case):
+    """A ticket of a stage with no maker (#485) is a WAIT line and does not end the tick."""
+
+    def makerless(self, w):
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "frames":
+                entry["maker"] = ""
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+
+    def test_a_ticket_with_no_maker_does_not_end_the_tick(self):
+        w = self.world((18, 13, 14))
+        self.makerless(w)
+        out = self.ticked(w)
+        self.assertEqual(lines(out), ["WAIT #18 waiting stage frames has no maker and #18 has no open pull",
+                                      "STEP #13 lock PR #14"])
+        self.assertEqual(out.splitlines()[-1], "tick: 1 steps, 0 need, 1 wait, 0 failed")
+
+    def test_the_same_world_with_a_maker(self):
+        w = self.world((18, 13, 14))
+        out = self.ticked(w)
+        self.assertEqual(lines(out), ["STEP #18 launch painter on #18", "STEP #13 lock PR #14"])
+
+    def test_no_lock_without_a_maker(self):
+        w = self.world((9, 10))
+        self.makerless(w)
+        self.assertEqual(lines(self.ticked(w)), ["NEED #9 lock refused: rule 7 writes"])
+
+
 class Lock(Case):
     """Criteria 2 and 10: gate, sync and lock on the last stage, and the seeded refusals."""
 

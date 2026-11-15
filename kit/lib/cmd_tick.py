@@ -10,6 +10,10 @@ one line ``STEP #<n> file <stage> <unit>`` per filing, ``<n>`` being the locked 
 a new issue with the labels ``tracked``, ``room:``, ``stage:`` and ``unit:``. A filed ticket takes its first
 step on the next tick, and a pull locked by this tick files on the next one. A filing is not a lock.
 
+Before the filings, the tick writes the shot list of each episode of a locked ``story/reel`` ticket that has none
+on the base (``kit.lib.shotlist``): one line ``STEP #<n> write production/<ep>/shots.json``, and with ``--apply`` a
+commit on the base as ``factory`` and a push.
+
 Before the filings, the tick refreshes each grant that is due (``kit.lib.grants``): one line
 ``STEP - refresh <id>``, and with ``--apply`` the refresh, which stores the rotated token in the key file. A
 refresh that fails is ``FAIL - refresh <id>: <reason>``.
@@ -51,7 +55,7 @@ if __name__ == "__main__":
 
 from kit.lib import (blind, cmd_gate, cmd_launch, cmd_lock, cmd_run, down, filing, finish, github,  # noqa: E402
                      gitstate, grants, harness, launch, ledger, lintpost, lockrules, markers, production,
-                     resources, steps, tickets)
+                     resources, shotlist, steps, tickets)
 
 from kit.lib import monitors  # noqa: E402
 
@@ -199,6 +203,29 @@ class Tick:
             def create(found=found):
                 self.gh.create_issue(found["title"], found["body"], found["labels"])
             self.say(self.take(n, "file", f"STEP #{n} file {found['stage']} {found['unit']}", create))
+
+    def intake(self, rooms):
+        """One ``STEP #<n> write production/<ep>/shots.json`` line per shot list due, or its ``NEED`` line when
+        the edit list cannot be used; with ``--apply``, the commit. Nothing outside the room ``production``."""
+        if "production" not in rooms:
+            return
+        try:
+            due = shotlist.due(self.p, self.state, self.p.root)
+        except ERRORS as error:
+            self.say(f"FAIL - write: {_message(error)}")
+            return
+        for item in due:
+            n = item["from"]
+            if item["rows"] is None:
+                self.say(f"NEED #{n} intake {item['episode']}: {item['reason']}")
+                continue
+
+            def write(item=item):
+                try:
+                    shotlist.write(self.p, self.gh, self.p.root, item)
+                except shotlist.ShotListError as error:
+                    raise Failed(str(error)) from None
+            self.say(self.take(n, "write", f"STEP #{n} write {item['path']}", write))
 
     def refresh(self):
         """One ``STEP - refresh <id>`` line per grant that is due; with ``--apply``, the refresh."""
@@ -465,6 +492,7 @@ def _tick(p, gh, rooms, apply) -> int:
         tick.say(f"NEED - {error}")
     tick.refresh()
     tick.monitor()
+    tick.intake(rooms)
     tick.file(rooms)
     try:
         for room in rooms:

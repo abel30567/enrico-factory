@@ -8,6 +8,10 @@ Prints one line: `gate <job|lock|fork> <hash>: <PASS|STOP> cap <name or -> reaso
 `[PRODUCER] GATE PASS` or `GATE STOP` on the ticket (a job) or the pull (a lock). A decision already
 recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or refused.
 
+Each input must have its hash where it is read, except `media/manifest.tsv` after a first input whose `refs` are all
+`media:<id>`: then one of the last 200 versions of the file there has that hash, with the same header and the same
+lines for each id; and the not-ours check reads of that file its header and those lines only.
+
 A number that is an issue labelled harness-fork is checked by kit/lib/harnessfork.py against
 docs/harness.md section 9: no ledger line; with --apply, the marker is posted on the issue.
 """
@@ -32,6 +36,8 @@ JOB_KEYS = ("caller", "expected", "inputs", "ticket", "tool")
 EXPECTED_KEYS = ("compute_min", "usd")
 INPUT_KEYS = ("path", "sha256")
 ATTEMPT = "attempt"
+REF_PREFIX = "media:"
+MANIFEST_VERSIONS = 200
 ERRORS = (ledger.LedgerError, production.ProductionError, github.GitHubError, gitstate.GitError,
           tickets.TicketError)
 ALREADY = " (already recorded)"
@@ -96,13 +102,70 @@ def sha256(text):
     return hashlib.sha256(text.encode("utf-8", "surrogateescape")).hexdigest()
 
 
+def _refs(text):
+    """The ids a request's ``refs`` name, each without ``media:``; None unless it is a non-empty list of them."""
+    try:
+        request = json.loads(text)
+    except (TypeError, ValueError):
+        return None
+    refs = request.get("refs") if isinstance(request, dict) else None
+    if (not isinstance(refs, list) or not refs
+            or not all(isinstance(r, str) and r.startswith(REF_PREFIX) and len(r) > len(REF_PREFIX) for r in refs)):
+        return None
+    return [r[len(REF_PREFIX):] for r in refs]
+
+
+def _lines(text, name):
+    """The lines of ``text`` after its header whose first field is ``name``, in order."""
+    return [line for line in text.splitlines()[1:] if line.split("\t", 1)[0] == name]
+
+
+def _gated(p, ref, path, digest):
+    """The text of ``path`` at the newest of its last ``MANIFEST_VERSIONS`` versions on ``ref`` whose hash is
+    ``digest``; None when there is none."""
+    out = gitstate.git(p.root, "rev-list", "-n", str(MANIFEST_VERSIONS), gitstate.head(p.root, ref), "--", path)
+    for commit in out.split():
+        text = gitstate.show(p.root, commit, path)
+        if text is not None and sha256(text) == digest:
+            return text
+    return None
+
+
+def _named(p, job, ref, path):
+    """The ids the job's first input names when ``path`` is the manifest after it, else None."""
+    first = job["inputs"][0]["path"] if job["inputs"] else ""
+    if path != gitstate.MANIFEST or not first or path == first:
+        return None
+    text = gitstate.show(p.root, ref, first)
+    return None if text is None else _refs(text)
+
+
 def _check_inputs(p, job, ref=None, where="the base"):
     ref = ref or production.base(p)
     for item in job["inputs"]:
         text = gitstate.show(p.root, ref, item["path"]) if item["path"] else None
         found = None if text is None else sha256(text)
-        if found != item["sha256"]:
+        if found == item["sha256"]:
+            continue
+        ids = None if text is None else _named(p, job, ref, item["path"])
+        gated = None if ids is None else _gated(p, ref, item["path"], item["sha256"])
+        if gated is None or gated.splitlines()[:1] != text.splitlines()[:1]:
             raise Refused(f"input {item['path']} does not match its hash on {where}")
+        for name in ids:
+            if _lines(gated, name) != _lines(text, name):
+                raise Refused(f"input {item['path']} changed the rows of {REF_PREFIX}{name} on {where}")
+
+
+def _read(p, job, ref):
+    """``text_of(path)`` for the not-ours check: an input's text at ``ref``, or of the manifest after a request
+    with refs, its header and the lines of the ids it names."""
+    def text_of(path):
+        text = gitstate.show(p.root, ref, path)
+        ids = None if text is None else _named(p, job, ref, path)
+        if ids is None:
+            return text
+        return "\n".join(text.splitlines()[:1] + [line for name in ids for line in _lines(text, name)])
+    return text_of
 
 
 def _verdicts(state, number, lint=True):
@@ -132,7 +195,7 @@ def _job_request(p, state, path_text, number=None):
             raise Refused(f"pull #{number} is not the open pull of ticket #{job['ticket']}")
         ref, where = pull["git"]["head"], f"pull #{number}"
     _check_inputs(p, job, ref, where)
-    reason = rights.refusal(lambda path: gitstate.show(p.root, ref, path),
+    reason = rights.refusal(_read(p, job, ref),
                             gitstate.show(p.root, production.base(p), rights.NOT_OURS), job["inputs"])
     if reason is not None:
         raise Refused(reason)
