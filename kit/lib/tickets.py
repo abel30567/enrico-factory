@@ -14,7 +14,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from kit.lib import frontmatter, gitstate, markers, production
+from kit.lib import frontmatter, gitstate, markers, production, shotfile
 
 FREEZE = "factory:freeze"
 TRACKED = "tracked"
@@ -217,7 +217,40 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     the base; a ``sequence`` stage after an ``episode`` stage needs it locked for the sequence's episode.
     A stage after ``production/intake`` is held, in place of locked, by the shot list of a locked ``story/reel``
     ticket's episode on the base (``_intake``); a ticket not held is not locked as before.
+    A ``shot`` stage whose upstream stage holds also needs its shot's assets and rigs locked (``_subjects``).
     """
+    ok, reason = _after(p, state, ticket, root)
+    if not ok:
+        return ok, reason
+    missing = _subjects(p, state, ticket, root)
+    return (False, f"cheaper stage(s) not locked: {', '.join(missing)}") if missing else (True, reason)
+
+
+def _subjects(p, state: State, ticket: dict, root) -> list:
+    """``<stage> for <id>`` not locked, for a ``shot`` stage, the targets and order of ``cheaper_stages``: for each
+    earlier ``asset`` entry the format does not skip, ``assets`` for each character and the set of the shot file and
+    ``rigging`` for each character (``kit.lib.shotfile``)."""
+    room, unit = ticket["room"], ticket["unit"]
+    if production.stage(p, room, ticket["stage"])["unit"] != "shot":
+        return []
+    entries = production.stages(p, room)
+    names = [e["stage"] for e in entries]
+    skipped = skips(p, root, unit)
+    missing, subjects = [], None
+    for e in entries[:names.index(ticket["stage"])]:
+        if e["unit"] != "asset" or e["stage"] in skipped:
+            continue
+        if subjects is None:
+            subjects = shotfile.subjects(p, root, unit)
+        characters, sets = subjects
+        targets = {"assets": sorted({*characters, *sets}), "rigging": characters}.get(e["stage"], [])
+        missing.extend(f"{e['stage']} for {target}" for target in targets
+                       if not is_locked(state, room, e["stage"], target))
+    return missing
+
+
+def _after(p, state: State, ticket: dict, root) -> tuple[bool, str]:
+    """``upstream`` without the assets and rigs of a shot."""
     room, unit = ticket["room"], ticket["unit"]
     entry = production.stage(p, room, ticket["stage"])
     after = entry["after"]
