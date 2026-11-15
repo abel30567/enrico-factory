@@ -143,7 +143,8 @@ class Budget(Monitors):
     # Behaviour 4
     def test_lint_gate_and_the_orchestrator_are_left_alone(self):
         for keep, ep, step in (((5, 6), "ep02", "STEP #5 lint PR #6"), ((7, 8), "ep01", "STEP #7 gate PR #8"),
-                               ((22, 23), "ep06", "STEP #22 launch foreman on PR #23")):
+                               # The ledger commit on the base (`spend`) leaves pull #23 behind it, so it syncs first.
+                               ((22, 23), "ep06", "STEP #22 sync PR #23")):
             with self.subTest(keep=keep):
                 w = self.budget_world(keep, CAP_EPISODE_USD=20)
                 self.assertEqual(lines(self.ticked(w)),
