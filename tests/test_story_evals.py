@@ -44,7 +44,8 @@ READ_FIRST = re.compile(r"(?ms)^## Read first\n(.*?)(?=^## |\Z)")
 INSTALLED = ("bible/", "media/", "registry/", ".factory/")
 # Per role: the refusal case, its twin, and a replay case whose output names no such subject.
 TWINS = {"story-writer": ("04-heron-fog", "05-heron-tide", "01-tide-bell"),
-         "story-artist": ("04-heron-tower", "05-heron-flats", "01-tide-bell")}
+         "story-artist": ("04-heron-tower", "05-heron-flats", "01-tide-bell"),
+         "art-director": ("04-heron-loft", "05-heron-quay", "03-reed-loft")}
 
 
 def declared(role):
@@ -525,7 +526,8 @@ class RefusalTest(unittest.TestCase):
 
     def test_ready_that_names_the_subject_fails(self):
         named = r"names (?i)\bpim\b"
-        expected = {"story-writer": "lint PASS; " + named, "story-artist": "lint FAIL; " + named}
+        expected = {"story-writer": "lint PASS; " + named, "story-artist": "lint FAIL; " + named,
+                    "art-director": "lint FAIL; " + named}
         for role in TWINS:
             refusal, twin, plain = self.suite(role)
             self.assertEqual(self.grade_ready(refusal, FIX / role / twin.id), (False, expected[role]), role)
@@ -545,7 +547,8 @@ class RefusalTest(unittest.TestCase):
     def test_twins_are_near_misses(self):
         added = {"story-writer": ["bible/amendments/A-1.json", "bible/canon/characters/pim.md"],
                  "story-artist": ["bible/amendments/A-1.json", "bible/canon/characters/pim.md",
-                                  "bible/style/characters/pim.md", "media/manifest.tsv"]}
+                                  "bible/style/characters/pim.md", "media/manifest.tsv"],
+                 "art-director": ["media/manifest.tsv"]}
         for role in TWINS:
             refusal, twin, _ = self.suite(role)
             self.assertEqual((refusal.kind, twin.kind), ("refusal", "replay"), role)

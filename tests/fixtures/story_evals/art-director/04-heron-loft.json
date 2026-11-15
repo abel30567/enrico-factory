@@ -1,0 +1,9 @@
+{
+  "marker": "BLOCKED",
+  "summary": "Pim has a canon sheet and no art to cite.",
+  "blocked": {
+    "missing": "art of pim in media/manifest.tsv",
+    "tried": "media/manifest.tsv, bible/canon/characters/pim.md",
+    "resume_from": "a manifest row of an image of pim"
+  }
+}
