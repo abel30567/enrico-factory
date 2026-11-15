@@ -151,7 +151,7 @@ relaunched on the same pull request. There is no fixer role.
 
 | Role id | Kind | Stage | Judged by |
 |---|---|---|---|
-| `line-producer` | orchestrator | `intake`, and every production lock | |
+| `line-producer` | orchestrator | every production lock | |
 | `asset-builder` | maker | `assets` | `look-reviewer` |
 | `rigger` | maker | `rigging` | `deformation-reviewer` |
 | `layout-artist` | maker | `layout` | `cinematography-reviewer` |
