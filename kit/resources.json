@@ -91,7 +91,7 @@
       "wave": 3,
       "setup": "owner",
       "renew": "the proxy refreshes; the owner logs in again when the refresh fails",
-      "checks": [{"kind": "setting", "name": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}]
+      "checks": [{"kind": "setting", "name": "PROXY_URL"}, {"kind": "secret", "name": "proxy.client"}, {"kind": "setting", "name": "MEDIA_PUBLIC_BASE"}]
     },
     {
       "id": "gen.image.key",

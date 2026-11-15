@@ -47,8 +47,9 @@ run `gh`.
 - **job**: one job file per request, at the path the task names: a JSON object with exactly the
   keys `ticket`, `tool`, `inputs`, `expected` and `caller`. `ticket`: the ticket number. `tool`:
   the tool the task names. `inputs`: the request file as `{path, sha256}`, its path in the
-  production and the `sha256` of its bytes. `expected`: `{usd, compute_min}`, as the task gives
-  them. `caller`: `media-wrangler`.
+  production and the `sha256` of its bytes; when its `refs` is not empty, then
+  `media/manifest.tsv` the same way, and no other input. `expected`: `{usd, compute_min}`, as the
+  task gives them. `caller`: `media-wrangler`.
 - A request is `{for, prompt, refs}`: `for` is what it is for (the sheet, the shot id), `prompt`
   the whole prompt text, `refs` its reference images, each `media:<id>`. The job names the
   request by path and hash, so the tool receives the request's text unchanged.
