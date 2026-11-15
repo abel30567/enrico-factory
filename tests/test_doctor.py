@@ -18,7 +18,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import cmd_doctor, resources  # noqa: E402
+from kit.lib import cmd_doctor, production, resources  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures" / "doctor"
 FIXTURE_REGISTER = FIXTURES / "register.json"
@@ -518,9 +518,8 @@ class NoValues(Production):
 
     def test_no_value_reaches_stdout_or_stderr(self):
         kit = self.tmp / "copy" / "kit"
-        (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
-            shutil.copy(ROOT / "kit" / name, kit / name)
+        shutil.copytree(ROOT / "kit" / "lib", kit / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(ROOT / "kit" / "__init__.py", kit / "__init__.py")
         register = fixture_register()
         output = "'-'.join(['zq', 'command', 'output', '6639'])"
         register["resources"].append(resource(
@@ -562,9 +561,8 @@ class NoValues(Production):
 
     def test_no_value_from_accounts_connect_or_directory(self):
         kit = self.tmp / "copy" / "kit"
-        (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
-            shutil.copy(ROOT / "kit" / name, kit / name)
+        shutil.copytree(ROOT / "kit" / "lib", kit / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(ROOT / "kit" / "__init__.py", kit / "__init__.py")
         register = fixture_register()
         register["check_kinds"].update(NEW_KINDS)
         register["resources"].append(resource({"kind": "accounts", "settings": ["LEAK_ACCOUNTS"], "secret": "leak.pool"},
@@ -1079,9 +1077,8 @@ class NamesInNoValues(Production):
 
     def test_no_value_reaches_stdout_or_stderr(self):
         kit = self.tmp / "copy" / "kit"
-        (kit / "lib").mkdir(parents=True)
-        for name in ("__init__.py", "lib/__init__.py", "lib/resources.py", "lib/grants.py", "lib/cmd_doctor.py"):
-            shutil.copy(ROOT / "kit" / name, kit / name)
+        shutil.copytree(ROOT / "kit" / "lib", kit / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(ROOT / "kit" / "__init__.py", kit / "__init__.py")
         register = fixture_register()
         output = "'-'.join(['zq', 'login', 'output', '2295'])"
         register["resources"].append(resource(
@@ -1104,6 +1101,59 @@ class NamesInNoValues(Production):
                         if code:
                             self.assertIn("  setting LEAK_LOGINS does not name the output of: {PY} -c print(",
                                           done.stdout)
+
+
+class CapsAndDriverTest(Production):
+    """ISSUE-491: the doctor lists each cap the gate reads that is empty or not a number, and `render.node` is
+    missing when `RENDER_PROVIDER` names no driver of kit/lib/node.py."""
+
+    def test_each_empty_cap_is_listed(self):
+        path = self.root / "production.env"
+        lines = [line for line in path.read_text(encoding="utf-8").splitlines()
+                 if not line.startswith("CAP_EPISODE_USD=")]
+        lines = ["CAP_SEASON_HOURS=two" if line.startswith("CAP_SEASON_HOURS=") else line for line in lines]
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        code, out, err = self.doctor()
+        self.assertEqual((code, err), (1, ""))
+        self.assertTrue(out.endswith(
+            "missing\tCAP_EPISODE_USD\tA cap factory gate reads\n"
+            "  setting CAP_EPISODE_USD is empty\n"
+            "missing\tCAP_SEASON_HOURS\tA cap factory gate reads\n"
+            "  setting CAP_SEASON_HOURS is not a number >= 0\n"
+            "doctor: 7 ok, 2 missing, 0 absent, 0 skipped\n"), out)
+        code, out, err = self.doctor("--json")
+        self.assertEqual((code, err), (1, ""))
+        report = json.loads(out)
+        self.assertEqual(report["caps"], [
+            {"name": "CAP_EPISODE_USD", "state": "missing", "reasons": ["setting CAP_EPISODE_USD is empty"]},
+            {"name": "CAP_SEASON_HOURS", "state": "missing",
+             "reasons": ["setting CAP_SEASON_HOURS is not a number >= 0"]}])
+        self.assertEqual(report["counts"], {"ok": 7, "missing": 2, "absent": 0, "skipped": 0})
+
+    def test_a_production_from_init_lists_its_caps(self):
+        root = self.tmp / "fresh"
+        root.mkdir()
+        subprocess.run([sys.executable, str(ROOT / "kit" / "factory"), "init", str(root)],
+                       check=True, capture_output=True, text=True)
+        done = subprocess.run([sys.executable, str(root / ".factory" / "factory"), "doctor", "--root", str(root),
+                               "--wave", "0"], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertEqual([line for line in done.stdout.splitlines() if line.startswith("missing\tCAP_")],
+                         [f"missing\t{name}\tA cap factory gate reads" for name in production.CAPS])
+
+    def test_render_provider(self):
+        register = fixture_register()
+        register["resources"].append(resource({"kind": "setting", "name": "RENDER_PROVIDER"}, id="render.node",
+                                              title="A render node"))
+        for value, code, lines in (
+                ("gpu-cloud", 1, "missing\trender.node\tA render node\n  setting RENDER_PROVIDER is not one of: ec2\n"),
+                ("ec2", 0, "ok\trender.node\tA render node\n"),
+                ("", 1, "missing\trender.node\tA render node\n  setting RENDER_PROVIDER is empty\n")):
+            with self.subTest(provider=value):
+                self.write_local(RENDER_PROVIDER=value)
+                found, out, err = self.doctor(register=register)
+                self.assertEqual((found, err), (code, ""))
+                self.assertIn(lines, out)
 
 
 if __name__ == "__main__":
