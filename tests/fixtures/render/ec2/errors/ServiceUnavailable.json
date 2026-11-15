@@ -1,0 +1,32 @@
+{
+ "request": {
+  "method": "POST",
+  "params": {
+   "Action": "RunInstances",
+   "BlockDeviceMapping.1.DeviceName": "/dev/sda1",
+   "BlockDeviceMapping.1.Ebs.DeleteOnTermination": "true",
+   "ClientToken": "0123456789abcdef0123456789abcdef",
+   "ImageId": "ami-1234567890abcdef0",
+   "InstanceInitiatedShutdownBehavior": "terminate",
+   "InstanceType": "g9.test",
+   "MaxCount": "1",
+   "MetadataOptions.HttpPutResponseHopLimit": "1",
+   "MetadataOptions.HttpTokens": "required",
+   "MinCount": "1",
+   "TagSpecification.1.ResourceType": "instance",
+   "TagSpecification.1.Tag.1.Key": "project",
+   "TagSpecification.1.Tag.1.Value": "test",
+   "TagSpecification.2.ResourceType": "volume",
+   "TagSpecification.2.Tag.1.Key": "project",
+   "TagSpecification.2.Tag.1.Value": "test",
+   "UserData": "sha256:3fdd77418bb83e61e5a0b9e63548b2b02dfa2a76c9bcc79efa926a8485b46013",
+   "Version": "2016-11-15"
+  },
+  "path": "/"
+ },
+ "response": {
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response><Errors><Error><Code>ServiceUnavailable</Code><Message>The request has failed due to a temporary failure of the server.</Message></Error></Errors><RequestID>00000000-0000-4000-8000-000000000002</RequestID></Response>\n",
+  "status": 503
+ },
+ "source": "written"
+}

@@ -1,0 +1,16 @@
+{
+ "request": {
+  "method": "POST",
+  "params": {
+   "Action": "DescribeInstances",
+   "InstanceId.1": "i-1234567890abcdef0",
+   "Version": "2016-11-15"
+  },
+  "path": "/"
+ },
+ "response": {
+  "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<DescribeInstancesResponse xmlns=\"http://ec2.amazonaws.com/doc/2016-11-15/\">\n    <requestId>00000000-0000-4000-8000-000000000004</requestId>\n    <reservationSet>\n        <item>\n            <reservationId>r-1234567890abcdef0</reservationId>\n            <ownerId>123456789012</ownerId>\n            <groupSet/>\n            <instancesSet>\n                <item>\n                    <instanceId>i-1234567890abcdef0</instanceId>\n                    <imageId>ami-1234567890abcdef0</imageId>\n                    <instanceState>\n                        <code>48</code>\n                        <name>terminated</name>\n                    </instanceState>\n                    <privateDnsName>ip-192-0-2-1.ec2.internal</privateDnsName>\n                    <dnsName/>\n                    <reason>Server.InsufficientInstanceCapacity: Insufficient capacity.</reason>\n                    <amiLaunchIndex>0</amiLaunchIndex>\n                    <instanceType>g9.test</instanceType>\n                    <launchTime>2026-11-14T12:00:00.000Z</launchTime>\n                    <placement>\n                        <availabilityZone>test-region-7a</availabilityZone>\n                        <tenancy>default</tenancy>\n                    </placement>\n                    <subnetId>subnet-1234567890abcdef0</subnetId>\n                    <vpcId>vpc-1234567890abcdef0</vpcId>\n                    <privateIpAddress>192.0.2.1</privateIpAddress>\n                    <groupSet>\n                        <item>\n                            <groupId>sg-1234567890abcdef0</groupId>\n                            <groupName>default</groupName>\n                        </item>\n                    </groupSet>\n                <stateReason>\n                    <code>Server.InsufficientInstanceCapacity</code>\n                    <message>Server.InsufficientInstanceCapacity: Insufficient capacity.</message>\n                </stateReason>\n                    <architecture>x86_64</architecture>\n                    <rootDeviceType>ebs</rootDeviceType>\n                    <rootDeviceName>/dev/sda1</rootDeviceName>\n                    <instanceInitiatedShutdownBehavior>terminate</instanceInitiatedShutdownBehavior>\n                    <tagSet>\n                        <item>\n                            <key>project</key>\n                            <value>test</value>\n                        </item>\n                    </tagSet>\n                    <metadataOptions>\n                        <state>pending</state>\n                        <httpTokens>required</httpTokens>\n                        <httpPutResponseHopLimit>1</httpPutResponseHopLimit>\n                        <httpEndpoint>enabled</httpEndpoint>\n                    </metadataOptions>\n                </item>\n            </instancesSet>\n        </item>\n    </reservationSet>\n</DescribeInstancesResponse>\n",
+  "status": 200
+ },
+ "source": "written"
+}
