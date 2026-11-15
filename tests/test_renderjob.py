@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import ec2, golden, renderjob, sigv4  # noqa: E402
+from kit.lib import ec2, filing, golden, renderjob, sigv4  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_ec2 import BILLED, KEY, NOON, SETTINGS, Ec2Replay, at, session  # noqa: E402
 
@@ -47,6 +47,7 @@ TOKEN = "seeded-pull-token-5d2e81"
 IMAGE = "registry.invalid/engine@sha256:" + "0" * 64
 JOB = "4f" * 32
 STAGE = "production/ep01/Q1-1/render"
+EDIT = "episodes/ep01/reel/edit-list.json"
 FIRST, LAST, SAMPLED = 0, 23, [0, 11, 23]
 WIDTH, HEIGHT = 640, 360
 EXPIRES = (75 + 15) * 60
@@ -284,6 +285,14 @@ class Clean(Job):
                          (24, WIDTH, HEIGHT, SAMPLED))
         self.assertEqual(driver.log, "NODE 12:01:00 result ok\n")
 
+    def test_an_agreeing_edit_list_travels_into_the_manifest(self):
+        edit = item(EDIT, json.dumps({"fps": 24}))
+        self.inputs.insert(2, edit)
+        problems, _ = self.golden(metric=False)
+        self.assertEqual(problems, ["lit-render/render.json lacks rerender"])
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertIn({"path": EDIT, "sha256": edit["sha256"]}, manifest["inputs"])
+
     def test_with_a_metric_the_golden_level_passes(self):
         self.control["metric"] = {"stdout": "9.95\n"}
         self.write_control()
@@ -410,10 +419,52 @@ class Seeded(Job):
         self.inputs = [i for i in self.inputs if not i["path"].endswith("shots.json")]
         self.assert_before_upload("no input ending shots.json")
 
+    def test_an_edit_list_that_disagrees_with_the_level(self):
+        self.inputs.insert(2, item(EDIT, json.dumps({"fps": 25})))
+        self.assert_before_upload(f"the unit's LEVEL has fps 24, {EDIT} has fps 25")
+
 
 class Describe(unittest.TestCase):
     def job(self, *inputs):
         return {"hash": JOB, "inputs": list(inputs), "out": "out"}
+
+    def production(self, *extra, text="import unreal\n"):
+        return self.job(item(f"{STAGE}/scene.py", text),
+                        item("production/ep01/shots.json", json.dumps([{"shot": "Q1-1", "first": 0, "last": 23}])),
+                        *extra)
+
+    def fps(self, job):
+        return renderjob.describe(job, {"RENDER_RESOLUTION": "640x360"})["fps"]
+
+    def test_fps_of_a_production_shot_from_the_edit_list(self):
+        job = self.production(item(EDIT, json.dumps({"fps": 25, "bible": "A-1", "events": []})))
+        self.assertEqual(self.fps(job), 25)
+
+    def test_a_golden_level_keeps_its_fps(self):
+        level = SCENE.read_text(encoding="utf-8")
+        for extra in ((), (item(EDIT, json.dumps({"fps": 24})),)):
+            with self.subTest(edit_list=bool(extra)):
+                self.assertEqual(self.fps(self.production(*extra, text=level)), 24)
+
+    def test_fps_refusals(self):
+        level = SCENE.read_text(encoding="utf-8")
+        no_fps = f"no input {EDIT} and the unit's LEVEL has no fps"
+        bad_fps = f"{EDIT} has no fps that is a whole number above zero"
+        cases = [("no edit list, no LEVEL", self.production(), no_fps),
+                 ("another episode's edit list",
+                  self.production(item("episodes/ep02/reel/edit-list.json", json.dumps({"fps": 25}))), no_fps),
+                 ("LEVEL 24, edit list 25", self.production(item(EDIT, json.dumps({"fps": 25})), text=level),
+                  f"the unit's LEVEL has fps 24, {EDIT} has fps 25")]
+        cases += [(text, self.production(item(EDIT, text)), bad_fps)
+                  for text in ('{"fps": 23.976}', '{"fps": 24.0}', '{"fps": true}', '{"fps": "24"}', "{}", "[]", "{")]
+        for name, job, message in cases:
+            with self.subTest(name):
+                with self.assertRaises(renderjob.JobError) as raised:
+                    renderjob.describe(job, {"RENDER_RESOLUTION": "640x360"})
+                self.assertEqual(str(raised.exception), message)
+
+    def test_the_edit_list_path_is_the_filing_one(self):
+        self.assertEqual(renderjob.EDIT_LIST, filing.EDIT_LIST)
 
     def test_scripts_in_input_order_and_the_stage_of_the_last(self):
         level = SCENE.read_text(encoding="utf-8")
@@ -434,7 +485,7 @@ class Describe(unittest.TestCase):
                   "shots.json has no row {shot, first, last} for shot Q1-1"),
                  (self.job(scene, shots), {"RENDER_RESOLUTION": "640"}, "RENDER_RESOLUTION is not <width>x<height>"),
                  (self.job(item(f"{STAGE}/scene.py", "x = 1\n"), shots), {"RENDER_RESOLUTION": "640x360"},
-                  "the unit's LEVEL has no fps"))
+                  "no input episodes/ep01/reel/edit-list.json and the unit's LEVEL has no fps"))
         for job, settings, message in cases:
             with self.subTest(message=message):
                 with self.assertRaises(renderjob.JobError) as raised:

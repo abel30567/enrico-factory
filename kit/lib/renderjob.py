@@ -2,11 +2,12 @@
 
 ``describe(job, settings)`` is the job's `job.json`: the scene scripts are the inputs named `scene.py`, in
 input order, the stage is the directory of the last one and the shot the directory above it, the frames the
-shot's row of the first input ending `shots.json`, the size `RENDER_RESOLUTION`, `fps` the unit's `LEVEL`
-(the literal of the last script). ``in_tar`` packs `job.json`, the scripts as `scripts/<nn>.py`, `job.sh`
-and `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a directory, refusing any
-member that is not a regular file or a directory, whose path is absolute or holds `..`, or whose name is
-not one `job.sh` writes. ``finish`` checks the node's answer and writes the outputs into `out`, with
+shot's row of the first input ending `shots.json`, the size `RENDER_RESOLUTION`, `fps` that of the input
+`episodes/<ep>/reel/edit-list.json` (`<ep>` the directory above the shot's), else of the unit's `LEVEL` (the
+literal of the last script); both given, they must agree. ``in_tar`` packs `job.json`, the scripts as
+`scripts/<nn>.py`, `job.sh` and `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a
+directory, refusing any member that is not a regular file or a directory, whose path is absolute or holds `..`,
+or whose name is not one `job.sh` writes. ``finish`` checks the node's answer and writes the outputs into `out`, with
 `manifest.json` last.
 
 A refusal or a failed job is ``JobError``; its text never holds a value of a setting or a secret.
@@ -38,7 +39,10 @@ BUILD_OK = "FACTORY build ok"
 NO_SCRIPT = "no input named scene.py"
 NO_SHOTS = "no input ending shots.json"
 BAD_RESOLUTION = "RENDER_RESOLUTION is not <width>x<height>"
-NO_FPS = "the unit's LEVEL has no fps"
+EDIT_LIST = "episodes/{}/reel/edit-list.json"
+NO_FPS = "no input {} and the unit's LEVEL has no fps"
+BAD_FPS = "{} has no fps that is a whole number above zero"
+TWO_FPS = "the unit's LEVEL has fps {}, {} has fps {}"
 # What job.sh packs into out.tar.
 NAMES = re.compile(r"scene\.json|node\.json|engine-build\.log|engine-render\.log|frame-[0-9]{6}\.(png|exr)"
                    r"|rerender-[0-9]{6}\.png")
@@ -107,6 +111,34 @@ def sampled(stage: str, first: int, last: int) -> list:
     return sorted({first, (first + last) // 2, last})
 
 
+def edit_list(directory: str) -> str:
+    """The path of the edit list of the episode of a stage directory `<ep>/<shot>/<stage>`."""
+    return EDIT_LIST.format(posixpath.basename(posixpath.dirname(posixpath.dirname(directory))))
+
+
+def frame_rate(job, directory) -> int:
+    """The job's `fps`: the edit list's when it is an input, else the `LEVEL`'s; both given, they must agree."""
+    edit = edit_list(directory)
+    level_fps = (level(_scripts(job)[-1]["text"]) or {}).get("fps")
+    if not (_int(level_fps) and level_fps > 0):
+        level_fps = None
+    edits = [item for item in job["inputs"] if item["path"] == edit]
+    if not edits:
+        if level_fps is None:
+            raise JobError(NO_FPS.format(edit))
+        return level_fps
+    try:
+        listed = json.loads(edits[0]["text"])
+    except (TypeError, ValueError):
+        listed = None
+    fps = listed.get("fps") if isinstance(listed, dict) else None
+    if not (_int(fps) and fps > 0):
+        raise JobError(BAD_FPS.format(edit))
+    if level_fps is not None and level_fps != fps:
+        raise JobError(TWO_FPS.format(level_fps, edit, fps))
+    return fps
+
+
 def describe(job, settings) -> dict:
     """The job's `job.json`; ``JobError`` when an input or a setting it needs is missing."""
     scripts = _scripts(job)
@@ -116,9 +148,7 @@ def describe(job, settings) -> dict:
     size = _RESOLUTION.fullmatch(str(settings.get("RENDER_RESOLUTION", "")))
     if size is None:
         raise JobError(BAD_RESOLUTION)
-    fps = (level(scripts[-1]["text"]) or {}).get("fps")
-    if not (_int(fps) and fps > 0):
-        raise JobError(NO_FPS)
+    fps = frame_rate(job, directory)
     return {"hash": job["hash"], "shot": shot, "stage": stage, "fps": fps, "first": first, "last": last,
             "width": int(size.group(1)), "height": int(size.group(2)),
             "scripts": [f"scripts/{n:02d}.py" for n in range(len(scripts))], "assets": {},
