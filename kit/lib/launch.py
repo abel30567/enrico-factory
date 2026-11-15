@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from kit.lib import down, gateway, github, gitstate, harness, jobs, markers, production, prompt, snapshot, steps
-from kit.lib import tickets
+from kit.lib import citedmedia, tickets
 from kit.lib.gitstate import GitError
 from kit.lib.harness import HarnessError
 from kit.lib.production import ProductionError
@@ -317,13 +317,17 @@ def _undo(root, run_dir, worktree, branch, plain=False):
 
 def prepare(p, gh, root, role, number, task_file=None, now=None, pair_dir=None) -> Run:
     """Check, create the worktree, write the prompt and post LAUNCH; the run, or ``LaunchError``."""
+    staged = []
     try:
-        return _prepare(p, gh, Path(root), role, number, task_file, now, pair_dir)
-    except ProductionError as error:
+        return _prepare(p, gh, Path(root), role, number, task_file, now, pair_dir, staged)
+    except (ProductionError, citedmedia.CitedError) as error:
         raise LaunchError(str(error)) from None
+    finally:
+        for path in staged:
+            shutil.rmtree(path, ignore_errors=True)
 
 
-def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
+def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
     now = now or production.now()
     # Check 1
     if tickets.frozen(gh):
@@ -448,6 +452,10 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
         branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
         if pull is None and _branch_exists(root, branch):
             raise LaunchError(f"branch {branch} already exists")
+    cited = None
+    if kind == "checker" and citedmedia.wanted(p.roles[role]["meta"]):
+        staged.append(state_dir / "runs" / f".media-{name}")
+        cited = citedmedia.place(p, gh, root, role, pull, issues, staged[0], run_dir / "media")
 
     # The prompt, the model and the harness version: all read before anything is created.
     if task_file is not None:
@@ -463,6 +471,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             found = jobs.of(p, root, state, ticket, pull)
             if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):
                 task = _cite_task(root, pull, found, task)
+    if cited is not None:
+        task = _joined([task, cited])
     issue = gh.issue(t)
     values = {
         "REPO": production.setting(p, "REPO"),
@@ -560,6 +570,8 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir):
             _write(run_dir / "mcp.json", b"")
             harness.write_mcp_config(run_dir / "mcp.json")
             (run_dir / "config").mkdir(mode=0o700)
+            if staged and staged[0].exists():
+                os.rename(staged[0], run_dir / "media")
         except OSError as error:
             raise LaunchError(f"run {name}: {error.strerror}") from None
         try:

@@ -1,0 +1,322 @@
+"""Tests for kit/lib/citedmedia.py: a checker's launch places the pictures its pull request cites.
+
+The production and GitHub are those of tests/test_launch.py (``World``), with ``media: cited`` added to the
+fixture's ``reviewer.md``; the media store is the fake S3 store of tests/test_media.py (``FakeStore``) on
+127.0.0.1. Pull #7 is made to cite pictures by a commit on its branch; nothing reaches another host.
+"""
+
+import hashlib
+import os
+import stat
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
+
+from kit.lib import citedmedia, gitstate  # noqa: E402
+from kit.lib.launch import LaunchError  # noqa: E402
+from test_launch import FailingPost, World  # noqa: E402
+from test_media import FakeStore, free_port  # noqa: E402
+
+BRANCH = "beats/BT-2-drafter-1"
+HEADER = "id\tsha256\tbytes\tsource\n"
+PNG = b"\x89PNG\r\n\x1a\ninvented image bytes"
+OTHER = b"\x89PNG\r\n\x1a\ninvented image BYTES"  # the same length as PNG
+JPEG = b"\xff\xd8\xff\xe0invented jpeg bytes"
+TEXT = b"invented words, not a picture"
+DOWN = "[DOWN] store.media"
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def mode(path):
+    return stat.S_IMODE(os.stat(path).st_mode)
+
+
+class Cited(unittest.TestCase):
+    """A world whose reviewer asks for cited media, and a store that serves what ``serve`` puts in it."""
+
+    KEY = True
+
+    def setUp(self):
+        self.w = World(self)
+        self.store = FakeStore(self)
+        if self.KEY:
+            path = self.w.root / ".factory" / "roles" / "reviewer.md"
+            path.write_text(path.read_text().replace("gated: no\n", "gated: no\nmedia: cited\n"))
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"))
+
+    def settings(self, **values):
+        self.w.local(**values)
+
+    def serve(self, *items):
+        for data in items:
+            self.store.objects[sha(data)] = data
+
+    def cite(self, text, rows=()):
+        """Commit on pull #7's branch, from a worktree of its own, a file holding ``text`` and a manifest of
+        ``rows``."""
+        tree = self.w.tmp / "cite"
+        self.w.git("worktree", "add", "-q", str(tree), BRANCH)
+        (tree / "episodes" / "ep02").mkdir(parents=True, exist_ok=True)
+        (tree / "episodes" / "ep02" / "beats.md").write_text(text + "\n")
+        (tree / "media").mkdir(exist_ok=True)
+        (tree / "media" / "manifest.tsv").write_text(HEADER + "".join("\t".join(map(str, r)) + "\n" for r in rows))
+        identity = ("-c", "user.name=tester", "-c", "user.email=tester@example.invalid")
+        gitstate.git(tree, "add", "-A")
+        gitstate.git(tree, *identity, "commit", "-q", "-m", "cite media")
+        self.w.git("worktree", "remove", str(tree))
+
+    def row(self, mid, data):
+        return (mid, sha(data), len(data), "test")
+
+    def prompt(self, run):
+        return (run.dir / "prompt.md").read_text()
+
+    def task(self, run, *lines):
+        head = self.w.head(BRANCH)
+        return "Task: " + "\n\n".join([f"Review pull request #7 at head {head}.", "\n".join(lines)]) + "\n"
+
+    def placed(self, run):
+        directory = run.dir / "media"
+        return sorted(p.name for p in directory.iterdir()) if directory.exists() else []
+
+    def downs(self):
+        return [i for i in self.w.gh.issues("open") if i["title"] == DOWN]
+
+    def runs(self):
+        runs = self.w.state / "runs"
+        return sorted(p.name for p in runs.iterdir()) if runs.exists() else []
+
+
+class B1Clean(Cited):
+    def test_clean_picture_is_placed_and_named(self):
+        self.serve(PNG)
+        self.cite("A reference: ![a](media:ama-ref).", [self.row("ama-ref", PNG)])
+        run = self.w.prepare("reviewer", 7)
+        media_dir = run.dir / "media"
+        self.assertEqual((media_dir / "ama-ref.png").read_bytes(), PNG)
+        self.assertEqual(mode(media_dir), 0o700)
+        self.assertEqual(mode(media_dir / "ama-ref.png"), 0o600)
+        self.assertEqual(self.placed(run), ["ama-ref.png"])
+        self.assertTrue(run.dir.is_absolute())
+        self.assertIn(self.task(run, "Pictures cited by the files of pull request #7, outside the worktree; "
+                                     "open each with Read:",
+                                f"- media:ama-ref: {run.dir}/media/ama-ref.png"), self.prompt(run))
+        self.assertEqual([(r["method"], r["path"]) for r in self.store.requests], [("GET", f"/pub/{sha(PNG)}")])
+        self.assertEqual(self.runs(), ["reviewer-7-1"])
+
+    def test_the_ids_are_sorted_once_with_a_jpeg_kept_as_named(self):
+        self.serve(PNG, JPEG)
+        self.cite("media:zed media:ama-ref and media:ama-ref again, media:look.jpeg",
+                  [self.row("zed", PNG), self.row("ama-ref", PNG), ("ama-ref", sha(OTHER), len(OTHER), "later"),
+                   self.row("look.jpeg", JPEG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["ama-ref.png", "look.jpeg", "zed.png"])
+        self.assertIn(self.task(run, "Pictures cited by the files of pull request #7, outside the worktree; "
+                                     "open each with Read:",
+                                f"- media:ama-ref: {run.dir}/media/ama-ref.png",
+                                f"- media:look.jpeg: {run.dir}/media/look.jpeg",
+                                f"- media:zed: {run.dir}/media/zed.png"), self.prompt(run))
+
+
+class B1Seeded(Cited):
+    KEY = False
+
+    def test_no_key_no_block_no_request(self):
+        self.serve(PNG)
+        self.cite("A reference: ![a](media:ama-ref).", [self.row("ama-ref", PNG)])
+        run = self.w.prepare("reviewer", 7)
+        text = self.prompt(run)
+        self.assertIn(f"Task: Review pull request #7 at head {self.w.head(BRANCH)}.\n", text)
+        self.assertNotIn("media:", text)
+        self.assertEqual(self.store.requests, [])
+        self.assertFalse((run.dir / "media").exists())
+
+
+class B2JobPicture(Cited):
+    def job(self, data):
+        digest = sha(b"an invented job")
+        out = self.w.state / "jobs" / digest / "out"
+        out.mkdir(parents=True)
+        (out / "panel.png").write_bytes(data)
+        mid = f"{digest[:16]}-panel.png"
+        self.cite(f"The panel: media:{mid}", [(mid, sha(PNG), len(PNG), f"job {digest}")])
+        return mid
+
+    def test_clean_from_the_job_output_with_no_store(self):
+        self.settings()
+        mid = self.job(PNG)
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual((run.dir / "media" / mid).read_bytes(), PNG)
+        self.assertIn(f"- media:{mid}: {run.dir}/media/{mid}\n", self.prompt(run))
+        self.assertEqual(self.store.requests, [])
+
+    def test_seeded_other_bytes_in_the_job_output_come_from_the_store(self):
+        self.serve(PNG)
+        mid = self.job(OTHER)
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual((run.dir / "media" / mid).read_bytes(), PNG)
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(PNG)}"])
+
+
+class B3Caps(Cited):
+    BIG = PNG + b" and five"
+
+    def three(self):
+        a, b, c = PNG, OTHER, PNG + b"!"
+        self.serve(a, b, c)
+        self.cite("media:a media:b media:c", [self.row("a", a), self.row("b", b), self.row("c", c)])
+        return a, b, c
+
+    def outcome(self, run, skipped):
+        lines = ["Pictures cited by the files of pull request #7, outside the worktree; open each with Read:"]
+        lines += [f"- media:{name}: {run.dir}/media/{name}.png" for name in ("a", "b", "c") if name != skipped[0]]
+        lines += ["Not fetched:", f"- media:{skipped[0]}: {skipped[1]}"]
+        self.assertIn(self.task(run, *lines), self.prompt(run))
+        self.assertEqual(self.placed(run), [f"{name}.png" for name in ("a", "b", "c") if name != skipped[0]])
+
+    def test_seeded_bytes(self):
+        a, b, c = self.three()
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"), MEDIA_FETCH_BYTES=str(len(a)))
+        self.outcome(self.w.prepare("reviewer", 7), ("c", f"{len(c)} bytes, over MEDIA_FETCH_BYTES {len(a)}"))
+
+    def test_seeded_count(self):
+        self.three()
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"), MEDIA_FETCH_COUNT="2")
+        self.outcome(self.w.prepare("reviewer", 7), ("c", "over MEDIA_FETCH_COUNT 2"))
+
+    def test_seeded_total(self):
+        a, b, c = self.three()
+        cap = len(a) + len(b)
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"), MEDIA_FETCH_TOTAL=str(cap))
+        self.outcome(self.w.prepare("reviewer", 7), ("c", f"over MEDIA_FETCH_TOTAL {cap}"))
+
+    def test_twin_exactly_the_cap_is_placed(self):
+        a, b, c = self.three()
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"), MEDIA_FETCH_BYTES=str(len(c)),
+                      MEDIA_FETCH_COUNT="3", MEDIA_FETCH_TOTAL=str(len(a) + len(b) + len(c)))
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["a.png", "b.png", "c.png"])
+        self.assertNotIn("Not fetched:", self.prompt(run))
+
+    def test_seeded_bad_setting_refuses(self):
+        self.three()
+        for name in ("MEDIA_FETCH_TOTAL", "MEDIA_FETCH_COUNT", "MEDIA_FETCH_BYTES"):
+            for value in ("0", "x", "01", "-1"):
+                with self.subTest(name=name, value=value):
+                    self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"), **{name: value})
+                    with self.assertRaisesRegex(LaunchError, f"^setting {name} is not a whole number >= 1$"):
+                        self.w.prepare("reviewer", 7)
+        self.assertEqual(self.store.requests, [])
+        self.assertEqual(self.runs(), [])
+
+
+class B4NotFetched(Cited):
+    def test_seeded_no_row_no_size_and_text(self):
+        self.serve(TEXT)
+        self.cite("See media:nowhere. And media:nosize, media:words.",
+                  [("nosize", sha(PNG), "x", "test"), self.row("words", TEXT)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertIn(self.task(run, "Pictures cited by the files of pull request #7, outside the worktree; "
+                                     "open each with Read:",
+                                "- none",
+                                "Not fetched:",
+                                "- media:nosize: its manifest row gives no size",
+                                "- media:nowhere: no row in media/manifest.tsv",
+                                "- media:words: not a PNG, JPEG, GIF or WebP picture"), self.prompt(run))
+        self.assertEqual(self.placed(run), [])
+
+    def test_the_id_alphabet(self):
+        found = citedmedia.CITED.findall("media:a. media:b-_ media:C media:ok.png, (media:x_y-z.1)")
+        self.assertEqual(found, ["a", "b", "ok.png", "x_y-z.1"])
+
+
+class B5Outage(Cited):
+    def refused(self, number):
+        w = self.w
+        self.cite("A reference: media:ama-ref", [self.row("ama-ref", PNG)])
+        before = w.snapshot()
+        with self.assertRaisesRegex(LaunchError, rf"^resource store\.media is down \(#{number}\)$"):
+            w.prepare("reviewer", 7)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(self.runs(), [])
+        self.assertEqual(list((w.state / "worktrees").iterdir()) if (w.state / "worktrees").exists() else [], [])
+        downs = self.downs()
+        self.assertEqual([i["number"] for i in downs], [number])
+        self.assertIn("resource:down", downs[0]["labels"])
+        self.assertIn("a cited picture could not be fetched: ", downs[0]["body"])
+        # A second launch with that issue open sends no request.
+        self.store.requests.clear()
+        with self.assertRaisesRegex(LaunchError, rf"^resource store\.media is down \(#{number}\)$"):
+            w.prepare("reviewer", 7)
+        self.assertEqual(self.store.requests, [])
+        self.assertEqual(len(self.downs()), 1)
+        self.assertEqual(w.snapshot(), before)
+        self.assertEqual(self.runs(), [])
+
+    def number(self):
+        return max(x["number"] for x in self.w.gh.issues("all") + self.w.gh.pulls("all")) + 1
+
+    def test_seeded_404(self):
+        self.refused(self.number())
+
+    def test_seeded_other_bytes(self):
+        self.store.public[sha(PNG)] = OTHER
+        self.refused(self.number())
+
+    def test_seeded_closed_port(self):
+        self.settings(MEDIA_PUBLIC_BASE=f"http://127.0.0.1:{free_port()}/pub")
+        self.refused(self.number())
+
+
+class B6Setting(Cited):
+    def test_seeded_no_public_base(self):
+        self.settings()
+        self.cite("A reference: media:ama-ref", [self.row("ama-ref", PNG)])
+        before = self.w.snapshot()
+        with self.assertRaisesRegex(LaunchError, "^cited media: setting MEDIA_PUBLIC_BASE is not a public URL$"):
+            self.w.prepare("reviewer", 7)
+        self.assertEqual(self.downs(), [])
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertEqual(self.runs(), [])
+
+    def test_twin_nothing_cited_launches(self):
+        self.settings()
+        run = self.w.prepare("reviewer", 7)
+        self.assertIn(self.task(run, "The files of pull request #7 cite no media:<id>."), self.prompt(run))
+        self.assertFalse((run.dir / "media").exists())
+
+
+class B7Undo(Cited):
+    def test_failed_post_leaves_nothing(self):
+        self.serve(PNG)
+        self.cite("A reference: media:ama-ref", [self.row("ama-ref", PNG)])
+        self.w.gh = FailingPost(self.w.dir)
+        with self.assertRaisesRegex(LaunchError, "^could not post LAUNCH on #7$"):
+            self.w.prepare("reviewer", 7)
+        self.assertEqual(len(self.store.requests), 1)
+        self.assertEqual(self.runs(), [])
+
+
+class B8NoBytesInGit(Cited):
+    def test_worktree_clean_and_media_lint_passes(self):
+        self.serve(PNG)
+        self.cite("A reference: ![a](media:ama-ref).", [self.row("ama-ref", PNG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertTrue((run.dir / "media" / "ama-ref.png").is_file())
+        self.assertEqual(gitstate.git(run.worktree, "status", "--porcelain"), "")
+        self.assertFalse(any(p.suffix == ".png" for p in run.worktree.rglob("*")))
+        lint = subprocess.run([sys.executable, str(ROOT / "kit" / "factory"), "lint", "--root", str(run.worktree),
+                               "--only", "media"], capture_output=True, text=True)
+        self.assertEqual((lint.returncode, lint.stdout), (0, "media PASS\n"), lint.stderr)
+
+
+if __name__ == "__main__":
+    unittest.main()

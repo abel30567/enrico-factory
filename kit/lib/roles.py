@@ -9,12 +9,14 @@ from kit.lib.frontmatter import as_list
 
 ROLE_REQUIRED = ("role", "room", "kind", "analog", "stage", "reads", "model", "family", "tools",
                  "knowledge", "secrets", "gated")
-ROLE_OPTIONAL = ("writes", "checked_by", "may_not", "actor")
+ROLE_OPTIONAL = ("writes", "checked_by", "may_not", "actor", "media")
 ROOMS = ("story", "production", "post", "distribution", "lab", "studio")
 KINDS = ("orchestrator", "maker", "checker", "judge", "operator", "analyst")
 MODELS = ("maker", "checker")
 FAMILIES = ("any", "other")
 GATED = ("yes", "no")
+# What a checker asks the launcher to place before it starts: the pictures its pull request cites.
+MEDIA = ("cited",)
 TOOLS = ("Read", "Edit", "Write", "Grep", "Glob", "Bash", "WebSearch", "WebFetch")
 KNOWLEDGE = ("skills", "memory-read", "memory-write", "search", "skills-write")
 PLACEHOLDERS = ("REPO", "TICKET", "WORKTREE", "TASK", "RULES")
@@ -127,6 +129,9 @@ def _validate_role(problems, role_id, doc, roles):
     for key in sorted(set(meta) - set(ROLE_REQUIRED) - set(ROLE_OPTIONAL)):
         problems.append(f"{where}: unknown key {key!r}")
     _check_actor(problems, where, meta, kind)
+    _check_choice(problems, where, meta, "media", MEDIA)
+    if "media" in meta and kind != "checker":
+        problems.append(f"{where}: media is only for kind checker")
     # Rules 2 and 3
     _check_choice(problems, where, meta, "room", ROOMS)
     _check_choice(problems, where, meta, "kind", KINDS)
