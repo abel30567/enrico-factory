@@ -1305,6 +1305,89 @@ class BlockedMakerLaunch(OrchestratorRefusal, unittest.TestCase):
         self.refused(w, "no judgment is due on #7", "showlead", 7)
 
 
+class BlockedReviewerLaunch(OrchestratorRefusal, unittest.TestCase):
+    """ISSUE-466 behaviours 1 to 6: the orchestrator's launch for a checker or judge that is BLOCKED."""
+
+    RULING = "[SHOWLEAD] RULING\n\nUse last year's table.\n"
+
+    @staticmethod
+    def blocked(role):
+        return f"[{role.upper()}] BLOCKED\n\nMissing: the tide table\nWhat was tried: the bible\nResume from: here\n"
+
+    def world(self, *roles, body=None):
+        """Pull #7 with a READY, a [LINT] PASS, the reviewer's APPROVED unless it is in `roles`, then a
+        BLOCKED of each of `roles` (or `body`) a minute apart."""
+        w = World(self)
+        w._write("comments/7.json", [])
+        w.comment(7, 2, "2026-11-10T09:00:00Z", "drafter", "[DRAFTER] READY\nMaker report: the beats.\n")
+        w.comment(7, 3, "2026-11-10T09:05:00Z", "program:lint", "[LINT] PASS\nreviewed head {head:7} manifest none\n")
+        if "reviewer" not in roles:
+            w.comment(7, 4, "2026-11-10T09:10:00Z", "reviewer",
+                      "[REVIEWER] APPROVED\nThe beats hold.\nreviewed head {head:7} manifest none\n")
+        for i, role in enumerate(roles):
+            w.comment(7, 50 + i, f"2026-11-10T12:0{i}:00Z", role, body or self.blocked(role))
+        return w
+
+    def task(self, w):
+        run = w.prepare("showlead", 7)
+        record = w.gh.comments(7)[-1]
+        self.assertTrue(record["body"].startswith("[SHOWLEAD] LAUNCH showlead 7-1\n"), record["body"])
+        workdir = w.state / "worktrees" / "showlead-7-1"
+        self.assertEqual(sorted(p.name for p in workdir.iterdir()), ["pr-7"])
+        self.assertEqual(tree(workdir / "pr-7"), files_at(w, PULL_REF))
+        self.assertEqual((run.meta["pull"], run.meta["pulls"]), (7, [7]))
+        return task_of((run.dir / "prompt.md").read_text())
+
+    def first(self, w):
+        return f"Judgment 4, a blocked worker, on pull request #7 at head {w.head(PULL_REF)}. Its files are in pr-7/."
+
+    def test_a_blocked_checker(self):
+        w = self.world("reviewer")
+        self.assertEqual(self.task(w), self.first(w) + "\n\n" + self.blocked("reviewer").rstrip("\n"))
+
+    def test_a_blocked_judge(self):
+        w = self.world("assessor")
+        task = self.task(w)
+        self.assertTrue(task.endswith("Its files are in pr-7/.\n\n" + self.blocked("assessor").rstrip("\n")), task)
+        self.assertNotIn("[DRAFTER] READY", task)
+
+    def test_two_blocked_judges(self):
+        w = self.world("panelist", "assessor")
+        roles = w.root / ".factory" / "roles"
+        (roles / "panelist.md").write_text((roles / "assessor.md").read_text().replace("assessor", "panelist"))
+        path = w.root / ".factory" / "pipeline.json"
+        old = '"judge": "assessor"'
+        self.assertEqual(path.read_text().count(old), 1)
+        path.write_text(path.read_text().replace(old, '"judge": ["assessor", "panelist"]'))
+        w.local()
+        self.assertEqual(self.task(w), "\n\n".join(
+            [self.first(w)] + [self.blocked(r).rstrip("\n") for r in ("panelist", "assessor")]))
+
+    def test_an_outage_twin(self):
+        w = self.world("reviewer", body="[REVIEWER] BLOCKED\n\nMissing: a valid result (every account is out of usage)\n")
+        self.refused(w, "no judgment is due on #7", "showlead", 7)
+
+    def test_a_newer_addressed_twin(self):
+        w = self.world("reviewer")
+        w.comment(7, 60, "2026-11-10T13:00:00Z", "drafter", "[DRAFTER] ADDRESSED\nThe table is in.\n")
+        self.refused(w, "no judgment is due on #7", "showlead", 7)
+
+    def test_after_the_ruling(self):
+        for role in ("reviewer", "assessor"):
+            with self.subTest(role=role):
+                w = self.world(role)
+                w.prepare("showlead", 7)
+                w.comment(7, 70, "2026-11-11T13:00:00Z", "showlead", self.RULING)
+                with self.assertRaisesRegex(LaunchError, r"^no judgment is due on #7$"):
+                    w.prepare("showlead", 7)
+                text = (w.prepare(role, 7).dir / "prompt.md").read_text()
+                if role == "reviewer":
+                    self.assertTrue(text.endswith("\n## Ruling\n\n" + self.RULING), text)
+                else:
+                    self.assertNotIn("RULING", text)
+                    self.assertNotIn("last year", text)
+
+
 class RulingOnTheTicketPassedOn(unittest.TestCase):
     """ISSUE-242 behaviour 5: a maker relaunched on a ticket after a RULING on its BLOCKED gets the
     ruling as the last part of its task; with no such ruling its prompt is the one `main` builds."""

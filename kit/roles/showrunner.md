@@ -48,8 +48,8 @@ The task is one of these four judgments:
    hypothesis. Approve a `P0`; send a `P1` to a blind test with the pitch judges; send a `P2` or a
    `P3` to the Braintrust with an amendment draft. Reject one that breaks the charter, citing it.
 4. **A blocked worker.** Read its Missing, What was tried and Resume from. Rule what changes on
-   relaunch: an input to add or a narrower task. The maker is launched again once, with your
-   `RULING` as the last part of its task. If the ticket should be closed instead, or only the
+   relaunch: an input to add or a narrower task. A maker or a checker is launched again once with
+   your `RULING`; a judge is launched again without it. If the ticket should be closed, or only the
    owner can supply what is missing (a login, an account, a cap), return `BLOCKED` naming it.
 
 ## What you produce
