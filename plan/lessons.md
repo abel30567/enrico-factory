@@ -55,3 +55,11 @@
   minutes later and the workers were re-attached by hand, but the apps were hit for nothing. A process is
   ended with `kill <pid>` after `ps -o pid,command -p <pid>` has shown what it is; `pgrep` only lists, and
   options go before the pattern.
+- **A kit step done by hand is done whole, after reading its function (2026-11-15).** The sample
+  production's first board stayed blocked after the kit was upgraded on its base: a role launched on a
+  pull request reads the kit at the pull request's head, and the tick merges the base into a branch only
+  when a lock is refused (#530). I merged the base into the branch by hand and pushed it, but the kit
+  names a pull request's head by the branch in the production's clone, and its own step moves that
+  branch before it pushes. Mine did not, so the next launch was given the old head and the showrunner
+  answered BLOCKED a third time. Before doing by hand what a kit command does, read the function and do
+  every effect it has; then file the gap, so that the hand is not needed twice.
