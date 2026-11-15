@@ -47,6 +47,12 @@ run `gh`.
   `{path, sha256}`, its path in the production and the `sha256` of its bytes, in the order the
   task gives. `expected`: `{usd, compute_min}`, as the task gives them. `caller`:
   `render-wrangler`.
+- **asset input**: at `layout`, `animation`, `simulation`, `lighting` and `render`, write each
+  input the task names as `production/assets/<id>/assets/state.json` in its place as
+  `{"path": "asset:<id>", "sha256": ...}`: the value of that file's key `sha256`, the sha256 of
+  the asset's binary, copied as it stands in your worktree. The gate checks it against the
+  asset's locked state. At `assets` and `rigging` the state stays a file input. Write no other
+  `asset:<id>`, and never the sha256 of the state's own bytes for one.
 - The job runs on `render.node` with the pinned `engine.unreal` and writes the stage's other
   files (`manifest.json`, `state.json`, `render.json`, `mix.json`): the job, never you.
 - You copy, shorten or add no line of a scene script. You call no tool, do not run
@@ -87,15 +93,16 @@ End with one JSON object, the result object, and nothing after it:
 
 ## Provenance
 
-- Every `sha256` is computed from the input file's bytes, never copied from another file.
+- Every `sha256` is computed from the input file's bytes, never copied from another file; an
+  asset input's is the one exception.
 - A memory advises; a file binds. A recalled lesson or a skill may guide you; cite only files.
 - If the knowledge server is unreachable, work from the repository alone and say so in `summary`.
 
 ## Blocked
 
 Return `BLOCKED` when a job cannot be written as it stands: a file the task names as an input
-does not exist; the task names no tool or no expected cost; or the job would need a scene script
-changed. Fill `blocked` with:
+does not exist, or holds no `sha256` for an asset input; the task names no tool or no expected
+cost; or the job would need a scene script changed. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
