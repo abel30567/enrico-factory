@@ -24,8 +24,11 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cmd_gate, cmd_run, gitstate, github, ledger, lint, resources  # noqa: E402
+from kit.lib import cmd_gate, cmd_media, cmd_run, gitstate, github, ledger, lint, resources  # noqa: E402
+from test_assets import AssetStore  # noqa: E402
+from test_media import KEY_ID, REGION, SECRET, FakeStore, free_port  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "run"
 NOW = "2026-11-02T09:00:00Z"
@@ -1060,6 +1063,156 @@ class RetryTest(unittest.TestCase):
         job, _ = self.failed_once()
         h2 = digest_of(self.w.attempt(job, 2))
         self.assertEqual(self.w.gate(job), (0, f"gate job {h2}: PASS cap - reason within caps\n", ""))
+
+
+class MediaStoreTest(unittest.TestCase):
+    """ISSUE-481: a DONE job's pictures go to the media store before their manifest rows are committed."""
+
+    PANEL = "GIF89a an invented panel\n"
+    NOTES = "not a picture\n"
+
+    def setUp(self):
+        self.w = w = World(self)
+        self.store = FakeStore(self)
+        register = json.loads((FIX / "resources.json").read_text())
+        shipped = {r["id"]: r for r in json.loads((ROOT / "kit" / "resources.json").read_text())["resources"]}
+        register["resources"] += [shipped["store.media"], shipped["store.assets"]]
+        self.register = w.tmp / "resources.json"
+        self.register.write_text(json.dumps(register, indent=2) + "\n")
+        self.patch(resources, "REGISTER", self.register)
+        self.media_key()
+        self.settings()
+
+    # -- the world
+
+    def patch(self, target, name, value):
+        patch = mock.patch.object(target, name, value)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def media_key(self, name="store.media"):
+        path = self.w.secrets / name
+        path.write_text(f"{KEY_ID}\n{SECRET}\n{REGION}\n")
+        path.chmod(0o600)
+
+    def settings(self, **changes):
+        w = self.w
+        w.local(**{"STATE_DIR": w.state, "SECRETS_DIR": w.secrets, "FAKE_LOG": w.fake_log,
+                   "MEDIA_STORE": self.store.url("/b"), "MEDIA_PUBLIC_BASE": self.store.url("/pub"), **changes})
+
+    def panel_job(self):
+        job = self.w.script("panel", outputs={"panel.gif": self.PANEL, "notes.txt": self.NOTES}, usd=1.5,
+                            compute_min=20)
+        return job, self.w.passed(job)
+
+    def outputs(self, texts):
+        return sorted(({"bytes": len(t.encode()), "name": n, "sha256": hashlib.sha256(t.encode()).hexdigest()}
+                       for n, t in texts.items()), key=lambda o: o["name"])
+
+    def check(self, tree, mid):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cmd_media.main(["check", mid, "--root", str(tree)])
+        return code, out.getvalue(), err.getvalue()
+
+    # -- the checks
+
+    def assert_done(self, job, digest):
+        """The run of ``job`` is DONE: the panel is in the store after one PUT, then its rows are committed."""
+        w = self.w
+        branch, trunk = w.head(BRANCH), w.head()
+        self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        panel = self.PANEL.encode()
+        panel_sha = hashlib.sha256(panel).hexdigest()
+        self.assertEqual(self.store.objects, {panel_sha: panel})
+        self.assertEqual([r["path"] for r in self.store.requests if r["method"] == "PUT"], [f"/b/{panel_sha}"])
+        self.assertEqual(w.git("diff", "--name-only", branch, BRANCH).split(), [gitstate.MANIFEST])
+        outputs = self.outputs({"panel.gif": self.PANEL, "notes.txt": self.NOTES})
+        self.assertEqual(w.manifest(), MANIFEST_HEADER + "".join(r + "\n" for r in manifest_rows(digest, outputs)))
+        self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [ledger.PATH])
+        [row] = w.rows("run")
+        self.assertEqual((row["hash"], row["verdict"], row["usd"]), (digest, "DONE", "1.5"))
+        self.assertEqual(w.fake_calls(), [digest])
+        tree = w.tmp / "exported"
+        gitstate.export(w.root, BRANCH, tree)
+        shutil.copyfile(w.root / "production.local.env", tree / "production.local.env")
+        self.assertEqual(self.check(tree, f"{digest[:16]}-panel.gif"), (0, f"media {digest[:16]}-panel.gif: OK\n", ""))
+        self.assertEqual(self.check(tree, f"{digest[:16]}-notes.txt"),
+                         (1, f"media {digest[:16]}-notes.txt: FAILED public link answered 404\n", ""))
+
+    def assert_refused(self, job, digest, message):
+        """The run of ``job`` is refused after the call with ``message``: nothing is recorded."""
+        w = self.w
+        branch, log = w.head(BRANCH), w.log()
+        self.assertEqual(w.run(job), (2, "", f"run: {message}\n"))
+        self.assertEqual(w.fake_calls(), [digest])
+        self.assertTrue((w.job_dir(digest) / "result.json").is_file())
+        self.assertEqual(w.head(BRANCH), branch)
+        self.assertEqual(w.rows("run"), [])
+        self.assertEqual(w.log(), log)
+        self.assertEqual(self.store.objects, {})
+
+    # -- Behaviour 1 to 7
+
+    def test_picture_put_before_its_row(self):
+        job, digest = self.panel_job()
+        self.assert_done(job, digest)
+
+    def test_store_refuses_then_twin_rerun(self):
+        job, digest = self.panel_job()
+        self.store.status["PUT"] = (500, b"")
+        self.assert_refused(job, digest, "the media store did not take panel.gif: store answered 500")
+        del self.store.status["PUT"]
+        self.store.requests.clear()
+        self.assert_done(job, digest)
+
+    def test_store_unreachable_then_twin_rerun(self):
+        job, digest = self.panel_job()
+        self.settings(MEDIA_STORE=f"http://127.0.0.1:{free_port()}/b")
+        self.assert_refused(job, digest, "the media store did not take panel.gif: store unreachable")
+        self.assertEqual(self.store.requests, [])
+        self.settings()
+        self.assert_done(job, digest)
+
+    def test_store_not_usable_then_twin_rerun(self):
+        job, digest = self.panel_job()
+        (self.w.secrets / "store.media").unlink()
+        self.assert_refused(job, digest, "resource store.media is not usable: secret store.media: missing")
+        self.assertEqual(self.store.requests, [])
+        self.media_key()
+        self.assert_done(job, digest)
+
+    def test_register_without_the_media_store(self):
+        job, digest = self.panel_job()
+        self.patch(resources, "REGISTER", FIX / "resources.json")
+        self.assert_refused(job, digest, "the register has no resource store.media")
+        self.assertEqual(self.store.requests, [])
+
+    def test_twin_no_picture_sends_nothing(self):
+        w = self.w
+        self.settings(MEDIA_STORE="", MEDIA_PUBLIC_BASE="")
+        job = w.script("notes", outputs={"notes.txt": self.NOTES}, usd=1.5, compute_min=20)
+        digest = w.passed(job)
+        self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        self.assertEqual(w.manifest(), MANIFEST_HEADER + "".join(
+            r + "\n" for r in manifest_rows(digest, self.outputs({"notes.txt": self.NOTES}))))
+        self.assertEqual(self.store.requests, [])
+
+    def test_twin_stage_files_tool_puts_no_picture_in_the_media_store(self):
+        w = self.w
+        tools = w.tmp / "tools"
+        tools.mkdir()
+        (tools / "fake.py").write_text((FIX / "tools" / "fake.py").read_text() + '\nSTAGE_FILES = ("notes.txt",)\n')
+        self.patch(cmd_run, "TOOLS_DIR", tools)
+        assets = AssetStore(self)
+        self.media_key("store.assets")
+        self.settings(ASSET_STORE=assets.url("/b"))
+        job, digest = self.panel_job()
+        self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        self.assertEqual(self.store.requests, [])
+        panel = self.PANEL.encode()
+        self.assertEqual(assets.objects, {hashlib.sha256(panel).hexdigest(): panel})
+        self.assertIsNone(w.manifest())
 
 
 class RightsRefusalTest(unittest.TestCase):
