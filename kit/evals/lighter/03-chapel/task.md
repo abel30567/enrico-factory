@@ -1,0 +1,1 @@
+Light shot Q1-1 of ep01 over its locked simulation, to the key of its sequence: its scene script and the request of its preview render job. Write only production/ep01/Q1-1/lighting/scene.py and production/ep01/Q1-1/lighting/requests/render.json.
