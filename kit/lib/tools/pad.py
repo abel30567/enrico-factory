@@ -5,8 +5,9 @@ The job's first input is a pad request, ``{"source": "media:<id>"}`` and no othe
 checked against its row as `grok-imagine` checks a ref: no answer is ``Down``, a wrong answer is ``Failed``. It
 must be a PNG or a JPEG. One ``ffmpeg`` call, run with an environment of ``HOME``, ``LANG`` and ``PATH`` only (as
 `kit/lib/analysis.py` runs its programs), writes the one output ``pad.png``: the source's own width and height,
-a canvas of ``COLOUR``, the whole source scaled by 2/3 in each direction and centred. No model is called and
-nothing is spent. ``ffmpeg`` not on ``PATH`` is ``Down``.
+a canvas of ``COLOUR``, the whole source scaled by 2/3 in each direction and centred. The source is read as
+coded: ``-noautorotate`` keeps ffmpeg from turning a JPEG by its Exif orientation, so the pixels padded are the
+ones whose size the header gives. No model is called and nothing is spent. ``ffmpeg`` not on ``PATH`` is ``Down``.
 """
 
 import hashlib
@@ -179,7 +180,8 @@ def run(call):
             source = os.path.join(directory, f"source.{extension}")
             with open(source, "wb") as handle:
                 handle.write(data)
-            _ffmpeg(directory, ["ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-i", source,
+            _ffmpeg(directory, ["ffmpeg", "-nostdin", "-hide_banner", "-v", "error", "-noautorotate",
+                                "-i", source,
                                 "-vf", _filter(width, height), "-frames:v", "1", output])
         if not os.path.isfile(output) or os.path.getsize(output) == 0:
             raise _failed(FFMPEG_FAILED)

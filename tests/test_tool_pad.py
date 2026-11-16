@@ -4,8 +4,8 @@ The media store's public link is one `ThreadingHTTPServer` on 127.0.0.1, port 0,
 `GET /media/<sha256>` with the bytes it holds under that sha256 and 404 otherwise; it records each `GET` path.
 The pictures and the manifest are the fixtures of tests/fixtures/pad/. `ffmpeg` is a copy of
 tests/fixtures/pad/fake_ffmpeg.py in a `bin/` that is the whole `PATH`, as tests/test_analysis.py installs
-fake_tool.py; one test runs the real `ffmpeg` and is skipped where there is none. Nothing reaches a host other
-than 127.0.0.1.
+fake_tool.py; the tests of `Real` run the real `ffmpeg` and are skipped where there is none. Nothing reaches a
+host other than 127.0.0.1.
 """
 
 import hashlib
@@ -15,6 +15,7 @@ import os
 import shutil
 import socket
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -204,7 +205,7 @@ class Fake(PadCase):
         [seen] = self.calls()
         source = os.path.join(seen["cwd"], "source.png")
         self.assertEqual(seen["argv"], [
-            "-nostdin", "-hide_banner", "-v", "error", "-i", source,
+            "-nostdin", "-hide_banner", "-v", "error", "-noautorotate", "-i", source,
             "-vf", "format=rgb24,scale=4:5,pad=6:8:1:1:color=0xD3D3D3",
             "-frames:v", "1", os.path.join(call["out"], "pad.png")])
         self.assertEqual(seen["input_sha256"], sha(PNG))
@@ -217,8 +218,8 @@ class Fake(PadCase):
         self.assertEqual(self.run_tool(call), {"usd": 0, "compute_min": 0})
         self.assertEqual(os.listdir(call["out"]), ["pad.png"])
         [seen] = self.calls()
-        self.assertEqual(seen["argv"][5], os.path.join(seen["cwd"], "source.jpg"))
-        self.assertEqual(seen["argv"][7], "format=rgb24,scale=5:4,pad=8:6:1:1:color=0xD3D3D3")
+        self.assertEqual(seen["argv"][4:7], ["-noautorotate", "-i", os.path.join(seen["cwd"], "source.jpg")])
+        self.assertEqual(seen["argv"][8], "format=rgb24,scale=5:4,pad=8:6:1:1:color=0xD3D3D3")
         self.assertEqual(seen["input_sha256"], sha(JPEG))
 
     def test_not_a_request(self):
@@ -311,6 +312,35 @@ class Real(PadCase):
         self.assertEqual((width, height), (8, 6))
         band = [rows[y][x] for y in range(6) for x in range(8) if not (1 <= x < 6 and 1 <= y < 5)]
         self.assertEqual(set(band), {GREY})
+
+    def test_real_ffmpeg_keeps_a_jpeg_as_coded(self):
+        """A JPEG with an Exif orientation of 6 (turn 90 degrees) is padded as coded, not turned: its 80x40 header
+        size is the canvas, the left half stays red and the right half blue."""
+        red, blue = (255, 0, 0), (0, 0, 255)
+        rows = b"".join(b"\x00" + bytes(red) * 40 + bytes(blue) * 40 for _ in range(40))
+        source = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 80, 40, 8, 2, 0, 0, 0))
+                  + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+        (self.dir / "halves.png").write_bytes(source)
+        subprocess.run(["ffmpeg", "-y", "-nostdin", "-hide_banner", "-v", "error", "-i", str(self.dir / "halves.png"),
+                        "-frames:v", "1", "-q:v", "2", str(self.dir / "halves.jpg")], check=True)
+        tiff = b"II*\x00" + struct.pack("<IH", 8, 1) + struct.pack("<HHII", 0x0112, 3, 1, 6) + struct.pack("<I", 0)
+        exif = b"Exif\x00\x00" + tiff
+        coded = (self.dir / "halves.jpg").read_bytes()
+        oriented = coded[:2] + b"\xff\xe1" + struct.pack(">H", len(exif) + 2) + exif + coded[2:]
+        call = self.call(request(source="media:oriented"), manifest=self.serve("oriented", oriented))
+        self.assertEqual(self.run_tool(call), {"usd": 0, "compute_min": 0})
+        width, height, rows = pixels((Path(call["out"]) / "pad.png").read_bytes())
+        self.assertEqual((width, height), (80, 40))
+
+        def kind(rgb):
+            if rgb == GREY:
+                return "G"
+            return "R" if rgb[0] > 180 and rgb[2] < 80 else "B" if rgb[2] > 180 and rgb[0] < 80 else "?"
+
+        middle = "".join(kind(rows[20][x]) for x in range(80))
+        self.assertEqual(middle[:13] + middle[66:], "G" * 27)
+        self.assertEqual(middle[13:38], "R" * 25)
+        self.assertEqual(middle[41:66], "B" * 25)
 
 
 if __name__ == "__main__":
