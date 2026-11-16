@@ -34,8 +34,10 @@ JUDGES = tuple(role for role in SUITES if KIND[role] == "judge")
 NOTE = ".no-suite.md"
 NO_SUITE = tuple(sorted(p.name[:-len(NOTE)] for p in (KIT / "evals").glob("*" + NOTE)))
 NOTE_TEXT = re.compile(r"# `(?P<role>[a-z0-9-]+)`: no suite yet\n\nWhy not yet: .+\nWave: (?P<wave>[0-9]+|never)\n")
-MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "refusal": 0, "pair": 4, "verdict": 0, "ruling": 2, "selection": 2}
+MINIMUM = {"seeded": 6, "clean": 3, "replay": 3, "refusal": 0, "pair": 4, "verdict": 0, "symptoms": 0, "ruling": 2, "selection": 2}
 NEVER = "held-out-judge"
+# The lints a replay case of a stage with an empty `lint` names: the ones that read the stage's `paths`.
+UNNAMED_LINTS = {"retro": ["playbook"]}
 CASE_ID = re.compile(r"^[0-9]{2}-[a-z0-9]+(-[a-z0-9]+)*$")
 TELLS = re.compile(r"(?i)seeded|defect|planted|clean case")
 SIDE_NAMES = re.compile(r"(?i)\b(old|new)/")
@@ -68,6 +70,10 @@ READY = {"marker": "READY", "summary": "Done.",
 
 def prefers(side):
     return {"marker": f"PREFERS {side}", "summary": "One is better.", "prefers": {"choice": side, "cited": []}}
+
+
+def replay_lints(entry):
+    return entry["lint"] or UNNAMED_LINTS.get(entry["stage"], [])
 
 
 def unnamed_stage_lints(kit, role):
@@ -420,7 +426,7 @@ class MakerTest(unittest.TestCase):
                 if case.kind in ("refusal", "verdict"):
                     continue
                 self.assertEqual(case.kind, "replay", where)
-                entry = next((e for e in entries if e["lint"] == case.spec["lint"]), None)
+                entry = next((e for e in entries if replay_lints(e) == case.spec["lint"]), None)
                 self.assertIsNotNone(entry, where)
                 output = FIX / role / case.id
                 written = sorted(p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file())
@@ -430,7 +436,7 @@ class MakerTest(unittest.TestCase):
                     self.assertTrue(hits, f"{where}: {pattern}")
                     for hit in hits:
                         self.assertTrue(any(production.matches(hit, e["paths"]) for e in entries
-                                            if e["lint"] == case.spec["lint"]), f"{where}: {hit}")
+                                            if replay_lints(e) == case.spec["lint"]), f"{where}: {hit}")
                 with tempfile.TemporaryDirectory() as tmp:
                     run_dir = Path(tmp) / "run"
                     shutil.copytree(case.path / "tree", run_dir)

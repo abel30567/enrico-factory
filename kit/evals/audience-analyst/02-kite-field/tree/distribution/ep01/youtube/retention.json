@@ -1,0 +1,40 @@
+{
+ "beats": [
+  {
+   "beat": "B1",
+   "end": 10,
+   "first": 1,
+   "last": 25,
+   "retention": 0.76,
+   "start": 0
+  },
+  {
+   "beat": "B2",
+   "end": 20,
+   "first": 26,
+   "last": 50,
+   "retention": 1.225,
+   "start": 10
+  },
+  {
+   "beat": "B3",
+   "end": 30,
+   "first": 51,
+   "last": 75,
+   "retention": 0.54,
+   "start": 20
+  },
+  {
+   "beat": "B4",
+   "end": 40,
+   "first": 76,
+   "last": 100,
+   "retention": 0.515,
+   "start": 30
+  }
+ ],
+ "length": 40,
+ "post": "ep01/youtube",
+ "post_id": "aa-kite",
+ "snapshot_sha256": "f68cbd1fc817b88fbe7e696d54ddfefc3bd21e6066df9274dd2e72d16eafdc36"
+}
