@@ -201,6 +201,13 @@ def main():
             task = (d.get("tasks") or [{}])[0]
             text = str(task.get("result") or agent.get("exit_reason") or agent.get("status"))
             bad = agent["status"] != "done"
+            if bad:   # the box's own result names the cause (a usage-limit 429 is read by tick.py's guard)
+                try:
+                    h = call(c, "GET", f"/admin/fleet/artifact?key=artifacts/{aid}/harness-result.json")
+                    if h.get("is_error") and h.get("result"):
+                        text = f"{text}: {h['result']}"
+                except (urllib.error.URLError, OSError, ValueError, AttributeError):
+                    pass
             return finish(bad, (f"fleet box {agent['status']}: {agent.get('exit_reason')}: " if bad else "") + text, agent, turns)
         if time.time() - t0 > ttl + 1200:   # the reaper ends a box at its TTL; this is only a backstop
             return finish(True, f"fleet box {aid} still {agent.get('status')} 20 min past its TTL", agent, turns)

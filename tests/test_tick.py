@@ -1676,3 +1676,65 @@ class SyncBeforeLaunch(Case):
         before = w.snapshot()
         self.assertEqual(lines(self.ticked(w)), ["STEP #5 sync PR #6"])
         self.assertEqual(w.snapshot(), before)
+
+
+class ManifestSync(Case):
+    """ISSUE-496: pulls that each add rows at the end of media/manifest.tsv sync without a conflict."""
+
+    HEADER = "id\tsha256\tbytes\tsource\n"
+    REPEAT = "NEED #11 conflict with base: media/manifest.tsv:3 id frame-ep01 repeats line 2"
+
+    def row(self, mid, seed):
+        return f"{mid}\t{hashlib.sha256(seed.encode()).hexdigest()}\t2048\tpainter\n"
+
+    def world(self, rows, edits=None):
+        files = {10: {gitstate.MANIFEST: self.HEADER + self.row("frame-ep01", "frame-ep01")},
+                 12: {gitstate.MANIFEST: self.HEADER + rows, **(edits or {})}}
+        w = super().world((9, 10, 11, 12), files)
+        painter = w.root / ".factory" / "roles" / "painter.md"
+        painter.write_text(painter.read_text().replace("writes: production/**\n",
+                                                       "writes: production/**, media/manifest.tsv\n"))
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "frames":
+                entry["paths"] = entry["paths"] + [gitstate.MANIFEST]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("the painter writes the manifest")
+        for n in (10, 12):
+            comments = w.github / "comments" / f"{n}.json"
+            manifest = "manifest " + gitstate.manifest(w.root, "trunk", w.ref(n))
+            comments.write_text(comments.read_text().replace("manifest none", manifest))
+        self.tick(w, ["STEP #9 sync PR #10", "STEP #11 sync PR #12"])
+        return w
+
+    def tick(self, w, expected):
+        self.assertEqual(lines(self.ticked(w, "--apply")), expected)
+
+    def test_rows_on_both_sides_lock(self):
+        """Behaviour 1."""
+        w = self.world(self.row("frame-ep02", "frame-ep02"))
+        self.tick(w, ["STEP #9 lock PR #10", "STEP #11 sync PR #12"])
+        self.tick(w, ["STEP #9 file render ep01", "STEP #11 lock PR #12"])
+        self.assertEqual(gitstate.show(w.root, "trunk", gitstate.MANIFEST),
+                         self.HEADER + self.row("frame-ep02", "frame-ep02") + self.row("frame-ep01", "frame-ep01"))
+        self.assertEqual(w.ops("add_label"), [])
+
+    def test_one_id_with_two_hashes_is_refused(self):
+        """Behaviour 2."""
+        w = self.world(self.row("frame-ep01", "another frame"))
+        head, pushes = w.head(w.ref(12)), len(w.ops("push"))
+        self.tick(w, ["STEP #9 lock PR #10", self.REPEAT])
+        self.tick(w, ["STEP #9 file render ep01", self.REPEAT])
+        self.assertEqual((w.head(w.ref(12)), len(w.ops("push"))), (head, pushes))
+        self.assertEqual([(e["number"], e["label"]) for e in w.ops("add_label")], [(11, LABEL)])
+
+    def test_a_repeat_the_pull_holds_already_is_synced(self):
+        """Behaviour 3."""
+        w = self.world(self.row("frame-ep02", "frame-ep02") * 2)
+        self.tick(w, ["STEP #9 lock PR #10", "STEP #11 sync PR #12"])
+
+    def test_a_conflict_in_another_file_is_reported_as_before(self):
+        """Behaviour 4."""
+        w = self.world(self.row("frame-ep02", "frame-ep02"), {"production/ep01/frames.md": "# Not the same\n"})
+        self.tick(w, ["STEP #9 lock PR #10", "NEED #11 conflict with base"])

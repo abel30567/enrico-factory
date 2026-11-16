@@ -217,7 +217,8 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
     the base; a ``sequence`` stage after an ``episode`` stage needs it locked for the sequence's episode.
     A stage after ``production/intake`` is held, in place of locked, by the shot list of a locked ``story/reel``
     ticket's episode on the base (``_intake``); a ticket not held is not locked as before.
-    A ``shot`` stage whose upstream stage holds also needs its shot's assets and rigs locked (``_subjects``).
+    A ``shot`` stage whose upstream stage holds also needs its shot's assets and rigs locked, and each earlier
+    ``sequence`` stage locked for the shot's sequence (``_subjects``).
     """
     ok, reason = _after(p, state, ticket, root)
     if not ok:
@@ -229,21 +230,29 @@ def upstream(p, state: State, ticket: dict, root) -> tuple[bool, str]:
 def _subjects(p, state: State, ticket: dict, root) -> list:
     """``<stage> for <id>`` not locked, for a ``shot`` stage, the targets and order of ``cheaper_stages``: for each
     earlier ``asset`` entry the format does not skip, ``assets`` for each character and the set of the shot file and
-    ``rigging`` for each character (``kit.lib.shotfile``)."""
+    ``rigging`` for each character (``kit.lib.shotfile``); for each earlier ``sequence`` entry the format does not
+    skip, that entry for the shot's sequence (``shot_sequence``), none when the unit is not
+    ``<episode>/<sequence>-<n>``."""
     room, unit = ticket["room"], ticket["unit"]
     if production.stage(p, room, ticket["stage"])["unit"] != "shot":
         return []
     entries = production.stages(p, room)
     names = [e["stage"] for e in entries]
     skipped = skips(p, root, unit)
+    sequence = shot_sequence(unit)
     missing, subjects = [], None
     for e in entries[:names.index(ticket["stage"])]:
-        if e["unit"] != "asset" or e["stage"] in skipped:
+        if e["stage"] in skipped:
             continue
-        if subjects is None:
-            subjects = shotfile.subjects(p, root, unit)
-        characters, sets = subjects
-        targets = {"assets": sorted({*characters, *sets}), "rigging": characters}.get(e["stage"], [])
+        if e["unit"] == "asset":
+            if subjects is None:
+                subjects = shotfile.subjects(p, root, unit)
+            characters, sets = subjects
+            targets = {"assets": sorted({*characters, *sets}), "rigging": characters}.get(e["stage"], [])
+        elif e["unit"] == "sequence":
+            targets = [sequence] if sequence is not None else []
+        else:
+            continue
         missing.extend(f"{e['stage']} for {target}" for target in targets
                        if not is_locked(state, room, e["stage"], target))
     return missing
