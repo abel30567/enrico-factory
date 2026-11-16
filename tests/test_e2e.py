@@ -395,28 +395,30 @@ class HappyPath(Case):
         self.assertEqual((launch["role"], first(launch)), ("showrunner", "[SHOWRUNNER] LAUNCH story-writer 3-1"))
         comments = w.comments(4)
         self.assertEqual([(c["role"], first(c)) for c in comments], [
-            ("story-writer", "[STORY-WRITER] READY"), ("program:lint", "[LINT] PASS"),
+            ("story-writer", "[STORY-WRITER] READY"), ("program:preview", "## Preview of what this pull hands off"),
+            ("program:lint", "[LINT] PASS"),
             ("showrunner", "[SHOWRUNNER] LAUNCH story-editor 4-1"), ("story-editor", "[STORY-EDITOR] NOTES"),
             ("showrunner", "[SHOWRUNNER] LAUNCH story-writer 4-2"), ("story-writer", "[STORY-WRITER] ADDRESSED"),
-            ("program:lint", "[LINT] PASS"), ("showrunner", "[SHOWRUNNER] LAUNCH story-editor 4-2"),
+            ("program:preview", "## Preview of what this pull hands off"), ("program:lint", "[LINT] PASS"),
+            ("showrunner", "[SHOWRUNNER] LAUNCH story-editor 4-2"),
             ("story-editor", "[STORY-EDITOR] APPROVED"), ("program:gate", "[PRODUCER] GATE PASS"),
             ("program:lock", "[SHOWRUNNER] LOCK")])
-        self.assertEqual([c["id"] for c in comments], list(range(2, 13)))
+        self.assertEqual([c["id"] for c in comments], list(range(2, 15)))
         by_id = {c["id"]: c for c in comments}
 
         # Heads: h1 the branch's first commit, h2 the writer's second, h3 the sync's merge.
-        h1, h2 = last_line(by_id[2]).split()[1], last_line(by_id[7]).split()[1]
+        h1, h2 = last_line(by_id[2]).split()[1], last_line(by_id[8]).split()[1]
         [production_commit] = w.git("rev-list", "--max-parents=0", "main").split()
         self.assertEqual(w.git("rev-list", "--parents", "-n", "1", h1).split(), [h1, production_commit])
         self.assertEqual(w.git("rev-list", "--parents", "-n", "1", h2).split(), [h2, h1])
         self.assertEqual(last_line(by_id[2]), f"head {h1} manifest none")
-        self.assertEqual(last_line(by_id[5]), f"reviewed head {h1} manifest none")
-        self.assertEqual(last_line(by_id[7]), f"head {h2} manifest none")
-        for cid in (8, 10, 11):
+        self.assertEqual(last_line(by_id[6]), f"reviewed head {h1} manifest none")
+        self.assertEqual(last_line(by_id[8]), f"head {h2} manifest none")
+        for cid in (10, 12, 13):
             self.assertEqual(last_line(by_id[cid]), f"reviewed head {h2} manifest none", cid)
-        h3 = by_id[12]["body"].split("\n")[2].split()[2]
-        self.assertEqual(by_id[12]["body"], f"[SHOWRUNNER] LOCK\n\nlocked head {h3} manifest none\n"
-                                            "relied on: lint #8; story-editor APPROVED #10; gate #11\n")
+        h3 = by_id[14]["body"].split("\n")[2].split()[2]
+        self.assertEqual(by_id[14]["body"], f"[SHOWRUNNER] LOCK\n\nlocked head {h3} manifest none\n"
+                                            "relied on: lint #10; story-editor APPROVED #12; gate #13\n")
         gate_commit = w.git("log", "-1", "--format=%H", "main^1", "--", "ledger/spend.tsv").strip()
         self.assertEqual(w.git("rev-list", "--parents", "-n", "1", h3).split(), [h3, h2, gate_commit])
         self.assertEqual(w.head(REF), h3)
@@ -447,7 +449,7 @@ class HappyPath(Case):
 
         recorded = w.comments(3) + comments
         self.assertEqual(w.markers_lint(recorded).status, lint.PASS)
-        seeded = [{**c, "role": "program:lint"} if c["id"] == 10 else c for c in recorded]
+        seeded = [{**c, "role": "program:lint"} if c["id"] == 12 else c for c in recorded]
         self.assertEqual(w.markers_lint(seeded).status, lint.FAIL)
 
         self.assertEqual(w.git("status", "--porcelain"), "")
@@ -530,8 +532,8 @@ class BaseRules(Case):
     def test_rule_1_lint_missing(self):
         w = self.w
         kept = w.raw_comments(4)
-        self.assertEqual(first(w.comment(4, 8)), "[LINT] PASS")
-        w.set_comments(4, [c for c in kept if c["id"] != 8])
+        self.assertEqual(first(w.comment(4, 10)), "[LINT] PASS")
+        w.set_comments(4, [c for c in kept if c["id"] != 10])
         self.refused_base("  rule 1 lint: no counting [LINT] verdict")
         self.tick_line(w, ["STEP #3 lint PR #4"])
         self.assertEqual(self.ticked(w, apply=True), ["STEP #3 lint PR #4"])
@@ -540,21 +542,21 @@ class BaseRules(Case):
 
     def test_rule_1_lint_incomplete(self):
         w = self.w
-        kept = w.comment(4, 8)
+        kept = w.comment(4, 10)
         line = "Checks required by stage beats: structure, media"
         self.assertIn(line, kept["body"].splitlines())
-        w.edit_comment(4, 8, body=kept["body"].replace(line, "Checks required by stage beats: structure"))
-        self.refused_base("  rule 1 lint: lint #8 does not list media for stage beats")
+        w.edit_comment(4, 10, body=kept["body"].replace(line, "Checks required by stage beats: structure"))
+        self.refused_base("  rule 1 lint: lint #10 does not list media for stage beats")
         self.tick_line(w, ["NEED #3 lock refused: rule 1 lint"])
-        w.edit_comment(4, 8, body=kept["body"])
+        w.edit_comment(4, 10, body=kept["body"])
         self.locks(w, 4, 3, 1)
 
     def test_rule_2_checkers_no_verdict(self):
         w = self.w
         kept = w.raw_comments(4)
-        self.assertEqual(first(w.comment(4, 10)), "[STORY-EDITOR] APPROVED")
-        launched = w.comment(4, 9)["created_at"]
-        w.set_comments(4, [c for c in kept if c["id"] != 10])
+        self.assertEqual(first(w.comment(4, 12)), "[STORY-EDITOR] APPROVED")
+        launched = w.comment(4, 11)["created_at"]
+        w.set_comments(4, [c for c in kept if c["id"] != 12])
         self.refused_base("  rule 2 checkers: checker story-editor has no counting verdict")
         self.tick_line(w, [f"WAIT #3 running story-editor launched at {launched}"])
         w.set_comments(4, kept)
@@ -598,25 +600,25 @@ class BaseRules(Case):
 
     def test_rule_8_repeat_notes(self):
         w = self.w
-        notes, addressed = w.comment(4, 5)["body"], w.comment(4, 7)["body"]
+        notes, addressed = w.comment(4, 6)["body"], w.comment(4, 8)["body"]
         self.assertIn("B1 (Blocker): ", notes)
         self.assertIn("- B1 by story-editor: changed.", addressed)
-        w.edit_comment(4, 5, body=notes.replace("B1 (Blocker): ", "B1 (Blocker): REPEAT B1: "))
-        w.edit_comment(4, 7, body=addressed.replace("- B1 by story-editor: changed.",
+        w.edit_comment(4, 6, body=notes.replace("B1 (Blocker): ", "B1 (Blocker): REPEAT B1: "))
+        w.edit_comment(4, 8, body=addressed.replace("- B1 by story-editor: changed.",
                                                     "- B1 by story-editor: rebutted."))
-        self.refused_base("  rule 8 repeat-notes: repeated note(s) with no change or ruling: story-editor B1 (#5)")
+        self.refused_base("  rule 8 repeat-notes: repeated note(s) with no change or ruling: story-editor B1 (#6)")
         self.tick_line(w, ["NEED #3 lock refused: rule 8 repeat-notes"])
         w.post(4, "[SHOWRUNNER] RULING\n\nstory-editor B1 is answered: the rebuttal stands.\n", "showrunner")
         self.locks(w, 4, 3, 1)
 
     def test_rule_9_gate(self):
         w = self.w
-        self.assertEqual(w.comment(4, 11)["role"], "program:gate")
-        w.edit_comment(4, 11, role="story-writer")
+        self.assertEqual(w.comment(4, 13)["role"], "program:gate")
+        w.edit_comment(4, 13, role="story-writer")
         self.refused_base("  rule 9 gate: stage beats is the last of room story and no counting "
                           "[PRODUCER] GATE PASS covers the head")
         self.tick_line(w, ["STEP #3 gate PR #4"])
-        w.edit_comment(4, 11, role="program:gate")
+        w.edit_comment(4, 13, role="program:gate")
         self.locks(w, 4, 3, 1)
 
     def test_rule_10_base_moved(self):

@@ -4,7 +4,8 @@
 ``kit.lib.harness`` and ``kit.lib.sandbox``, starts the worker in the run's working directory, waits for
 it and hands the outcome to ``post``. ``post`` is the only place a role's marker is rendered: it refuses
 a result the role may not post, commits a maker's or an operator's files inside its ``writes`` globs, reads
-the head and the manifest hash from git itself, pushes, opens the pull request and posts. A worker that
+the head and the manifest hash from git itself, pushes, opens the pull request and posts; after a maker's
+``READY`` or ``ADDRESSED`` it posts the preview of the markdown it hands off (``kit.lib.handoff``). A worker that
 dies, times out or returns no valid result is answered with ``[<ROLE>] BLOCKED``: a missing result is
 never approval.
 
@@ -25,7 +26,8 @@ import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from kit.lib import blind, down, frontmatter, gateway, gitstate, harness, launch, markers, production, snapshot
+from kit.lib import blind, down, frontmatter, gateway, gitstate, handoff, harness, launch, markers, production
+from kit.lib import snapshot
 from kit.lib import steps, tickets
 from kit.lib.gateway import GatewayError
 from kit.lib.github import GitHubError
@@ -201,7 +203,13 @@ def post(p, gh, root, run, outcome):
         dropped, head, number = None, meta["head_sha"], meta["pull"]
         manifest = gitstate.manifest(root, meta["base_ref"], head)
     body = render(p, run, result, missing, dropped, head, manifest)
-    return gh.post(number, body, meta["role"])
+    comment = gh.post(number, body, meta["role"])
+    if (meta["kind"] in launch.BRANCHED and number != meta["ticket"]
+            and getattr(markers.parse(comment["body"]), "verb", None) in ("READY", "ADDRESSED")):
+        message = handoff.after_maker(p, gh, meta, number)
+        if message is not None:
+            _log(run, f"launch {meta['id']}: preview not posted: {message}")
+    return comment
 
 
 # -- running the worker

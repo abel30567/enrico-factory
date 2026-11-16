@@ -10,7 +10,9 @@ that is a picture (`media.picture_type`) in the media store, then adds one manif
 branch (for a tool with ``STAGE_FILES``: puts every other output in the
 asset store and commits those in the ticket's production directory instead) and, in the same commit, the post's
 answer the tool recorded at `distribution/<unit>/post.json`, and appends the `run` row with the real cost to the ledger
-on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down.
+on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down
+and one preview comment on the pull (`kit/lib/handoff.py`): after the outputs are stored and before the `run` row,
+a DONE job's outputs are shown there once, and a preview that cannot be posted is only said on standard error.
 Without `--apply` it makes every check, calls no tool and writes nothing. A media store that is not usable or does
 not take a picture refuses the run after the call: nothing is recorded, and a later run records the kept call
 without calling the tool again.
@@ -41,8 +43,8 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import (assets, cmd_gate, down, gitstate, github, ledger, media, posts, production,  # noqa: E402
-                     registry, resources, tickets)
+from kit.lib import (assets, cmd_gate, down, gitstate, github, handoff, ledger, media, posts,  # noqa: E402
+                     production, registry, resources, tickets)
 from kit.lib.tools import Down, Failed  # noqa: E402
 from kit.lib import release  # noqa: E402
 
@@ -464,6 +466,10 @@ def _run(p, gh, state, rows, target, apply, number=None):
             _manifest(p, gh, pull["head_ref"], digest, outputs)
     if verdict == DONE:
         release.write(p, gh, request, job_dir, outputs)
+    if verdict == DONE and outputs:
+        message = handoff.after_job(p, gh, pull["number"], digest, name, job_dir / "out", outputs)
+        if message is not None:
+            print(f"run: preview not posted: {message}", file=sys.stderr)
     ticket = request["ticket"]
     ledger.append(p, gh, p.root, {
         "time": production.now(), "kind": "run", "hash": digest, "ticket": ticket["number"],

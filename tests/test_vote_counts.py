@@ -185,8 +185,9 @@ class World:
             self.ticked("--apply")
         found = [(c["id"], c["body"].split("\n")[0]) for n in (1, 2) for c in self.gh.comments(n)]
         case.assertEqual(found, [(1, "[SHOWRUNNER] LAUNCH canon-keeper 1-1"), (2, "[CANON-KEEPER] READY"),
-                                 (3, "[SHOWRUNNER] LAUNCH canon-reviewer 2-1"), (4, "[CANON-REVIEWER] APPROVED"),
-                                 (5, "[SHOWRUNNER] LAUNCH braintrust 2-1"), (6, "[BRAINTRUST] VOTE 6-1")])
+                                 (3, "## Preview of what this pull hands off"),
+                                 (4, "[SHOWRUNNER] LAUNCH canon-reviewer 2-1"), (5, "[CANON-REVIEWER] APPROVED"),
+                                 (6, "[SHOWRUNNER] LAUNCH braintrust 2-1"), (7, "[BRAINTRUST] VOTE 6-1")])
 
     # -- time, git and the recorded GitHub
 
@@ -252,7 +253,7 @@ class World:
         return p, state.pulls[2], production.stage(p, "story", "bible")
 
     def vote(self):
-        [vote] = [c for c in self.gh.comments(2) if c["id"] == 6]
+        [vote] = [c for c in self.gh.comments(2) if c["id"] == 7]
         return vote
 
     def vote_counts(self):
@@ -279,7 +280,7 @@ class LauncherVote(unittest.TestCase):
         self.assertEqual(vote["body"], VOTE_BODY.format(head=head))
         self.assertEqual(markers.counts(vote, pull["git"], entry, p.kinds), (True, "counts"))
         self.assertEqual(pull["summary"]["judges"], {"braintrust": {
-            "id": 6, "created_at": "2026-11-11T12:03:00Z", "actor": "BRAINTRUST", "verb": "VOTE"}})
+            "id": 7, "created_at": "2026-11-11T12:03:00Z", "actor": "BRAINTRUST", "verb": "VOTE"}})
         self.assertEqual(w.lock(), "PR #2 #1 story/bible A-1: LOCKABLE\n")
 
     def test_seeded_a_vote_without_the_line_does_not_count(self):
@@ -305,8 +306,8 @@ class Tick(unittest.TestCase):
         self.assertEqual(len(launches), 1)
         last = comments[-1]
         self.assertEqual((last["id"], last["role"], last["body"]), (
-            7, "program:lock", f"[SHOWRUNNER] LOCK\n\nlocked head {head} manifest none\n"
-                               "relied on: canon-reviewer APPROVED #4; braintrust VOTE #6\n"))
+            8, "program:lock", f"[SHOWRUNNER] LOCK\n\nlocked head {head} manifest none\n"
+                               "relied on: canon-reviewer APPROVED #5; braintrust VOTE #7\n"))
         self.assertEqual(w.git("status", "--porcelain"), "")
 
         before = w.store()
@@ -315,7 +316,7 @@ class Tick(unittest.TestCase):
 
     def test_seeded_a_vote_without_the_line_is_launched_again(self):
         w = World(self)
-        w.rewrite(6, old_body(w.vote()["body"]))
+        w.rewrite(7, old_body(w.vote()["body"]))
         self.assertEqual(w.lock(), "PR #2 #1 story/bible A-1: NO 2 rule(s)\n"
                                    "  rule 3 judges: judge braintrust has no counting verdict\n"
                                    "  rule 6 amendment: bible/amendments/A-1.json: the [BRAINTRUST] VOTE does not count: "
@@ -330,7 +331,7 @@ class Stale(unittest.TestCase):
         w = World(self)
         w.post(2, "[CANON-KEEPER] ADDRESSED\n\nChanged a word.\n", "canon-keeper")
         found, summary = w.vote_counts()
-        self.assertEqual(found, (False, "order: not newer than the maker's last ADDRESSED (comment 7)"))
+        self.assertEqual(found, (False, "order: not newer than the maker's last ADDRESSED (comment 8)"))
         self.assertIsNone(summary["judges"]["braintrust"])
 
     def test_a_vote_on_an_older_head(self):

@@ -7,7 +7,8 @@ file `platform.youtube` of mode 0600, commits `YOUTUBE_OAUTH_APP=production` and
 `distribution/ep01/youtube/requests/public.json`, and has the real gate pass a job of the tool
 `youtube-public`. During `factory run` `urllib.request.build_opener` returns the fake opener of
 tests/test_tool_youtube_upload.py, answering from tests/fixtures/youtube_upload/answers/token-ok.json and
-tests/fixtures/youtube_public/answers/. Nothing reaches the network.
+tests/fixtures/youtube_public/answers/. The previewer of the preview comment is the stand-in
+``test_handoff.StubPreviews``. Nothing reaches the network.
 """
 
 import contextlib
@@ -26,6 +27,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from test_run import stub_previews  # noqa: E402
 from test_tool_youtube_upload import FakeOpener, answer  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -90,6 +92,9 @@ class World:
                                              "FACTORY_GITHUB": str(self.dir), "FACTORY_NOW": NOW})
         patch.start()
         test.addCleanup(patch.stop)
+        previews = mock.patch.dict(sys.modules, {"kit.lib.preview": stub_previews()})
+        previews.start()
+        test.addCleanup(previews.stop)
         for name in GIT_IDENTITY:
             os.environ.pop(name, None)
         shutil.copytree(RUN / "production", self.root)
