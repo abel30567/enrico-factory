@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": [
+    "adair"
+  ],
+  "set": "cistern",
+  "camera": "medium shot, eye level, static",
+  "action": "Adair lowers a bucket into the cistern and pulls it up full."
+}

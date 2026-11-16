@@ -1,0 +1,1 @@
+Animate shot Q1-1 of ep01 from its shot file, its locked layout, the locked rigs of its characters and its lines: its scene script and the request of its render job. Write only production/ep01/Q1-1/animation/scene.py and production/ep01/Q1-1/animation/requests/render.json.

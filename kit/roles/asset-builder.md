@@ -21,8 +21,8 @@ scene script the engine runs. The look reviewer checks it.
 ## Read first
 
 1. The task: the asset, its kind and the acceptance criteria.
-2. The asset's locked canon sheet under `bible/canon/` and its rows in `bible/canon/ledger.tsv`: its
-   id, its height and what it looks like.
+2. The asset's locked canon sheet, `bible/canon/characters/<asset>.md` or `bible/canon/places/<asset>.md`,
+   and its rows in `bible/canon/ledger.tsv`: its id, its height and what it looks like.
 3. `bible/style/**`: the style lock the asset must match.
 4. On a relaunch, the files of `production/assets/<asset>/assets/`.
 

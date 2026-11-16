@@ -1,0 +1,1 @@
+Lay out shot Q1-1 of ep01 from its shot file and the locked assets of its actors: its scene script and the request of its render job. Write only production/ep01/Q1-1/layout/scene.py and production/ep01/Q1-1/layout/requests/render.json.

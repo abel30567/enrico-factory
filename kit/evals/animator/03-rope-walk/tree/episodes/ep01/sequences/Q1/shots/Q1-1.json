@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": [
+    "odile"
+  ],
+  "set": "rope-walk",
+  "camera": "wide shot, eye level, slow pan left",
+  "action": "Odile walks the length of the rope, twisting it as she goes."
+}

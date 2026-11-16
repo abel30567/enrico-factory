@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["rigging"], "expect_files": ["production/assets/juno/rigging/scene.py", "production/assets/juno/rigging/requests/rig.json"]}

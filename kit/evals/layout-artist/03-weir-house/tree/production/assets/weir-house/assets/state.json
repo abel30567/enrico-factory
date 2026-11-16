@@ -1,0 +1,10 @@
+{
+  "asset": "weir-house",
+  "kind": "set",
+  "sha256": "ac0a5118261dc8da2333fb354e82988c1901dd7fdb926b54f68574f085898e0f",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "weir-house_body", "width": 2048, "height": 2048}],
+  "height_m": 6.5,
+  "skeleton": null
+}

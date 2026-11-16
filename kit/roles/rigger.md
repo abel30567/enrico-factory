@@ -22,7 +22,8 @@ joints, their limits and the poses of its range-of-motion test. The deformation 
 
 1. The task: the asset and the acceptance criteria.
 2. The asset's locked `production/assets/<asset>/assets/` files: `state.json` and its skeleton.
-3. The asset's canon sheet under `bible/canon/` and `bible/style/**`.
+3. The asset's canon sheet, `bible/canon/characters/<asset>.md` or `bible/canon/places/<asset>.md`,
+   and `bible/style/**`.
 4. On a relaunch, the files of `production/assets/<asset>/rigging/`.
 
 When two files disagree, this order wins: the rules of power, the charter, the production rules, the

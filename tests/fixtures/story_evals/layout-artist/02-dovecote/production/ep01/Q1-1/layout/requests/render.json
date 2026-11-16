@@ -1,0 +1,9 @@
+{
+ "for": "ep01/Q1-1",
+ "prompt": "Shot Q1-1, medium two-shot, eye level, slow push in: Corin hands Linnet a sealed letter.",
+ "refs": [
+  "media:corin-turnaround",
+  "media:linnet-turnaround",
+  "media:dovecote-plate"
+ ]
+}

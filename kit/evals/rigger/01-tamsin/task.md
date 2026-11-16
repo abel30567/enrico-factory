@@ -1,0 +1,1 @@
+Rig the asset tamsin from its locked state: give every joint a limit and test the poses walk, reach overhead and crouch. Write only production/assets/tamsin/rigging/scene.py and production/assets/tamsin/rigging/requests/rig.json.

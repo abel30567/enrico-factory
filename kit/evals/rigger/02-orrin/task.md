@@ -1,0 +1,1 @@
+Rig the asset orrin from its locked state: give every joint a limit and test the poses walk, push a lock beam and kneel. Write only production/assets/orrin/rigging/scene.py and production/assets/orrin/rigging/requests/rig.json.

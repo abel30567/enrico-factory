@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-1",
+  "stage": "simulation",
+  "fps": 24,
+  "frames": {"first": 0, "last": 11},
+  "actors": [],
+  "camera": null,
+  "framing": [],
+  "line_flips": [],
+  "motion": [{"actor": "vela", "foot_slide_mm": 2, "penetration_mm": 1, "float_mm": 1, "limit_violations": 0, "max_step_deg": 10}],
+  "lipsync": [],
+  "caches": [{"id": "vela-cloth", "sha256": "3f0e40a87bf3b917a056b3c01825c728a01ac1b2c336acd0fcffc3066fc5d8bc", "max_speed_m_s": 3.5, "energy_j": {"first": 50.0, "last": 42.0}, "gravity_m_s2": null}],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

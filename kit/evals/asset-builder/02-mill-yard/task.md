@@ -1,0 +1,1 @@
+Build the asset mill-yard, a set, from its canon and model sheets: its scene script and the request of its model3d job. Write only production/assets/mill-yard/assets/scene.py and production/assets/mill-yard/assets/requests/model3d.json.

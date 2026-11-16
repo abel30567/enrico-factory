@@ -1,0 +1,7 @@
+{
+ "for": "orrin",
+ "prompt": "Rig the character orrin for the poses walk, push a lock beam and kneel, with a limit on every joint.",
+ "refs": [
+  "asset:orrin"
+ ]
+}

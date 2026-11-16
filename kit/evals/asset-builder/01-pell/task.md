@@ -1,0 +1,1 @@
+Build the asset pell, a character, from its canon and model sheets: its scene script and the request of its model3d job. Write only production/assets/pell/assets/scene.py and production/assets/pell/assets/requests/model3d.json.
