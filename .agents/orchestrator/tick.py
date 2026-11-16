@@ -7,7 +7,8 @@
 # Without --apply it only prints the plan. Order of a tick:
 #   0. FREEZE -> report only. `git pull --ff-only` the orchestrator checkout. Resource guards (load, memory,
 #      workers alive across every repo, a usage-limit rejection) are preconditions on every launch: a failed
-#      guard prints one `WAIT guard:` line, starts nothing and never touches running work.
+#      guard prints one `WAIT guard:` line, starts nothing and never touches running work. The usage-limit
+#      hold is a Claude account's: it does not hold a verifier or blast-radius review whose VERIFIER_MODEL is grok-*.
 #   1. Each open [KEY] PR gets one state (BUILDING BLOCKED VERIFYING FIXING BLAST_RADIUS MERGEABLE STALLED):
 #        builder READY/ADDRESSED, verifier NONE/STALE  -> orch launch verifier PR "<issue body>"
 #        verifier CHANGES REQUESTED                   -> orch launch fixer PR (max 3 rounds, then hold + NEED)
@@ -129,12 +130,12 @@ def workers_alive():
     return n
 
 
-RESET_RE = re.compile(r"resets\s+(?:([A-Z][a-z]{2})\s+(\d{1,2})\s+at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?", re.I)
+RESET_RE = re.compile(r"resets\s+(?:([A-Z][a-z]{2})\s+(\d{1,2}),?\s+(?:at\s+)?)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)(?:\s*\(([^)]+)\))?", re.I)
 MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 
 
 def reset_at(text, written):
-    """The reset time a rejection names ("resets Nov 10 at 1am (America/New_York)", "resets 3am (Europe/Madrid)"),
+    """The reset time a rejection names ("resets Nov 10 at 1am (America/New_York)", "resets Nov 17, 6am (UTC)", "resets 3am (Europe/Madrid)"),
     as the first such moment after `written` (a UTC datetime), or None if the text names none."""
     m = RESET_RE.search(text)
     if not m:
@@ -200,6 +201,7 @@ def limit_hit():
 
 
 def static_guards():
+    """(guards on every launch, the usage-limit hold or None: it holds only launches that run on a Claude account)."""
     why = []
     load = os.getloadavg()[0]
     if load >= MAX_LOAD:
@@ -208,18 +210,17 @@ def static_guards():
     if free is not None and free < MIN_FREE_PCT:
         why.append(f"memory {free}% free < {MIN_FREE_PCT:g}%")
     hit = limit_hit()
-    if hit:
-        why.append(f"usage-limit rejection in {hit[0]} (held until {hit[1]:%Y-%m-%d %H:%M}Z)")
-    return why
+    return why, hit and f"usage-limit rejection in {hit[0]} (held until {hit[1]:%Y-%m-%d %H:%M}Z)"
 
 
 _guard_said = False
 
 
-def guarded(desc):
-    """True when a guard holds the launch `desc`: one `WAIT guard:` line per tick, one held line each."""
+def guarded(desc, claude=True):
+    """True when a guard holds the launch `desc`: one `WAIT guard:` line per tick, one held line each.
+    claude=False: the launch does not use a Claude account, so the usage-limit hold does not apply."""
     global _guard_said
-    why = list(GUARDS)
+    why = list(GUARDS) + ([LIMIT_HOLD] if LIMIT_HOLD and claude else [])
     if ALIVE0 + launched >= MAX_AGENTS:
         why.append(f"{ALIVE0 + launched} workers alive across repos (max {MAX_AGENTS})")
     if why and not _guard_said:
@@ -377,7 +378,8 @@ if APPLY:
 ALIVE0 = workers_alive()
 launched = 0
 changed = False   # a worker started, a label changed or a PR merged: the board is out of date
-GUARDS = static_guards()
+GUARDS, LIMIT_HOLD = static_guards()
+REVIEW_ON_CLAUDE = not C.get("VERIFIER_MODEL", "").startswith("grok-")   # adapters/fleet.py routes grok-* to route "grok"
 guarded("")   # the WAIT guard line, once, even when nothing would start
 PREV = last_states()
 
@@ -405,7 +407,7 @@ for p in prs:
         reason = lines[-1][1].removeprefix(tag).strip() if lines else ""
         if kind == "verifier":
             reason = "launch verifier"
-            if not guarded(f"{tag} launch verifier") and not reviews_full(f"{tag} launch verifier") and not capped(f"V{n}", head, tag):
+            if not guarded(f"{tag} launch verifier", REVIEW_ON_CLAUDE) and not reviews_full(f"{tag} launch verifier") and not capped(f"V{n}", head, tag):
                 iss = issue_of(p["body"], key)
                 body = sh("gh", "issue", "view", iss, "-R", R, "--json", "body", "--jq", ".body")[0] if iss else "(see the PR body)"
                 crit = (f"Ticket #{iss}. Its section 'Rulings from the orchestrator' and every [ORCHESTRATOR] comment on the "
@@ -421,7 +423,7 @@ for p in prs:
             act(f"{tag} hold after {step[1]} fix rounds", "gh", "pr", "edit", str(n), "-R", R, "--add-label", "merge:hold,status:blocked")
         elif kind == "br":
             reason = f"launch blast radius ({', '.join(step[1])})"
-            if not guarded(f"{tag} {reason}") and not reviews_full(f"{tag} {reason}") and not capped(f"BR{n}", head, tag):
+            if not guarded(f"{tag} {reason}", REVIEW_ON_CLAUDE) and not reviews_full(f"{tag} {reason}") and not capped(f"BR{n}", head, tag):
                 launch(f"{tag} {reason}", str(ORCH / "orch"), "launch", "br", str(n),
                        "Prove by running code what this change cannot break outside its diff.")
         elif kind == "stalled":
