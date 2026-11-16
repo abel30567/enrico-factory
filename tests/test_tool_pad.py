@@ -49,6 +49,12 @@ def request(**keys):
     return json.dumps(keys)
 
 
+def real(argv):
+    """``argv`` with every absolute path resolved, to compare with the fake's ``os.getcwd()`` (always resolved)
+    where the temporary directory sits under a symlink, as macOS ``/var`` -> ``/private/var``."""
+    return [os.path.realpath(arg) if os.path.isabs(arg) else arg for arg in argv]
+
+
 def free_port():
     """A loopback port nothing listens on."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -204,13 +210,13 @@ class Fake(PadCase):
         self.assertEqual(self.link.gets, [f"/media/{sha(PNG)}"])
         [seen] = self.calls()
         source = os.path.join(seen["cwd"], "source.png")
-        self.assertEqual(seen["argv"], [
+        self.assertEqual(real(seen["argv"]), real([
             "-nostdin", "-hide_banner", "-v", "error", "-noautorotate", "-i", source,
             "-vf", "format=rgb24,scale=4:5,pad=6:8:1:1:color=0xD3D3D3",
-            "-frames:v", "1", os.path.join(call["out"], "pad.png")])
+            "-frames:v", "1", os.path.join(call["out"], "pad.png")]))
         self.assertEqual(seen["input_sha256"], sha(PNG))
-        self.assertEqual(seen["env"], {"HOME": os.path.join(seen["cwd"], "home"), "LANG": "C.UTF-8",
-                                       "PATH": self.path})
+        self.assertEqual(dict(seen["env"], HOME=os.path.realpath(seen["env"]["HOME"])),
+                         {"HOME": os.path.join(seen["cwd"], "home"), "LANG": "C.UTF-8", "PATH": self.path})
         self.assertFalse(os.path.exists(seen["cwd"]))
 
     def test_jpeg_clean(self):
@@ -218,7 +224,7 @@ class Fake(PadCase):
         self.assertEqual(self.run_tool(call), {"usd": 0, "compute_min": 0})
         self.assertEqual(os.listdir(call["out"]), ["pad.png"])
         [seen] = self.calls()
-        self.assertEqual(seen["argv"][4:7], ["-noautorotate", "-i", os.path.join(seen["cwd"], "source.jpg")])
+        self.assertEqual(real(seen["argv"][4:7]), ["-noautorotate", "-i", os.path.join(seen["cwd"], "source.jpg")])
         self.assertEqual(seen["argv"][8], "format=rgb24,scale=5:4,pad=8:6:1:1:color=0xD3D3D3")
         self.assertEqual(seen["input_sha256"], sha(JPEG))
 
