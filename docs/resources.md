@@ -122,6 +122,7 @@ Everything else an agent can do. Start the long ones in wave 4, as the build ord
 | 9 | Fermi: `FERMI_URL` and the key file `knowledge.fermi`, a bearer token that lasts (#216) | minutes, unless the token needs a change on the live server (D2) | the knowledge gateway; without it a run goes on with `GATEWAY=off` |
 | 10 | The fleet's own xAI login (#538). Done on 2026-11-15: the fleet has its own sign-in, separate from the orchestrator machine's, since a copy of that machine's login dies when either side refreshes it. If it breaks again, sign the fleet in again on its own; never copy the machine's login | done | verifiers and blast-radius reviews on fleet boxes of the development loop |
 | 11 | Usage on the fleet's Claude account (#557). On 2026-11-15 at 23:34Z it hit its weekly limit. Done on 2026-11-16: the owner added a second Claude account and every worker runs on it; when a limit hits again, the same choice comes back (extra usage, another account, or the wait until the reset) | done | builders, fixers and drafters |
+| 12 | The sample production's iteration cap (primal-sample #41, 2026-11-16). The second style lock stopped at `CAP_TICKET_ITERATIONS=5`: the gate counts every maker launch, operators included, so 5 is about 2.5 rounds. Ask: set it to 10 in that repository's `production.env` and remove `hold` from #41. Round 3 costs about $0.30, and the money caps stay as they are | one line | every asset, rig and layout job of ep01, and so the master (#158) |
 
 ## 4. TikTok
 
