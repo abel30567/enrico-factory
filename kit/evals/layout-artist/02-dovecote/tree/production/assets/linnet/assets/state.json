@@ -1,0 +1,10 @@
+{
+  "asset": "linnet",
+  "kind": "character",
+  "sha256": "28034f9bc409e4d12adcd08d4ba543f6181b8bcf196175048332c5e001112721",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "linnet_body", "width": 2048, "height": 2048}],
+  "height_m": 1.6,
+  "skeleton": {"bones": [{"name": "pelvis", "parent": null}, {"name": "spine_01", "parent": "pelvis"}, {"name": "neck", "parent": "spine_01"}, {"name": "head", "parent": "neck"}, {"name": "upperarm_l", "parent": "spine_01"}, {"name": "upperarm_r", "parent": "spine_01"}, {"name": "lowerarm_l", "parent": "upperarm_l"}, {"name": "lowerarm_r", "parent": "upperarm_r"}, {"name": "thigh_l", "parent": "pelvis"}, {"name": "thigh_r", "parent": "pelvis"}, {"name": "calf_l", "parent": "thigh_l"}, {"name": "calf_r", "parent": "thigh_r"}], "weights_normalised": true}
+}

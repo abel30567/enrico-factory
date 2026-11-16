@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-1",
+  "stage": "layout",
+  "fps": 24,
+  "frames": {"first": 0, "last": 11},
+  "actors": [{"id": "odile", "kind": "character", "asset": "asset:odile", "sha256": "bb711a5f4b3d0300e3db2bd8f0bfcce11467cdad0079f25176887f4fb8db48d5", "scale": [1, 1, 1], "height_m": 1.6, "start": {"location": [0.0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0.0, 0, 0], "rotation": [0, 0, 90]}}, {"id": "rope-walk", "kind": "set", "asset": "asset:rope-walk", "sha256": "35e26c0273ded567d153136d23b413a39533abb973792558810c587c46b01c89", "scale": [1, 1, 1], "height_m": 5.0, "start": {"location": [0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 90]}}],
+  "camera": {"focal_mm": {"min": 35, "max": 35}, "sensor_mm": [36, 20.25], "start": {"location": [0.25, -5, 1.5], "rotation": [0, 0, 0]}, "end": {"location": [0.25, -5, 1.5], "rotation": [0, 0, 0]}},
+  "framing": [{"frame": 0, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 1, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 2, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 3, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 4, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 5, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 6, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 7, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 8, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 9, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 10, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 11, "actor": "odile", "box": [0.42, 0.2, 0.58, 0.95]}],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

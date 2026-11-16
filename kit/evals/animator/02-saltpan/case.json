@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["animation"], "expect_files": ["production/ep01/Q1-1/animation/scene.py", "production/ep01/Q1-1/animation/requests/render.json"]}

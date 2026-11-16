@@ -1,0 +1,10 @@
+{
+  "asset": "hesper",
+  "kind": "character",
+  "sha256": "e53efe7bc57d4cb3236a01be0a34a0c9358d28ab668a2d0a1f2c4752a6801ec7",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "hesper_body", "width": 2048, "height": 2048}],
+  "height_m": 1.65,
+  "skeleton": {"bones": [{"name": "pelvis", "parent": null}, {"name": "spine_01", "parent": "pelvis"}, {"name": "neck", "parent": "spine_01"}, {"name": "head", "parent": "neck"}, {"name": "upperarm_l", "parent": "spine_01"}, {"name": "upperarm_r", "parent": "spine_01"}, {"name": "lowerarm_l", "parent": "upperarm_l"}, {"name": "lowerarm_r", "parent": "upperarm_r"}, {"name": "thigh_l", "parent": "pelvis"}, {"name": "thigh_r", "parent": "pelvis"}, {"name": "calf_l", "parent": "thigh_l"}, {"name": "calf_r", "parent": "thigh_r"}], "weights_normalised": true}
+}
