@@ -73,3 +73,8 @@
   unpushed ledger commit; its `git pull --ff-only` then failed every tick from 21:08Z to 21:38Z and the
   asset PRs on the path to #158 stood still. Commit in the production checkout itself, or after pushing
   from elsewhere check `tail STATE/logs/tick.log` of the production for `Not possible to fast-forward`.
+- A production manifest row's free-text `source` is read by the job gate's not-ours check: a row the
+  orchestrator added on 2026-11-16 quoted an old `notion-` id there, and the gate refused the Krakaan
+  reference job until the row was reworded. Write no name from `research/not-ours.tsv` in any text a job
+  reads. When you push to a production pull's branch by hand, also move the clone's local branch (it may
+  be checked out in a finished worker's worktree): the tick and the gate read the local branch, not GitHub.
