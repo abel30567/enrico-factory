@@ -157,8 +157,9 @@ class RecordedWriteTest(TmpCase):
                              "body": "## Preview\n![panel.png](./panel.png)\n", "attachments": attached})
         self.assertEqual(self.file("comments/3.json")[-1], c)
         self.assertEqual(self.r.comments(3)[-1], c)
-        self.assertEqual(log_lines(self.d), [{"op": "post", "number": 3, "role": "program:preview", "attachments": attached,
-                                              "body": "## Preview\n![panel.png](./panel.png)"}])
+        logged = {"op": "post", "number": 3, "role": "program:preview", "attachments": attached,
+                  "body": "## Preview\n![panel.png](./panel.png)"}
+        self.assertEqual(log_lines(self.d), [logged])
         one = self.r.post(3, "x", "program:preview", paths[1:])
         self.assertEqual(one["attachments"], [{"name": "./views.png", "sha256": attached[1]["sha256"]}])
         self.assertNotIn("attachments", self.r.post(3, "x", "program:preview", []))
