@@ -12,14 +12,15 @@ The pictures and sheets are GitHub attachments of the comment, so only people wh
 see them; nothing goes to the media store. ``build`` copies each picture, under its name, and writes each
 sheet, as ``<sha256>.<ext>``, into a directory ``post`` makes and removes after the post; the body
 references each by that relative name (``![panel.png](./panel.png)``), and ``post`` passes the files to
-``gh.post``, which uploads them and rewrites the references to their links. A file larger than
-``github.ATTACH_MAX`` gets a ``Preview not available:`` line instead of an attachment.
+``gh.post`` with that directory as the ``root`` the names are relative to; it uploads them and rewrites the
+references to their links. A file larger than ``github.ATTACH_MAX`` gets a ``Preview not available:`` line
+instead of an attachment. A name with an empty, ``.`` or ``..`` part is not an item.
 
 The comment ends with a key line, ``<!-- preview-of <sha256> ... -->``. ``post`` reads the earlier comments
 of ``ROLE`` first: one with the same set of hashes and no ``Preview not available:`` line means nothing is
 built, attached or posted, so a rerun posts nothing twice. Bytes never go in git, and the body never holds a
-machine path (``guard``; a relative name like ``./panel.png`` is not one). The two ``after_*`` hooks never
-raise: they return the reason a comment was not posted, or None.
+machine path (``guard``; only the reference ``](./<name>)`` to a file the comment attaches is not one). The
+two ``after_*`` hooks never raise: they return the reason a comment was not posted, or None.
 """
 
 from __future__ import annotations
@@ -61,8 +62,6 @@ _NAME = re.compile(r"[A-Za-z0-9._-][A-Za-z0-9._/-]*")
 _HEADING = re.compile(r"#{1,6}[ \t]+\S")
 _KEY = re.compile(r"<!-- preview-of ([0-9a-f ]*) -->")
 _URL = re.compile(r"https?://\S+")
-_SEGMENT = r"[A-Za-z0-9._-]*[A-Za-z0-9_-][A-Za-z0-9._-]*"
-_RELATIVE = re.compile(rf"\]\(\./{_SEGMENT}(?:/{_SEGMENT})*\)")
 _ROOTS = frozenset({"Users", "home", "tmp", "var", "private", "etc", "opt", "root", "mnt", "Volumes"})
 _SLASHED = re.compile(r"(?<!\w)/([\w.@%+~-]+)(/[\w.@%+~-]+)?")
 _PATHS = (re.compile(r"~/"), re.compile(r"(?<!\S)~(?!\S)"), re.compile(r"file://"),
@@ -93,13 +92,18 @@ _DEFAULT = _Default()
 
 # -- the items
 
+def _named(name):
+    """Whether ``name`` is a relative name with no empty, ``.`` or ``..`` part."""
+    return bool(_NAME.fullmatch(name)) and all(part not in ("", ".", "..") for part in name.split("/"))
+
+
 def of_job(out_dir, outputs) -> list[Item]:
     """An item per output row whose file in ``out_dir`` is a regular file, sorted by name."""
     found = []
     for row in outputs:
         name = row["name"]
         path = Path(out_dir) / name
-        if not _NAME.fullmatch(name) or path.is_symlink() or not path.is_file():
+        if not _named(name) or path.is_symlink() or not path.is_file():
             continue
         data = path.read_bytes()
         found.append(Item(name, hashlib.sha256(data).hexdigest(), len(data), str(path), None))
@@ -110,7 +114,7 @@ def of_branch(root, base_ref, branch) -> list[Item]:
     """An item per markdown file ``branch`` changes against ``base_ref``, read from the branch, sorted by name."""
     found = []
     for name in gitstate.changed(root, base_ref, branch):
-        if not name.endswith(".md") or not _NAME.fullmatch(name):
+        if not name.endswith(".md") or not _named(name):
             continue
         text = gitstate.show(root, branch, name)
         if text is None:
@@ -137,11 +141,13 @@ def _kind(item, previews):
 
 # -- the guard
 
-def guard(body: str, forbid=()) -> None:
-    """``HandoffError`` when the body, its URLs, relative names and key line removed, holds a machine path or a
-    ``forbid``."""
+def guard(body: str, forbid=(), attached=()) -> None:
+    """``HandoffError`` when the body, its URLs, key line and references ``](./<name>)`` to the ``attached``
+    names removed, holds a machine path or a ``forbid``."""
     lines = [line for line in body.split("\n") if not _KEY.fullmatch(line.strip())]
-    text = _RELATIVE.sub("]( )", _URL.sub(" ", "\n".join(lines)))
+    text = _URL.sub(" ", "\n".join(lines))
+    for name in sorted(attached, key=len, reverse=True):
+        text = text.replace(f"](./{name})", "]( )")
     for found in _SLASHED.finditer(text):
         if found.group(2) or found.group(1) in _ROOTS:
             raise HandoffError(HOLDS_A_PATH)
@@ -236,7 +242,10 @@ TOO_LARGE = f"{UNAVAILABLE} larger than {_size(github.ATTACH_MAX)}, the most a G
 
 
 def _attach(directory, name, write):
-    """The path of ``name`` in ``directory``, made by ``write(path)`` unless it is there."""
+    """The path of ``name`` in ``directory``, made by ``write(path)`` unless it is there; ``HandoffError`` for a
+    name that is not a relative name inside it."""
+    if not _named(name):
+        raise HandoffError(HOLDS_A_PATH)
     path = os.path.join(directory, *name.split("/"))
     if not os.path.exists(path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -328,7 +337,7 @@ def build(items, source, directory, previews=None, forbid=()) -> tuple[str, bool
     if shown < len(showable):
         lines.append(f"{len(showable) - shown} more file(s) are not shown.")
     body = "\n".join(lines + ["", key]) + "\n"
-    guard(body, forbid)
+    guard(body, forbid, [Path(os.path.relpath(path, directory)).as_posix() for path in files])
     return body, complete, files
 
 
@@ -368,7 +377,7 @@ def post(gh, number, items, source, previews=None, forbid=()) -> dict | None:
             return None
         if not files:
             return gh.post(number, body, ROLE)
-        return gh.post(number, body, ROLE, attachments=files)
+        return gh.post(number, body, ROLE, attachments=files, root=tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

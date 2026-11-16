@@ -13,6 +13,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -179,13 +180,14 @@ def forbidden(tmp):
     return (str(tmp), str(Path.home()), tempfile.gettempdir())
 
 
-def checked(test, body, tmp):
-    """``body`` after the checks every built body passes: its first line, not a marker, no machine path."""
+def checked(test, body, tmp, attached=()):
+    """``body`` after the checks every built body passes: its first line, not a marker, no machine path but the
+    ``attached`` names."""
     first = body.split("\n", 1)[0]
     test.assertEqual(first, HEADING)
     test.assertIsNone(markers.parse(first))
     test.assertIsNone(markers.parse(body))
-    handoff.guard(body, forbidden(tmp))
+    handoff.guard(body, forbidden(tmp), attached)
     test.assertTrue(github.fits(body, ROLE))
     return body
 
@@ -215,7 +217,7 @@ class Case(unittest.TestCase):
         body, complete, paths = handoff.build(self.items(files), source, directory, previews, forbidden(self.tmp))
         self.assertTrue(all(Path(path).parent.is_relative_to(directory) for path in paths))
         attached = {Path(path).relative_to(directory).as_posix(): Path(path).read_bytes() for path in paths}
-        return checked(self, body, self.tmp), complete, attached
+        return checked(self, body, self.tmp, list(attached)), complete, attached
 
     def recorded(self, *numbers):
         directory = self.tmp / "github"
@@ -287,6 +289,24 @@ class Pictures(Case):
         body, complete, attached = self.build({"shots/panel.png": data})
         self.assertIn("![shots/panel.png](./shots/panel.png)", body.split("\n"))
         self.assertEqual((complete, attached), (True, {"shots/panel.png": data}))
+
+    def test_a_name_in_a_folder_is_posted_relative_to_the_directory_of_the_post(self):
+        (self.out / "shots").mkdir()
+        data = png()
+        made, gh = Made(self), self.recorded()
+        posts = []
+        real = gh.post
+
+        def post(number, body, role, attachments=(), root=None):
+            posts.append([os.path.join(root, ref) for ref in re.findall(r"\]\(\./([^)]*)\)", body)])
+            posts.append(list(attachments))
+            return real(number, body, role, attachments, root)
+
+        gh.post = post
+        posted = handoff.post(gh, 7, self.items({"shots/panel.png": data}), SOURCE, StubPreviews())
+        [tmp] = made.dirs
+        self.assertEqual(posts, [[os.path.join(tmp, "shots/panel.png")], [os.path.join(tmp, "shots", "panel.png")]])
+        self.assertEqual(posted["attachments"], [{"name": "./shots/panel.png", "sha256": sha(data)}])
 
     def test_seeded_a_picture_over_10_mb(self):
         body, complete, attached = self.build({"panel.png": big_png(github.ATTACH_MAX + 1)})
@@ -455,11 +475,15 @@ class Guard(Case):
     REFUSED = (slash("Users", "someone", "art", "ref.png"), slash("home", "a", "b"), slash("tmp", "x"), "~/work",
                "$HOME/x", "file://" + slash("etc", "passwd"), "C:\\Users\\a", "C:/a", "see ~ there", slash("var"),
                f"({slash('opt')})", slash("srv", "x"), slash("tmp"), slash("Users"), "![a](./../x/y)",
-               "![a](./a" + slash("..", "b") + ")")
+               "![a](./a" + slash("..", "b") + ")", "[key](." + slash("home", "me", "id_rsa") + ")",
+               "](." + slash("tmp", "foo.png") + ")", "![x](." + slash("etc", "passwd") + ")",
+               "![shots/panel.png](./shots/panel.png)")
     ALLOWED = ("and/or", "https://media.example.invalid/ab12/cd", "episodes/ep02/outline.md", "1/2",
                "<!-- preview-of " + "a" * 64 + " -->", "[the outline](episodes/ep02/outline.md)", "a / b",
-               "~~~~", "http://127.0.0.1:9/pub/ab", "![panel.png](./panel.png)",
-               "![shots/panel.png](./shots/panel.png)", "![a, 4 views](./" + "ab" * 32 + ".png)")
+               "~~~~", "http://127.0.0.1:9/pub/ab", "![panel.png](./panel.png)")
+    ATTACHED = {"![shots/panel.png](./shots/panel.png)": "shots/panel.png",
+                "![a, 4 views](./" + "ab" * 32 + ".png)": "ab" * 32 + ".png",
+                "![home/me/x.png](./home/me/x.png)": "home/me/x.png"}
 
     def test_refused(self):
         for text in self.REFUSED:
@@ -473,6 +497,23 @@ class Guard(Case):
         for text in self.ALLOWED:
             with self.subTest(text=text):
                 handoff.guard(f"{HEADING}\n\nsee {text} here\n", forbid=("a-secret-place-9f",))
+
+    def test_only_the_attached_names_are_relative_names(self):
+        for text, name in self.ATTACHED.items():
+            with self.subTest(text=text):
+                handoff.guard(f"{HEADING}\n\nsee {text} here\n", attached=[name, "panel.png"])
+                if "/" in name:
+                    with self.assertRaises(HandoffError):
+                        handoff.guard(f"{HEADING}\n\nsee {text} here\n", attached=["panel.png"])
+        with self.assertRaises(HandoffError):
+            handoff.guard("[key](." + slash("home", "me", "id_rsa") + ")\n", attached=["panel.png"])
+
+    def test_seeded_a_relative_link_to_a_machine_root_in_a_package_is_withheld(self):
+        text = "# Notes\n\nThe key is at [here](." + slash("home", "me", "id_rsa") + ") today.\nA clean line.\n"
+        self.assertEqual(handoff.summarise(text), ["# Notes", "[line withheld: it holds a path]", "A clean line."])
+        body = self.build({"notes.md": text})[0]
+        self.assertNotIn("id_rsa", body)
+        self.assertIn("[line withheld: it holds a path]", body.split("\n"))
 
     def test_a_path_in_a_package_is_withheld(self):
         text = f"# Notes\n\nThe reference is at {slash('Users', 'x', 'y')} today.\nA clean line.\n"
@@ -636,6 +677,22 @@ class Items(Case):
                                  Item("panel.png", sha(data), len(data), str(self.out / "panel.png"), None)])
         self.assertTrue(all(self.NAME.match(item.name) for item in found))
 
+    def test_seeded_a_name_out_of_the_directory_is_not_an_item(self):
+        (self.out / "sub").mkdir()
+        outside = self.tmp / "outside-escape.png"
+        outside.write_bytes(png())
+        rows = [{"name": name} for name in ("sub/../../outside-escape.png", "./sub/../x.png", "sub//x.png",
+                                             "sub/./x.png", "..")]
+        self.assertEqual(handoff.of_job(self.out, rows), [])
+        made, gh = Made(self), self.recorded()
+        item = Item("sub/../../outside-escape.png", sha(png()), len(png()), str(outside), None)
+        with self.assertRaises(HandoffError):
+            handoff.post(gh, 7, [item], SOURCE, StubPreviews())
+        [tmp] = made.dirs
+        self.assertFalse(os.path.exists(tmp))
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(tmp), "outside-escape.png")))
+        self.assertEqual(self.previews_of(gh), [])
+
     def test_of_branch(self):
         repo = self.tmp / "repo"
         repo.mkdir()
@@ -779,7 +836,7 @@ class RunHook(unittest.TestCase):
         for heading in ("# The package", "## First part", "## Second part"):
             self.assertIn("\n" + heading + "\n", body)
         self.assertEqual(self.store.objects, {sha(panel): panel})
-        handoff.guard(body, forbidden(w.tmp) + (str(w.root), str(w.state), str(w.secrets)))
+        handoff.guard(body, forbidden(w.tmp) + (str(w.root), str(w.state), str(w.secrets)), ["panel.gif"])
         log = self.t.World.log(w)
         posted = [n for n, e in enumerate(log) if e["op"] == "post" and e.get("role") == ROLE]
         trunk = [n for n, e in enumerate(log) if e["op"] == "push" and e.get("ref") == "trunk"]
@@ -816,15 +873,15 @@ class RunHook(unittest.TestCase):
 
 
 class FailingPost(github.Recorded):
-    def post(self, number, body, role, attachments=()):
+    def post(self, number, body, role, attachments=(), root=None):
         raise github.GitHubError(f"post #{number}: exit 1")
 
 
 class NoPreviewPost(github.Recorded):
-    def post(self, number, body, role, attachments=()):
+    def post(self, number, body, role, attachments=(), root=None):
         if role == ROLE:
             raise github.GitHubError(f"post #{number}: exit 1")
-        return super().post(number, body, role, attachments)
+        return super().post(number, body, role, attachments, root)
 
 
 class MakerHook(unittest.TestCase):

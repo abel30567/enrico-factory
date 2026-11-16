@@ -165,6 +165,18 @@ class RecordedWriteTest(TmpCase):
         self.assertNotIn("attachments", self.r.post(3, "x", "program:preview", []))
         self.assertNotIn("attachments", log_lines(self.d)[-1])
 
+    def test_post_with_attachments_named_relative_to_a_root(self):
+        folder, paths = self.attachments()
+        c = self.r.post(3, "## Preview\n![views.png](./sheets/views.png)", "program:preview", paths[1:],
+                        root=str(folder))
+        self.assertEqual(c["attachments"], [{"name": "./sheets/views.png",
+                                             "sha256": hashlib.sha256(b"a sheet").hexdigest()}])
+        before = tree(self.d)
+        with self.assertRaises(GitHubError) as e:
+            self.r.post(3, "x", "program:preview", paths, root=str(folder / "sheets"))
+        self.assertEqual(str(e.exception), "post #3: an attachment is not inside the root of the attachments")
+        self.assertEqual(tree(self.d), before)
+
     def test_post_refuses_an_attachment_it_cannot_attach(self):
         folder, paths = self.attachments()
         big = folder / "big.png"
@@ -566,6 +578,24 @@ class GhTest(unittest.TestCase):
         one = self.gh(ok(link), ok(json.dumps(answer))).post(3, "x", "program:preview", [str(tmp / "panel.png")])
         self.assertEqual(self.fake.argvs()[0][-2:], ["--attach", "./panel.png"])
         self.assertEqual(one["id"], 77)
+
+    def test_post_with_attachments_in_one_folder_of_the_root(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "shots").mkdir()
+        (tmp / "shots" / "panel.png").write_bytes(b"a picture")
+        answer = {"id": 77, "created_at": NOW, "body": "x", "user": {"login": "someone"}}
+        link = f"https://github.com/{REPO}/pull/3#issuecomment-77\n"
+        self.gh(ok(link), ok(json.dumps(answer))).post(3, "![shots/panel.png](./shots/panel.png)", "program:preview",
+                                                      [str(tmp / "shots" / "panel.png")], root=str(tmp))
+        argv, cwd = self.fake.argvs()[0], self.fake.calls[0][1]["cwd"]
+        self.assertEqual((argv[-2:], cwd), (["--attach", "./shots/panel.png"], str(tmp)))
+        # gh matches a body reference to an attachment by its absolute path from the directory it runs in.
+        self.assertEqual(os.path.abspath(os.path.join(cwd, "shots/panel.png")), str(tmp / "shots" / "panel.png"))
+        g = self.gh()
+        with self.assertRaises(GitHubError):
+            g.post(3, "x", "program:preview", [str(tmp / "shots" / "panel.png")], root=str(tmp / "other"))
+        self.assertEqual(self.fake.calls, [])
 
     def test_post_with_attachments_refused(self):
         tmp = Path(tempfile.mkdtemp())

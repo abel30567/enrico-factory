@@ -22,10 +22,10 @@ setting ``GITHUB_LOGINS`` does not name (compared without regard to case), so no
 ``Recorded`` always names ``factory``, and reads a stored comment with no ``author`` as written by it.
 
 ``post`` takes optional attachments, local pictures or videos of at most ``ATTACH_MAX`` bytes each. Each is
-named by ``./`` and its path relative to the attachments' common directory, the way the body references
-it (``![alt](./panel.png)``). ``Gh.post`` posts a comment with attachments through ``gh issue comment
---attach``, run in that directory, which uploads them as GitHub attachments and rewrites those references
-to their links; with none it keeps the REST call. ``Recorded.post`` stores and logs the attachments as
+named by ``./`` and its path relative to ``root`` (by default the attachments' common directory), the way
+the body references it (``![alt](./shots/panel.png)``); one outside ``root`` is refused. ``Gh.post`` posts
+a comment with attachments through ``gh issue comment --attach``, run in ``root``, which uploads them as
+GitHub attachments and rewrites those references to their links; with none it keeps the REST call. ``Recorded.post`` stores and logs the attachments as
 ``{"name", "sha256"}`` rows, under ``attachments``, only when there are some.
 
 GitHub records no role, so ``Gh.post`` ends the body with ``<!-- factory:role <role> -->`` after a
@@ -138,8 +138,9 @@ def _check_role(number, role) -> None:
         raise GitHubError(f"post #{number}: role must match {ROLE.pattern}")
 
 
-def _attached(number, attachments) -> list:
-    """``(directory, [(name, path)])`` of the attachments; ``GitHubError`` for one that is not a file to attach."""
+def _attached(number, attachments, root=None) -> list:
+    """``(directory, [(name, path)])`` of the attachments, named relative to ``root`` (by default their common
+    directory); ``GitHubError`` for one that is not a file to attach or not inside ``root``."""
     paths = [os.path.abspath(path) for path in attachments]
     for path in paths:
         if os.path.islink(path) or not os.path.isfile(path):
@@ -148,7 +149,12 @@ def _attached(number, attachments) -> list:
             raise GitHubError(f"post #{number}: an attachment is larger than {ATTACH_MAX} bytes")
     if not paths:
         return None, []
-    directory = os.path.commonpath([os.path.dirname(path) for path in paths])
+    if root is None:
+        directory = os.path.commonpath([os.path.dirname(path) for path in paths])
+    else:
+        directory = os.path.abspath(root)
+        if any(os.path.commonpath([directory, path]) != directory for path in paths):
+            raise GitHubError(f"post #{number}: an attachment is not inside the root of the attachments")
     return directory, [("./" + Path(os.path.relpath(path, directory)).as_posix(), path) for path in paths]
 
 
@@ -244,10 +250,10 @@ class Recorded:
 
     # -- writes
 
-    def post(self, number: int, body: str, role: str, attachments=()) -> dict:
+    def post(self, number: int, body: str, role: str, attachments=(), root=None) -> dict:
         _check_role(number, role)
         _check_body(number, body, role)
-        _, named = _attached(number, attachments)
+        _, named = _attached(number, attachments, root)
         self._issue_or_pull("post", number)
         attached = [{"name": name, "sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest()}
                     for name, path in named]
@@ -482,12 +488,12 @@ class Gh:
 
     # -- writes
 
-    def post(self, number: int, body: str, role: str, attachments=()) -> dict:
+    def post(self, number: int, body: str, role: str, attachments=(), root=None) -> dict:
         """The posted comment; with attachments through ``gh issue comment``, which prints the comment's link,
         and the comment is then read back by its id."""
         _check_role(number, role)
         _check_body(number, body, role)
-        directory, named = _attached(number, attachments)
+        directory, named = _attached(number, attachments, root)
         if named:
             argv = ["gh", "issue", "comment", str(number), "-R", self.repo, "--body-file", "-"]
             for name, _ in named:
