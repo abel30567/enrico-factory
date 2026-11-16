@@ -13,12 +13,20 @@ Shapes (keys exactly these; times ``YYYY-MM-DDTHH:MM:SSZ``):
 - issue: ``{"number", "title", "body", "state": "open"|"closed", "labels": [sorted names], "created_at"}``;
 - pull: ``{"number", "title", "body", "state": "open"|"merged"|"closed", "labels", "head_ref", "base_ref",
   "ticket": int | None, "created_at", "merged_at": str | None}``;
-- comment: ``{"id": int, "created_at", "author": str, "role": str, "body"}``.
+- comment: ``{"id": int, "created_at", "author": str, "role": str, "body"}``, and in ``Recorded`` the
+  ``attachments`` of a comment posted with some.
 
 ``author`` is the login that posted a comment. ``comments`` leaves out every comment whose author the
 setting ``GITHUB_LOGINS`` does not name (compared without regard to case), so no caller ever reads one;
 ``Gh.post`` raises when GitHub says the kit posted as such a login. ``Gh`` names nobody by default.
 ``Recorded`` always names ``factory``, and reads a stored comment with no ``author`` as written by it.
+
+``post`` takes optional attachments, local pictures or videos of at most ``ATTACH_MAX`` bytes each. Each is
+named by ``./`` and its path relative to the attachments' common directory, the way the body references
+it (``![alt](./panel.png)``). ``Gh.post`` posts a comment with attachments through ``gh issue comment
+--attach``, run in that directory, which uploads them as GitHub attachments and rewrites those references
+to their links; with none it keeps the REST call. ``Recorded.post`` stores and logs the attachments as
+``{"name", "sha256"}`` rows, under ``attachments``, only when there are some.
 
 GitHub records no role, so ``Gh.post`` ends the body with ``<!-- factory:role <role> -->`` after a
 newline. That newline cannot be told apart from one the body already had, so a posted comment's body
@@ -30,6 +38,7 @@ exception is the three digits of an HTTP status, as in ``post #1: exit 1 (HTTP 4
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -53,6 +62,8 @@ REPO_NAME = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 FACTORY_LOGIN = "factory"
 LABEL_MAX = 50
 BODY_MAX = 65536
+ATTACH_MAX = 10 * 1000 * 1000
+COMMENT_LINK = re.compile(r"#issuecomment-(\d+)\s*$")
 HTTP_STATUS = re.compile(r"\(HTTP (\d{3})\)$")
 NOT_RESOLVED = "GraphQL: Could not resolve to "
 TLS_TIMEOUT = "TLS handshake timeout"
@@ -125,6 +136,20 @@ def _check_body(number, body, role) -> None:
 def _check_role(number, role) -> None:
     if not isinstance(role, str) or not ROLE.match(role):
         raise GitHubError(f"post #{number}: role must match {ROLE.pattern}")
+
+
+def _attached(number, attachments) -> list:
+    """``(directory, [(name, path)])`` of the attachments; ``GitHubError`` for one that is not a file to attach."""
+    paths = [os.path.abspath(path) for path in attachments]
+    for path in paths:
+        if os.path.islink(path) or not os.path.isfile(path):
+            raise GitHubError(f"post #{number}: an attachment is not a regular file")
+        if os.path.getsize(path) > ATTACH_MAX:
+            raise GitHubError(f"post #{number}: an attachment is larger than {ATTACH_MAX} bytes")
+    if not paths:
+        return None, []
+    directory = os.path.commonpath([os.path.dirname(path) for path in paths])
+    return directory, [("./" + Path(os.path.relpath(path, directory)).as_posix(), path) for path in paths]
 
 
 def _check_labels(where: str, labels) -> None:
@@ -219,14 +244,18 @@ class Recorded:
 
     # -- writes
 
-    def post(self, number: int, body: str, role: str) -> dict:
+    def post(self, number: int, body: str, role: str, attachments=()) -> dict:
         _check_role(number, role)
         _check_body(number, body, role)
+        _, named = _attached(number, attachments)
         self._issue_or_pull("post", number)
+        attached = [{"name": name, "sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest()}
+                    for name, path in named]
+        extra = {"attachments": attached} if attached else {}
         comment = {"id": self._next_comment_id(), "created_at": _now(), "author": FACTORY_LOGIN, "role": role,
-                   "body": _ended(body)}
+                   "body": _ended(body), **extra}
         self._write(f"comments/{number}.json", self._stored(number) + [comment])
-        self._log("post", number, body=body, role=role)
+        self._log("post", number, body=body, role=role, **extra)
         return comment
 
     def create_issue(self, title: str, body: str, labels) -> int:
@@ -388,17 +417,18 @@ class Gh:
         self._run = run
         self.logins = frozenset(name.lower() for name in logins)
 
-    def _start(self, argv: list, payload=None):
+    def _start(self, argv: list, payload=None, text=None, cwd=None):
         run = self._run or subprocess.run
-        stdin = "" if payload is None else json.dumps(payload)
+        stdin = text if text is not None else "" if payload is None else json.dumps(payload)
+        where = {} if cwd is None else {"cwd": cwd}
         for _ in range(RUNS):
-            done = run(argv, input=stdin, capture_output=True, text=True)
+            done = run(argv, input=stdin, capture_output=True, text=True, **where)
             if done.returncode == 0 or TLS_TIMEOUT not in (done.stderr or ""):
                 break
         return done
 
-    def _call(self, op: str, number, argv: list, payload=None) -> str:
-        done = self._start(argv, payload)
+    def _call(self, op: str, number, argv: list, payload=None, text=None, cwd=None) -> str:
+        done = self._start(argv, payload, text, cwd)
         if done.returncode != 0:
             raise _failure(op, number, done)
         return done.stdout
@@ -452,10 +482,25 @@ class Gh:
 
     # -- writes
 
-    def post(self, number: int, body: str, role: str) -> dict:
+    def post(self, number: int, body: str, role: str, attachments=()) -> dict:
+        """The posted comment; with attachments through ``gh issue comment``, which prints the comment's link,
+        and the comment is then read back by its id."""
         _check_role(number, role)
         _check_body(number, body, role)
-        comment = _comment(self._api("post", number, "POST", f"issues/{number}/comments", {"body": _sent(body, role)}))
+        directory, named = _attached(number, attachments)
+        if named:
+            argv = ["gh", "issue", "comment", str(number), "-R", self.repo, "--body-file", "-"]
+            for name, _ in named:
+                argv += ["--attach", name]
+            out = self._call("post", number, argv, text=_sent(body, role), cwd=directory)
+            m = COMMENT_LINK.search(out.strip())
+            if not m:
+                raise GitHubError(f"post #{number}: gh printed no link to the comment")
+            path = f"repos/{self.repo}/issues/comments/{m.group(1)}"
+            raw = json.loads(self._call("post", number, ["gh", "api", path]))
+        else:
+            raw = self._api("post", number, "POST", f"issues/{number}/comments", {"body": _sent(body, role)})
+        comment = _comment(raw)
         if comment["author"].lower() not in self.logins:
             raise GitHubError(f"post #{number}: posted as a login that setting GITHUB_LOGINS does not name")
         return comment

@@ -3,7 +3,8 @@
 Every picture, GLB, clip and package here is made by the test (a gradient, a box, invented sections). The
 previewer is the stand-in ``StubPreviews`` (the contract of ``kit.lib.preview``), except in ``Integration``,
 which runs only once ``kit.lib.preview`` is on the base. GitHub is ``github.Recorded`` in a temporary
-directory; the media store is ``test_media.FakeStore`` or a stub ``put``. Nothing reaches the network.
+directory, which records each comment's attachments; ``test_media.FakeStore`` stands for a media store the preview
+must not touch. Nothing reaches the network.
 """
 
 import contextlib
@@ -32,7 +33,6 @@ from kit.lib import github, glb, handoff, markers, media, resources  # noqa: E40
 from kit.lib.handoff import HEADING, ROLE, HandoffError, Item  # noqa: E402
 
 SOURCE = "The outputs of job 0123456789ab by tool fake."
-LINK = "https://media.example.invalid/"
 GLB_NOTES = ("4 views: front, right, back, three-quarter",)
 VIDEO_NOTES = ("12 frames over 8.0 s",)
 BOX_LINE = "12 triangles, 1 material(s), textures none, height 1.0 m, no skeleton"
@@ -145,18 +145,29 @@ class StubPreviews:
         return Preview("video", "png", self.sheet, VIDEO_NOTES)
 
 
-class Put:
-    """A stub ``put``: the link of the file's sha256, every call recorded as ``(name, bytes)``."""
+def big_png(size):
+    """A file of ``size`` bytes the previewer takes for a PNG."""
+    head = png()
+    return head + b"\x00" * (size - len(head))
 
-    def __init__(self, error=None):
-        self.error, self.calls = error, []
 
-    def __call__(self, path):
-        data = Path(path).read_bytes()
-        self.calls.append((os.path.basename(path), data, path))
-        if self.error is not None:
-            raise HandoffError(self.error)
-        return LINK + sha(data)
+TOO_LARGE = "Preview not available: larger than 10.0 MB, the most a GitHub attachment holds"
+
+
+class Made:
+    """The temporary directories ``handoff.post`` makes, with ``tempfile.mkdtemp`` wrapped while in use."""
+
+    def __init__(self, test):
+        self.dirs = []
+        real = tempfile.mkdtemp
+
+        def mkdtemp(*args, **kwargs):
+            self.dirs.append(real(*args, **kwargs))
+            return self.dirs[-1]
+
+        patch = mock.patch.object(handoff.tempfile, "mkdtemp", mkdtemp)
+        patch.start()
+        test.addCleanup(patch.stop)
 
 
 def slash(*parts):
@@ -197,11 +208,14 @@ class Case(unittest.TestCase):
                 for name, data in files.items()]
         return handoff.of_job(self.out, rows)
 
-    def build(self, files, put=None, previews=None, source=SOURCE):
-        put = Put() if put is None else put
+    def build(self, files, previews=None, source=SOURCE):
+        """``(body, complete, attached)``: ``attached`` maps the name of each file to attach to its bytes."""
         previews = StubPreviews() if previews is None else previews
-        body, complete = handoff.build(self.items(files), put, source, previews, forbidden(self.tmp))
-        return checked(self, body, self.tmp), complete, put
+        directory = Path(tempfile.mkdtemp(dir=self.tmp))
+        body, complete, paths = handoff.build(self.items(files), source, directory, previews, forbidden(self.tmp))
+        self.assertTrue(all(Path(path).parent.is_relative_to(directory) for path in paths))
+        attached = {Path(path).relative_to(directory).as_posix(): Path(path).read_bytes() for path in paths}
+        return checked(self, body, self.tmp), complete, attached
 
     def recorded(self, *numbers):
         directory = self.tmp / "github"
@@ -236,35 +250,54 @@ def text_body(case):
 
 
 def failed_body(case):
-    return case.build({"model.glb": box(), "panel.png": png()}, put=Put("the media store did not take a preview: "
-                                                                        "store answered 500"))[0]
+    return case.build({"model.glb": box(), "panel.png": big_png(github.ATTACH_MAX + 1)},
+                      previews=StubPreviews(error="glb: the model has no visible area"))[0]
 
 
 class Pictures(Case):
-    def test_picture_embedded_by_the_link_put_returned(self):
+    def test_picture_referenced_by_its_relative_name_and_attached(self):
         data = png()
-        body, complete, put = self.build({"panel.png": data})
+        body, complete, attached = self.build({"panel.png": data})
         lines = body.rstrip("\n").split("\n")
         self.assertEqual(lines[0], HEADING)
         self.assertEqual(lines[1:4], ["", SOURCE, ""])
-        self.assertIn(f"![panel.png]({LINK}{sha(data)})", lines)
+        self.assertIn("![panel.png](./panel.png)", lines)
         self.assertEqual(lines[-1], f"<!-- preview-of {sha(data)} -->")
         self.assertTrue(complete)
-        self.assertEqual([(name, got) for name, got, _ in put.calls], [("panel.png", data)])
-        self.assertEqual(put.calls[0][2], str(self.out / "panel.png"))
+        self.assertEqual(attached, {"panel.png": data})
+        self.assertNotIn("http", body)
 
     def test_the_exact_form(self):
         data = png()
         body = self.build({"panel.png": data})[0]
         self.assertEqual(body, "\n".join([
             HEADING, "", SOURCE, "", "### `panel.png`", f"sha256 {sha(data)[:12]}, {len(data)} B",
-            f"![panel.png]({LINK}{sha(data)})", "", f"<!-- preview-of {sha(data)} -->"]) + "\n")
+            "![panel.png](./panel.png)", "", f"<!-- preview-of {sha(data)} -->"]) + "\n")
         self.assertEqual(self.build({"panel.png": data})[0], body)
 
-    def test_seeded_the_name_is_not_the_link(self):
+    def test_seeded_the_reference_is_relative(self):
         body = self.build({"panel.png": png()})[0]
         self.assertNotIn("![panel.png](panel.png)", body)
         self.assertNotIn(str(self.out), body)
+        self.assertNotIn("http", body)
+
+    def test_a_name_in_a_folder(self):
+        (self.out / "shots").mkdir()
+        data = png()
+        body, complete, attached = self.build({"shots/panel.png": data})
+        self.assertIn("![shots/panel.png](./shots/panel.png)", body.split("\n"))
+        self.assertEqual((complete, attached), (True, {"shots/panel.png": data}))
+
+    def test_seeded_a_picture_over_10_mb(self):
+        body, complete, attached = self.build({"panel.png": big_png(github.ATTACH_MAX + 1)})
+        lines = body.split("\n")
+        self.assertFalse(complete)
+        self.assertIn(TOO_LARGE, lines)
+        self.assertFalse([line for line in lines if line.startswith("![")])
+        self.assertEqual(attached, {})
+        body, complete, attached = self.build({"panel.png": big_png(github.ATTACH_MAX)})
+        self.assertIn("![panel.png](./panel.png)", body.split("\n"))
+        self.assertEqual((complete, list(attached)), (True, ["panel.png"]))
 
     def test_sizes(self):
         self.assertEqual([handoff._size(n) for n in (0, 999, 1000, 12345, 999999, 1000000, 16 * 10 ** 6)],
@@ -274,30 +307,24 @@ class Pictures(Case):
 class Glb(Case):
     def test_box_summary_sheet_and_notes(self):
         sheet = png(16, 16)
-        seen = []
-
-        def put(path):
-            seen.append((os.path.basename(path), Path(path).read_bytes(), path))
-            return LINK + "sheet"
-
-        body, complete, _ = self.build({"model.glb": box()}, put=put, previews=StubPreviews(sheet))
+        body, complete, attached = self.build({"model.glb": box()}, previews=StubPreviews(sheet))
         lines = body.split("\n")
         self.assertTrue(complete)
         at = lines.index("### `model.glb`")
-        self.assertEqual(lines[at + 2:at + 5], [BOX_LINE, f"![model.glb, 4 views]({LINK}sheet)", GLB_NOTES[0]])
-        self.assertEqual([(name, data) for name, data, _ in seen], [(f"{sha(sheet)}.png", sheet)])
-        self.assertFalse(os.path.exists(seen[0][2]))
-        self.assertFalse(os.path.exists(os.path.dirname(seen[0][2])))
+        self.assertEqual(lines[at + 2:at + 5], [BOX_LINE, f"![model.glb, 4 views](./{sha(sheet)}.png)",
+                                                GLB_NOTES[0]])
+        self.assertEqual(attached, {f"{sha(sheet)}.png": sheet})
+        self.assertNotIn("http", body)
 
     def test_seeded_the_preview_fails(self):
-        body, complete, put = self.build({"model.glb": box()},
-                                         previews=StubPreviews(error="glb: the model has no visible area"))
+        body, complete, attached = self.build({"model.glb": box()},
+                                              previews=StubPreviews(error="glb: the model has no visible area"))
         lines = body.split("\n")
         self.assertFalse(complete)
         self.assertIn(BOX_LINE, lines)
         self.assertIn("Preview not available: glb: the model has no visible area", lines)
         self.assertFalse([line for line in lines if line.startswith("![")])
-        self.assertEqual(put.calls, [])
+        self.assertEqual(attached, {})
 
     def test_seeded_not_a_glb(self):
         body, complete, _ = self.build({"model.glb": b"glTF" + b"\x02\x00\x00\x00 broken bytes"})
@@ -306,15 +333,16 @@ class Glb(Case):
         self.assertFalse([line for line in lines if "triangles" in line])
         self.assertIn(f"Preview not available: {NOT_A_GLB}", lines)
 
-    def test_seeded_the_store_fails(self):
-        body, complete, put = self.build({"model.glb": box()}, put=Put("the media store did not take a preview: "
-                                                                       "store answered 500"))
+    def test_seeded_the_sheet_is_over_10_mb(self):
+        body, complete, attached = self.build({"model.glb": box()},
+                                              previews=StubPreviews(big_png(github.ATTACH_MAX + 1)))
         lines = body.split("\n")
         self.assertFalse(complete)
-        self.assertIn("Preview not available: the media store did not take a preview: store answered 500", lines)
+        self.assertIn(TOO_LARGE, lines)
         self.assertIn(BOX_LINE, lines)
         self.assertIn(GLB_NOTES[0], lines)
-        self.assertFalse(os.path.exists(put.calls[0][2]))
+        self.assertFalse([line for line in lines if line.startswith("![")])
+        self.assertEqual(attached, {})
 
     def test_seeded_an_error_out_of_of_is_not_caught_by_build(self):
         stub = StubPreviews()
@@ -326,13 +354,44 @@ class Glb(Case):
 class Video(Case):
     def test_contact_sheet_and_notes(self):
         sheet = png(12, 9)
-        body, complete, put = self.build({"clip.mp4": VIDEO}, previews=StubPreviews(sheet))
+        body, complete, attached = self.build({"clip.mp4": VIDEO}, previews=StubPreviews(sheet))
         lines = body.split("\n")
         self.assertTrue(complete)
         at = lines.index("### `clip.mp4`")
-        self.assertEqual(lines[at + 2:at + 4], [f"![clip.mp4, contact sheet]({LINK}{sha(sheet)})", VIDEO_NOTES[0]])
+        self.assertEqual(lines[at + 2:at + 4], [f"![clip.mp4, contact sheet](./{sha(sheet)}.png)", VIDEO_NOTES[0]])
         self.assertNotIn("4 views", body)
-        self.assertEqual([name for name, _, _ in put.calls], [f"{sha(sheet)}.png"])
+        self.assertEqual(attached, {f"{sha(sheet)}.png": sheet})
+
+
+class Sheets(Case):
+    def test_a_glb_and_a_video_post_their_sheets_as_attachments(self):
+        gh, made = self.recorded(), Made(self)
+        glb_sheet, clip_sheet = png(16, 16), png(12, 9)
+
+        class Two(StubPreviews):
+            def of(self, path):
+                found = super().of(path)
+                return found._replace(data=glb_sheet if found.kind == "glb" else clip_sheet)
+
+        posted = handoff.post(gh, 7, self.items({"model.glb": box(), "clip.mp4": VIDEO}), SOURCE, Two(),
+                              forbidden(self.tmp))
+        lines = checked(self, posted["body"], self.tmp).split("\n")
+        self.assertIn(f"![model.glb, 4 views](./{sha(glb_sheet)}.png)", lines)
+        self.assertIn(f"![clip.mp4, contact sheet](./{sha(clip_sheet)}.png)", lines)
+        self.assertNotIn("http", posted["body"])
+        self.assertEqual(posted["attachments"], [{"name": f"./{sha(clip_sheet)}.png", "sha256": sha(clip_sheet)},
+                                                 {"name": f"./{sha(glb_sheet)}.png", "sha256": sha(glb_sheet)}])
+        self.assertEqual(gh_log(gh)[-1]["attachments"], posted["attachments"])
+        [tmp] = made.dirs
+        self.assertFalse(os.path.exists(tmp))
+
+    def test_the_directory_is_gone_when_the_post_fails(self):
+        made = Made(self)
+        gh = FailingPost(self.recorded().dir)
+        with self.assertRaises(github.GitHubError):
+            handoff.post(gh, 7, self.items({"model.glb": box()}), SOURCE, StubPreviews())
+        [tmp] = made.dirs
+        self.assertFalse(os.path.exists(tmp))
 
 
 class Summary(Case):
@@ -395,10 +454,12 @@ class Summary(Case):
 class Guard(Case):
     REFUSED = (slash("Users", "someone", "art", "ref.png"), slash("home", "a", "b"), slash("tmp", "x"), "~/work",
                "$HOME/x", "file://" + slash("etc", "passwd"), "C:\\Users\\a", "C:/a", "see ~ there", slash("var"),
-               f"({slash('opt')})", slash("srv", "x"), slash("tmp"), slash("Users"))
+               f"({slash('opt')})", slash("srv", "x"), slash("tmp"), slash("Users"), "![a](./../x/y)",
+               "![a](./a" + slash("..", "b") + ")")
     ALLOWED = ("and/or", "https://media.example.invalid/ab12/cd", "episodes/ep02/outline.md", "1/2",
                "<!-- preview-of " + "a" * 64 + " -->", "[the outline](episodes/ep02/outline.md)", "a / b",
-               "~~~~", "http://127.0.0.1:9/pub/ab")
+               "~~~~", "http://127.0.0.1:9/pub/ab", "![panel.png](./panel.png)",
+               "![shots/panel.png](./shots/panel.png)", "![a, 4 views](./" + "ab" * 32 + ".png)")
 
     def test_refused(self):
         for text in self.REFUSED:
@@ -426,7 +487,7 @@ class Guard(Case):
         gh = self.recorded()
         items = [Item("outline.md", "a" * 64, 10, None, "# One\n\nbody\n")]
         with self.assertRaises(HandoffError):
-            handoff.post(gh, 7, items, Put(), "the source names " + slash("home", "a", "b"), StubPreviews())
+            handoff.post(gh, 7, items, "the source names " + slash("home", "a", "b"), StubPreviews())
         self.assertEqual(self.previews_of(gh), [])
 
 
@@ -437,7 +498,7 @@ class NotAMarker(Case):
         for source in (SOURCE, "[PRODUCER] GATE PASS", "[PREVIEW] POSTED"):
             for name in ("outline.md", "[WRITER] READY.md"):
                 items = [Item(name, sha(b"x"), 1, None, "[WRITER] READY\n\n# H\n")]
-                body, _ = handoff.build(items, Put(), source, StubPreviews())
+                body, _, _ = handoff.build(items, source, self.tmp, StubPreviews())
                 with self.subTest(source=source, name=name):
                     checked(self, body, self.tmp)
                     self.assertTrue(body.startswith(HEADING + "\n"))
@@ -445,39 +506,54 @@ class NotAMarker(Case):
 
 class Idempotent(Case):
     def test_twice_posts_once_and_builds_nothing_the_second_time(self):
-        gh, put, stub = self.recorded(), Put(), StubPreviews()
+        gh, stub, made = self.recorded(), StubPreviews(), Made(self)
         items = self.items({"panel.png": png(), "model.glb": box()})
-        first = handoff.post(gh, 7, items, put, SOURCE, stub)
+        first = handoff.post(gh, 7, items, SOURCE, stub)
         self.assertEqual(first["role"], ROLE)
         checked(self, first["body"], self.tmp)
-        calls, of_calls = len(put.calls), stub.calls
-        self.assertEqual((calls, of_calls), (2, 1))
-        self.assertIsNone(handoff.post(gh, 7, items, put, SOURCE, stub))
-        self.assertEqual((len(put.calls), stub.calls), (calls, of_calls))
-        self.assertIsNone(handoff.post(gh, 7, list(reversed(items)), put, SOURCE, stub))
+        self.assertEqual([a["name"] for a in first["attachments"]], [f"./{sha(stub.sheet)}.png", "./panel.png"])
+        self.assertEqual((len(made.dirs), stub.calls), (1, 1))
+        self.assertIsNone(handoff.post(gh, 7, items, SOURCE, stub))
+        self.assertEqual((len(made.dirs), stub.calls), (1, 1))
+        self.assertIsNone(handoff.post(gh, 7, list(reversed(items)), SOURCE, stub))
         self.assertEqual(len(self.previews_of(gh)), 1)
         self.write("panel.png", png(shade=7))
         changed = handoff.of_job(self.out, [{"name": "panel.png"}, {"name": "model.glb"}])
-        second = handoff.post(gh, 7, changed, put, SOURCE, stub)
+        second = handoff.post(gh, 7, changed, SOURCE, stub)
         self.assertIsNotNone(second)
+        self.assertEqual(second["attachments"][1], {"name": "./panel.png", "sha256": sha(png(shade=7))})
         self.assertEqual(len(self.previews_of(gh)), 2)
         self.assertEqual([e["op"] for e in gh_log(gh)], ["post", "post"])
+        self.assertFalse([d for d in made.dirs if os.path.exists(d)])
 
     def test_incomplete_then_complete(self):
-        gh, stub = self.recorded(), StubPreviews()
-        items = self.items({"panel.png": png()})
-        failing = Put("the media store did not take a preview: store unreachable")
-        first = handoff.post(gh, 7, items, failing, SOURCE, stub)
-        self.assertIn("Preview not available: the media store did not take a preview: store unreachable",
-                      first["body"])
-        self.assertIsNone(handoff.post(gh, 7, items, failing, SOURCE, stub))
+        gh = self.recorded()
+        items = self.items({"model.glb": box()})
+        failing = StubPreviews(error="glb: the model has no visible area")
+        first = handoff.post(gh, 7, items, SOURCE, failing)
+        self.assertIn("Preview not available: glb: the model has no visible area", first["body"])
+        self.assertNotIn("attachments", first)
+        self.assertIsNone(handoff.post(gh, 7, items, SOURCE, failing))
         self.assertEqual(len(self.previews_of(gh)), 1)
-        second = handoff.post(gh, 7, items, Put(), SOURCE, stub)
+        stub = StubPreviews()
+        second = handoff.post(gh, 7, items, SOURCE, stub)
         self.assertNotIn("Preview not available", second["body"])
-        put = Put()
-        self.assertIsNone(handoff.post(gh, 7, items, put, SOURCE, stub))
-        self.assertEqual(put.calls, [])
+        self.assertEqual(second["attachments"], [{"name": f"./{sha(stub.sheet)}.png", "sha256": sha(stub.sheet)}])
+        self.assertIsNone(handoff.post(gh, 7, items, SOURCE, stub))
+        self.assertEqual(stub.calls, 1)
         self.assertEqual(len(self.previews_of(gh)), 2)
+
+    def test_a_picture_over_10_mb_is_retried(self):
+        gh = self.recorded()
+        items = self.items({"panel.png": big_png(github.ATTACH_MAX + 1)})
+        first = handoff.post(gh, 7, items, SOURCE, StubPreviews())
+        self.assertIn(TOO_LARGE, first["body"].split("\n"))
+        self.assertNotIn("attachments", first)
+        self.assertNotIn("attachments", gh_log(gh)[-1])
+        self.assertIsNone(handoff.post(gh, 7, items, SOURCE, StubPreviews()))
+        smaller = self.items({"panel.png": big_png(github.ATTACH_MAX)})
+        second = handoff.post(gh, 7, smaller, SOURCE, StubPreviews())
+        self.assertEqual([a["name"] for a in second["attachments"]], ["./panel.png"])
 
 
 def gh_log(gh):
@@ -488,10 +564,9 @@ def gh_log(gh):
 class Bounds(Case):
     def test_thirty_pictures(self):
         files = {f"panel-{n:02d}.png": png(shade=n) for n in range(30)}
-        body, complete, put = self.build(files)
+        body, complete, attached = self.build(files)
         self.assertTrue(complete)
-        self.assertEqual(len(put.calls), 12)
-        self.assertEqual([name for name, _, _ in put.calls], [f"panel-{n:02d}.png" for n in range(12)])
+        self.assertEqual(sorted(attached), [f"panel-{n:02d}.png" for n in range(12)])
         self.assertEqual(body.count("\n### "), 12)
         self.assertIn("\n18 more file(s) are not shown.\n", body)
         key = body.rstrip("\n").split("\n")[-1]
@@ -501,17 +576,17 @@ class Bounds(Case):
         big = package(3000, extra={n: ["z" * 330] * 3 for n in range(1, 3001)})
         self.assertGreater(len(big.encode()), 1024 * 1024 - 1)
         items = [Item(f"pkg-{n}.md", sha(f"{n}{big}".encode()), len(big), None, big) for n in range(6)]
-        body, complete = handoff.build(items, Put(), SOURCE, StubPreviews())
+        body, complete, files = handoff.build(items, SOURCE, self.tmp, StubPreviews())
         checked(self, body, self.tmp)
-        self.assertTrue(complete)
+        self.assertEqual((complete, files), (True, []))
         many = [Item(f"pkg-{n:02d}.md", sha(f"{n}".encode()), len(big), None, big) for n in range(24)]
-        body, _ = handoff.build(many, Put(), SOURCE, StubPreviews())
+        body, _, _ = handoff.build(many, SOURCE, self.tmp, StubPreviews())
         checked(self, body, self.tmp)
         shown = body.count("\n### ")
         self.assertLess(shown, 24)
         self.assertIn(f"\n{24 - shown} more file(s) are not shown.\n", body)
         gh = self.recorded()
-        posted = handoff.post(gh, 7, many, Put(), SOURCE, StubPreviews())
+        posted = handoff.post(gh, 7, many, SOURCE, StubPreviews())
         self.assertLessEqual(len(github._sent(posted["body"], ROLE)), github.BODY_MAX)
 
     def test_three_small_items(self):
@@ -522,21 +597,22 @@ class Bounds(Case):
 
 class Nothing(Case):
     def test_only_records(self):
-        gh, put = self.recorded(), Put()
+        gh, made = self.recorded(), Made(self)
         items = self.items({"state.json": '{"a": 1}\n', "post.json": "{}\n", "render.json": "[]\n"})
         self.assertEqual(len(items), 3)
-        self.assertIsNone(handoff.post(gh, 7, items, put, SOURCE, StubPreviews()))
-        self.assertEqual(put.calls, [])
+        self.assertIsNone(handoff.post(gh, 7, items, SOURCE, StubPreviews()))
+        self.assertEqual(made.dirs, [])
         self.assertFalse((gh.dir / "comments").exists())
 
-    def test_text_needs_no_store(self):
-        gh, put = self.recorded(), Put("the register has no resource store.media")
+    def test_text_attaches_nothing(self):
+        gh = self.recorded()
         items = self.items({"package.md": package(2), "state.json": "{}\n"})
-        posted = handoff.post(gh, 7, items, put, SOURCE, StubPreviews())
+        posted = handoff.post(gh, 7, items, SOURCE, StubPreviews())
         checked(self, posted["body"], self.tmp)
         self.assertNotIn("Preview not available", posted["body"])
         self.assertNotIn("![", posted["body"])
-        self.assertEqual(put.calls, [])
+        self.assertNotIn("attachments", posted)
+        self.assertNotIn("attachments", gh_log(gh)[-1])
         self.assertIn(f"<!-- preview-of {sha(package(2).encode())} -->", posted["body"])
 
 
@@ -586,11 +662,13 @@ class Items(Case):
         self.assertFalse(found[0].name.startswith("/"))
 
 
-class Uploader(Case):
+class NoMediaStore(Case):
+    """The preview attaches its pictures and sheets to the comment and never calls the media store, however that
+    is set up: a store that works, one the register does not have, one with no key, one that answers 500."""
+
     def setUp(self):
         super().setUp()
         from test_media import KEY_ID, REGION, SECRET, FakeStore
-        self.secret_words = (KEY_ID, SECRET)
         self.store = FakeStore(self)
         self.root = self.tmp / "show"
         self.root.mkdir()
@@ -610,50 +688,48 @@ class Uploader(Case):
         (self.root / "production.local.env").write_text(
             f"SECRETS_DIR={self.secrets}\nMEDIA_STORE={self.store.url('/b')}\nMEDIA_PUBLIC_BASE={self.store.url('/pub')}\n")
         self.p = types.SimpleNamespace(root=self.root, settings={})
-        self.file = self.write("panel.png", png())
+        self.data = png()
+        self.write("panel.png", self.data)
+        previews = mock.patch.dict(sys.modules, {"kit.lib.preview": StubPreviews()})
+        previews.start()
+        self.addCleanup(previews.stop)
 
     def patch(self, register):
         patch = mock.patch.object(resources, "REGISTER", register)
         patch.start()
         self.addCleanup(patch.stop)
 
-    def refused(self, put):
-        with self.assertRaises(HandoffError) as raised:
-            put(str(self.file))
-        text = str(raised.exception)
-        for word in (str(self.secrets), str(self.tmp), *self.secret_words):
-            self.assertNotIn(word, text)
-        return text
-
-    def test_puts_then_heads(self):
+    def attached(self):
+        gh = self.recorded(4)
         with mock.patch.object(resources, "load", wraps=resources.load) as load:
-            put = handoff.uploader(self.p)
-            self.assertEqual((load.call_count, self.store.requests), (0, []))
-            link = put(str(self.file))
-            self.assertEqual(load.call_count, 1)
-        digest = sha(self.file.read_bytes())
-        self.assertEqual(link, self.store.url("/pub") + "/" + digest)
-        self.assertEqual([(r["method"], r["path"]) for r in self.store.requests if r["method"] != "GET"],
-                         [("HEAD", f"/b/{digest}"), ("PUT", f"/b/{digest}")])
-        self.store.requests.clear()
-        self.assertEqual(put(str(self.file)), link)
-        self.assertEqual([r["method"] for r in self.store.requests if r["method"] != "GET"], ["HEAD"])
+            self.assertIsNone(handoff.after_job(self.p, gh, 4, "0" * 64, "fake", self.out, [{"name": "panel.png"}]))
+        self.assertEqual(load.call_count, 0)
+        [comment] = self.previews_of(gh, 4)
+        self.assertIn("![panel.png](./panel.png)", comment["body"].split("\n"))
+        self.assertNotIn("http", comment["body"])
+        self.assertEqual(comment["attachments"], [{"name": "./panel.png", "sha256": sha(self.data)}])
+        self.assertEqual(self.store.requests, [])
+        self.assertEqual(self.store.objects, {})
+
+    def test_attaches_and_stores_nothing(self):
+        self.attached()
 
     def test_seeded_no_media_store_in_the_register(self):
         self.patch(self.without)
-        self.assertEqual(self.refused(handoff.uploader(self.p)), "the register has no resource store.media")
-        self.assertEqual(self.store.requests, [])
+        self.attached()
 
     def test_seeded_no_key_file(self):
         (self.secrets / "store.media").unlink()
-        self.assertEqual(self.refused(handoff.uploader(self.p)),
-                         "resource store.media is not usable: secret store.media: missing")
-        self.assertEqual(self.store.requests, [])
+        self.attached()
 
     def test_seeded_the_store_answers_500(self):
         self.store.status["PUT"] = (500, b"")
-        self.assertEqual(self.refused(handoff.uploader(self.p)),
-                         "the media store did not take a preview: store answered 500")
+        self.attached()
+
+    def test_the_code_names_no_media_store(self):
+        text = (ROOT / "kit" / "lib" / "handoff.py").read_text()
+        for word in ("MEDIA_PUBLIC_BASE", "store.media", "media.put", "uploader", "from kit.lib import media"):
+            self.assertNotIn(word, text)
 
 
 class RunHook(unittest.TestCase):
@@ -697,7 +773,9 @@ class RunHook(unittest.TestCase):
         body = comment["body"]
         self.assertEqual(body.split("\n", 1)[0], HEADING)
         panel = self.PANEL.encode()
-        self.assertIn(f"![panel.gif]({self.store.url('/pub')}/{sha(panel)})", body)
+        self.assertIn("![panel.gif](./panel.gif)", body.split("\n"))
+        self.assertNotIn(self.store.url("/pub"), body)
+        self.assertEqual(comment["attachments"], [{"name": "./panel.gif", "sha256": sha(panel)}])
         for heading in ("# The package", "## First part", "## Second part"):
             self.assertIn("\n" + heading + "\n", body)
         self.assertEqual(self.store.objects, {sha(panel): panel})
@@ -706,13 +784,14 @@ class RunHook(unittest.TestCase):
         posted = [n for n, e in enumerate(log) if e["op"] == "post" and e.get("role") == ROLE]
         trunk = [n for n, e in enumerate(log) if e["op"] == "push" and e.get("ref") == "trunk"]
         self.assertEqual(len(posted), 1)
+        self.assertEqual(log[posted[0]]["attachments"], [{"name": "./panel.gif", "sha256": sha(panel)}])
         self.assertLess(posted[0], trunk[-1])
         self.assertEqual(w.run(self.job), (0, self.done.rstrip("\n") + " (already recorded)\n", ""))
         self.assertEqual(len(self.previews()), 1)
 
     def test_a_failed_post_changes_nothing_of_the_run(self):
         w = self.w
-        self.assertEqual(w.run(self.job, gh=self.t.FailingPost(w.dir)),
+        self.assertEqual(w.run(self.job, gh=FailingPost(w.dir)),
                          (0, self.done, f"run: preview not posted: post #{self.t.PULL}: exit 1\n"))
         self.assertEqual([(r["hash"], r["verdict"]) for r in w.rows("run")], [(self.digest, "DONE")])
         self.assertEqual(self.previews(), [])
@@ -736,11 +815,16 @@ class RunHook(unittest.TestCase):
         self.assertEqual(w.fake_calls(), [self.digest])
 
 
+class FailingPost(github.Recorded):
+    def post(self, number, body, role, attachments=()):
+        raise github.GitHubError(f"post #{number}: exit 1")
+
+
 class NoPreviewPost(github.Recorded):
-    def post(self, number, body, role):
+    def post(self, number, body, role, attachments=()):
         if role == ROLE:
             raise github.GitHubError(f"post #{number}: exit 1")
-        return super().post(number, body, role)
+        return super().post(number, body, role, attachments)
 
 
 class MakerHook(unittest.TestCase):
@@ -814,19 +898,15 @@ class Integration(Case):
 
     @unittest.skipUnless(importlib.util.find_spec("kit.lib.preview"), "needs kit.lib.preview")
     def test_a_box_through_the_real_previewer(self):
-        seen = []
-
-        def put(path):
-            seen.append(Path(path).read_bytes())
-            return LINK + sha(seen[-1])
-
         items = self.items({"model.glb": box()})
-        body, _ = handoff.build(items, put, SOURCE, forbid=forbidden(self.tmp))
+        directory = self.tmp / "attach"
+        directory.mkdir()
+        body, _, files = handoff.build(items, SOURCE, directory, forbid=forbidden(self.tmp))
         checked(self, body, self.tmp)
-        [sheet] = seen
+        [sheet] = [Path(path).read_bytes() for path in files]
         self.assertTrue(sheet.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertEqual(png_size(sheet), (1024, 1024))
-        self.assertIn(f"![model.glb, 4 views]({LINK}{sha(sheet)})", body.split("\n"))
+        self.assertIn(f"![model.glb, 4 views](./{sha(sheet)}.png)", body.split("\n"))
 
     def test_not_installed(self):
         gh = self.recorded(4)

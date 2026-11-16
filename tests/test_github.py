@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -139,6 +140,44 @@ class RecordedWriteTest(TmpCase):
         c2 = self.r.post(2, "note\n", "program:lint")
         self.assertEqual((c2["id"], c2["body"]), (5, "note\n"))
         self.assertEqual(self.file("comments/2.json"), [c2])
+
+    def attachments(self):
+        folder = self.tmp / "attach"
+        (folder / "sheets").mkdir(parents=True)
+        (folder / "panel.png").write_bytes(b"a picture")
+        (folder / "sheets" / "views.png").write_bytes(b"a sheet")
+        return folder, [str(folder / "panel.png"), str(folder / "sheets" / "views.png")]
+
+    def test_post_with_attachments(self):
+        _, paths = self.attachments()
+        c = self.r.post(3, "## Preview\n![panel.png](./panel.png)", "program:preview", paths)
+        attached = [{"name": "./panel.png", "sha256": hashlib.sha256(b"a picture").hexdigest()},
+                    {"name": "./sheets/views.png", "sha256": hashlib.sha256(b"a sheet").hexdigest()}]
+        self.assertEqual(c, {"id": 4, "created_at": NOW, "author": "factory", "role": "program:preview",
+                             "body": "## Preview\n![panel.png](./panel.png)\n", "attachments": attached})
+        self.assertEqual(self.file("comments/3.json")[-1], c)
+        self.assertEqual(self.r.comments(3)[-1], c)
+        self.assertEqual(log_lines(self.d), [{"op": "post", "number": 3, "role": "program:preview", "attachments": attached,
+                                              "body": "## Preview\n![panel.png](./panel.png)"}])
+        one = self.r.post(3, "x", "program:preview", paths[1:])
+        self.assertEqual(one["attachments"], [{"name": "./views.png", "sha256": attached[1]["sha256"]}])
+        self.assertNotIn("attachments", self.r.post(3, "x", "program:preview", []))
+        self.assertNotIn("attachments", log_lines(self.d)[-1])
+
+    def test_post_refuses_an_attachment_it_cannot_attach(self):
+        folder, paths = self.attachments()
+        big = folder / "big.png"
+        with open(big, "wb") as handle:
+            handle.truncate(github.ATTACH_MAX + 1)
+        (folder / "link.png").symlink_to(folder / "panel.png")
+        before = tree(self.d)
+        for path, reason in ((folder / "gone.png", "is not a regular file"), (folder, "is not a regular file"),
+                             (folder / "link.png", "is not a regular file"),
+                             (big, f"is larger than {github.ATTACH_MAX} bytes")):
+            with self.subTest(path=path.name), self.assertRaises(GitHubError) as e:
+                self.r.post(3, "x", "program:preview", [paths[0], str(path)])
+            self.assertEqual(str(e.exception), f"post #3: an attachment {reason}")
+        self.assertEqual(tree(self.d), before)
 
     def test_post_requires_role_and_target(self):
         for role in ("", None, 3):
@@ -370,7 +409,7 @@ class GhTest(unittest.TestCase):
 
     def tearDown(self):
         for argv, kwargs in getattr(self, "fake", FakeRun()).calls:
-            self.assertEqual(set(kwargs), {"input", "capture_output", "text"})
+            self.assertIn(set(kwargs) - {"cwd"}, ({"input", "capture_output", "text"},))
             self.assertTrue(kwargs["capture_output"] and kwargs["text"])
             self.assertIsInstance(argv, list)
 
@@ -501,6 +540,50 @@ class GhTest(unittest.TestCase):
                                "body": "[WRITER] READY\nx\n"})
         self.gh(ok(json.dumps(answer))).post(3, "ends\n", "program:lint")
         self.assertEqual(self.fake.stdin(), {"body": "ends\n<!-- factory:role program:lint -->"})
+
+    def test_post_with_attachments(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "sheets").mkdir()
+        for name in ("panel.png", "sheets/views.png"):
+            (tmp / name).write_bytes(b"bytes of " + name.encode())
+        answer = {"id": 77, "created_at": NOW, "body": "## Preview\n![a](https://github.com/user-attachments/assets/1)"
+                  "\n<!-- factory:role program:preview -->", "user": {"login": "someone"}}
+        link = f"https://github.com/{REPO}/pull/3#issuecomment-77\n"
+        got = self.gh(ok(link), ok(json.dumps(answer))).post(3, "## Preview\n![a](./panel.png)", "program:preview",
+                                                            [str(tmp / "panel.png"), str(tmp / "sheets" / "views.png")])
+        self.assertEqual(self.fake.argvs(), [
+            ["gh", "issue", "comment", "3", "-R", REPO, "--body-file", "-", "--attach", "./panel.png",
+             "--attach", "./sheets/views.png"],
+            ["gh", "api", f"repos/{REPO}/issues/comments/77"]])
+        self.assertEqual(self.fake.calls[0][1]["input"],
+                         "## Preview\n![a](./panel.png)\n<!-- factory:role program:preview -->")
+        self.assertEqual(self.fake.calls[0][1]["cwd"], str(tmp))
+        self.assertNotIn("cwd", self.fake.calls[1][1])
+        self.assertEqual(got, {"id": 77, "created_at": NOW, "author": "someone", "role": "program:preview",
+                               "body": "## Preview\n![a](https://github.com/user-attachments/assets/1)\n"})
+        one = self.gh(ok(link), ok(json.dumps(answer))).post(3, "x", "program:preview", [str(tmp / "panel.png")])
+        self.assertEqual(self.fake.argvs()[0][-2:], ["--attach", "./panel.png"])
+        self.assertEqual(one["id"], 77)
+
+    def test_post_with_attachments_refused(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp)
+        (tmp / "panel.png").write_bytes(b"a picture")
+        paths = [str(tmp / "panel.png")]
+        cases = (([(1, "", "HTTP 403: no push access (HTTP 403)")], "post #3: exit 1 (HTTP 403)"),
+                 ([ok("posted\n")], "post #3: gh printed no link to the comment"),
+                 ([ok(f"https://github.com/{REPO}/pull/3#issuecomment-77\n"),
+                   ok(json.dumps({"id": 77, "created_at": NOW, "body": "x", "user": {"login": "other"}}))],
+                  "post #3: posted as a login that setting GITHUB_LOGINS does not name"))
+        for answers, message in cases:
+            with self.subTest(message=message), self.assertRaises(GitHubError) as e:
+                self.gh(*answers).post(3, "x", "program:preview", paths)
+            self.assertEqual(str(e.exception), message)
+        g = self.gh()
+        with self.assertRaises(GitHubError):
+            g.post(3, "x", "program:preview", [str(tmp / "gone.png")])
+        self.assertEqual(self.fake.calls, [])
 
     def test_post_rejects_bad_role_before_running(self):
         g = self.gh()
