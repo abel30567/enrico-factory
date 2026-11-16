@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["assets"], "expect_files": ["production/assets/nessa/assets/scene.py", "production/assets/nessa/assets/requests/model3d.json"]}

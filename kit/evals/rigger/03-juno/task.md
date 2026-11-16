@@ -1,0 +1,1 @@
+Rig the asset juno from its locked state: give every joint a limit and test the poses climb, jump and sit. Write only production/assets/juno/rigging/scene.py and production/assets/juno/rigging/requests/rig.json.
