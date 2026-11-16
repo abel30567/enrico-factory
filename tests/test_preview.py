@@ -359,6 +359,14 @@ class Malformed(unittest.TestCase):
                                  "count": 3}
         self.unreadable(b.glb())
 
+    def test_negative_index(self):
+        for component, form, last in ((5120, "b", -1), (5122, "h", -1), (5122, "h", -400)):
+            with self.subTest(component=component, index=last):
+                b = box()
+                b.doc["accessors"][1] = {"bufferView": b.view(struct.pack("<3" + form, 0, 1, last)),
+                                         "componentType": component, "count": 3, "type": "SCALAR"}
+                self.unreadable(b.glb())
+
     def test_missing_position(self):
         self.unreadable(self.edited(lambda doc: doc["meshes"][0]["primitives"][0]["attributes"].clear()))
 

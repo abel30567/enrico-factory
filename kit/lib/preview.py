@@ -340,8 +340,8 @@ def _model(document, binary) -> _Model:
                     raise ValueError("an index that is not a whole number")
             else:
                 indices = range(vertices)
-            if indices and max(indices) >= vertices:
-                raise ValueError("an index past the last vertex")
+            if indices and (min(indices) < 0 or max(indices) >= vertices):
+                raise ValueError("an index before the first or past the last vertex")
             uv = None
             if "TEXCOORD_0" in attributes:
                 uv = _accessor(document, binary, attributes["TEXCOORD_0"], 2, normalise=True)
