@@ -7,8 +7,9 @@ hand from the vendor's public API reference (`model/`) or recorded from a real s
 `{base}` replaced by the fake's URL. The asset is the
 invented `lamp-keeper` and its image `media:lamp-keeper-ref`. The World's pipeline gains the asset stages
 `assets` and `rigging`, and its ticket 3 is at `stage:assets` of `unit:lamp-keeper`. The GLBs the vendors
-serve are built by `make_glb` of tests/test_glb.py. Nothing reaches a host other than 127.0.0.1, and every
-poll is 0 seconds apart.
+serve are built by `make_glb` of tests/test_glb.py. A second fake serves the image's public link, and
+`vendor.RUN` is a stand-in for `ffmpeg` that answers the pixels of a picture of tests/test_cardscan.py.
+Nothing reaches a host other than 127.0.0.1, and every poll is 0 seconds apart.
 """
 
 import base64
@@ -19,6 +20,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -31,8 +33,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cmd_doctor, cmd_gate, cmd_run, gitstate, resources, vendor  # noqa: E402
+from kit.lib import cardscan, cmd_doctor, cmd_gate, cmd_run, gitstate, resources, vendor  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
+from test_cardscan import card, figure  # noqa: E402
 from test_glb import Builder, make_glb, png  # noqa: E402
 from test_media import free_port  # noqa: E402
 from test_run import BRANCH, World, digest_of  # noqa: E402
@@ -41,7 +44,6 @@ FIX = ROOT / "tests" / "fixtures" / "tools_3d"
 RUN_FIX = ROOT / "tests" / "fixtures" / "run"
 MODEL_KEY, RIG_KEY = "model-key-6b2e91d4", "rig-key-0c7a53f8"
 STORE_KEY = f"{KEY_ID}\n{SECRET}\n{REGION}\n"
-PUBLIC = "https://media.invalid/pub"
 IMAGE = b"invented reference image of the lamp keeper\x89\x00"
 
 
@@ -107,6 +109,17 @@ def output(name, data):
     return {"bytes": len(data), "name": name, "sha256": sha(data)}
 
 
+class Ffmpeg:
+    """A stand-in for `vendor.RUN`: it answers ``rgb`` and exits ``code``; every input is recorded."""
+
+    def __init__(self, rgb, code=0):
+        self.rgb, self.code, self.inputs = rgb, code, []
+
+    def __call__(self, argv, input=None, **options):
+        self.inputs.append((argv, input, options))
+        return subprocess.CompletedProcess(argv, self.code, self.rgb, b"")
+
+
 class Vendor:
     """Both vendors on 127.0.0.1. ``answers[(method, path)]`` is a list of ``(status, body)``, sent in turn,
     the last one again and again; a path is matched without its query. Every request is recorded."""
@@ -169,6 +182,9 @@ class Tools3dTest(unittest.TestCase):
     def setUp(self):
         self.w = World(self)
         self.vendor = Vendor(self)
+        self.public = Vendor(self)
+        self.public.answer("GET", f"/pub/{sha(IMAGE)}", (200, IMAGE))
+        self.ffmpeg = Ffmpeg(figure().rgb())
         self.store = AssetStore(self)
         self.tmp = self.w.tmp / "tmp"
         self.tmp.mkdir()
@@ -177,6 +193,7 @@ class Tools3dTest(unittest.TestCase):
                       mock.patch.object(vendor, "MODEL_API", self.vendor.base),
                       mock.patch.object(vendor, "RIG_API", self.vendor.base),
                       mock.patch.object(vendor, "POLL_SECONDS", 0),
+                      mock.patch.object(vendor, "RUN", self.ffmpeg),
                       mock.patch.object(tempfile, "tempdir", str(self.tmp))):
             patch.start()
             self.addCleanup(patch.stop)
@@ -185,7 +202,7 @@ class Tools3dTest(unittest.TestCase):
             path.write_text(text)
             path.chmod(0o600)
         self.w.local(STATE_DIR=self.w.state, SECRETS_DIR=self.w.secrets, FAKE_LOG=self.w.fake_log,
-                     ASSET_STORE=self.store.url("/b"), MEDIA_PUBLIC_BASE=PUBLIC)
+                     ASSET_STORE=self.store.url("/b"), MEDIA_PUBLIC_BASE=self.public.base + "/pub")
         self.w.set_env("RIG_VENDOR", vendor.RIG_ID)
         self.w.commit(vendor.MANIFEST, "id\tsha256\tbytes\tsource\n"
                       f"lamp-keeper-ref\t{sha(IMAGE)}\t{len(IMAGE)}\tupload\n")
@@ -279,7 +296,7 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d"])
         [post] = self.vendor.made("POST")
         self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
-        self.assertEqual(json.loads(post["body"]), {"image_url": f"{PUBLIC}/{sha(IMAGE)}"})
+        self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}"})
         self.assertEqual(post["headers"]["authorization"], f"Key {MODEL_KEY}")
         self.assertEqual([r["path"] for r in self.vendor.made()], [
             "/" + vendor.MODEL_PATH, REQUEST + "/status", REQUEST + "/status", REQUEST, "/files/model.glb"])
@@ -519,6 +536,65 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual(self.vendor.requests, [])
         self.assertEqual(os.listdir(self.tmp), [])
 
+    def test_card_scan_is_refused(self):
+        self.ffmpeg.rgb = card().rgb()
+        job, digest = self.model_job("the lamp keeper, from a card")
+        self.assert_failed(job, digest, "model3d", vendor.FRAMED, "0", "0")
+        self.assertEqual(vendor.FRAMED, "reference is framed like a card scan")
+        self.assertEqual(self.vendor.requests, [])
+        self.assertEqual([(r["method"], r["path"]) for r in self.public.made()], [("GET", f"/pub/{sha(IMAGE)}")])
+        self.assertEqual(self.ffmpeg.inputs, [(cardscan.DECODE, IMAGE, {"capture_output": True, "timeout": 60})])
+        self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
+        self.assertEqual(os.listdir(self.tmp), [])
+        self.assertEqual(self.store.objects, {})
+
+    def test_reference_not_decoded(self):
+        self.ffmpeg.code = 1
+        job, digest = self.model_job("the reference does not decode")
+        self.assert_failed(job, digest, "model3d", vendor.NOT_DECODED, "0", "0")
+        self.assertEqual(vendor.NOT_DECODED, "reference image could not be decoded")
+        self.assertEqual(len(self.public.made("GET")), 1)
+        self.ffmpeg.code = 0
+        with mock.patch.object(vendor, "REFERENCE_MAX_BYTES", len(IMAGE) - 1):
+            job, digest = self.model_job("the reference is too large")
+            self.assert_failed(job, digest, "model3d", vendor.NOT_DECODED, "0", "0")
+        self.assertEqual(len(self.public.made("GET")), 1)
+        self.assertEqual(self.vendor.requests, [])
+        self.assertEqual(os.listdir(self.tmp), [])
+
+    def test_reference_link_down(self):
+        self.public.answer("GET", f"/pub/{sha(IMAGE)}", (404, b""))
+        job, digest = self.model_job("the public link answers 404")
+        before = len(self.w.log())
+        self.assertEqual(self.factory_run(job), (2, "", "run: resource gen.model3d is down (#5)\n"))
+        self.assertEqual(self.w.rows("run"), [])
+        self.assertFalse(self.w.job_dir(digest).exists())
+        [entry] = self.w.log()[before:]
+        self.assertEqual((entry["op"], entry["number"], entry["title"]), ("create_issue", 5, "[DOWN] gen.model3d"))
+        self.assertEqual(self.vendor.requests, [])
+        self.assertEqual(os.listdir(self.tmp), [])
+
+    def test_reference_size_not_in_manifest(self):
+        self.w.commit(vendor.MANIFEST, "id\tsha256\tbytes\tsource\n"
+                      f"lamp-keeper-ref\t{sha(IMAGE)}\tx\tupload\n")
+        job, digest = self.model_job("the manifest size is x")
+        self.assert_failed(job, digest, "model3d", vendor.NOT_IN_MANIFEST, "0", "0")
+        self.assertEqual(self.public.requests, [])
+        self.assertEqual(self.vendor.requests, [])
+
+    def test_reference_check_leaks_nothing(self):
+        self.ffmpeg.rgb = card().rgb()
+        job, digest = self.model_job("a card")
+        self.assert_failed(job, digest, "model3d", vendor.FRAMED, "0", "0")
+        self.ffmpeg.rgb = figure().rgb()
+        self.clean_model()
+        texts = [err for _, _, err in self.printed] + [p.read_text() for p in self.w.state.rglob("result.json")]
+        self.assertEqual(len(texts), 4)
+        for text in texts:
+            for value in (self.public.base, "/pub/", str(self.tmp)):
+                self.assertNotIn(value, text)
+        self.assert_no_leak()
+
     def test_nothing_leaks(self):
         self.vendor.answer("POST", "/" + vendor.MODEL_PATH, (401, b""))
         job, model = self.model_job()
@@ -542,7 +618,8 @@ class DoctorTest(unittest.TestCase):
             (self.root / "sec" / name).write_text("k\n")
             (self.root / "sec" / name).chmod(0o600)
         (self.root / "production.local.env").write_text(
-            f"SECRETS_DIR={self.root / 'sec'}\nASSET_STORE=https://store.invalid/b\nMEDIA_PUBLIC_BASE={PUBLIC}\n")
+            f"SECRETS_DIR={self.root / 'sec'}\nASSET_STORE=https://store.invalid/b\n"
+            "MEDIA_PUBLIC_BASE=https://media.invalid/pub\n")
         patch = mock.patch.object(resources, "REGISTER", ROOT / "kit" / "resources.json")
         patch.start()
         self.addCleanup(patch.stop)

@@ -19,12 +19,14 @@ import http.client
 import json
 import os
 import re
+import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from kit.lib import assets, glb, media
+from kit.lib import assets, cardscan, glb, media
 from kit.lib.tools import Down, Failed
 
 MODEL_API = "https://queue.fal.run"
@@ -36,12 +38,15 @@ POLL_SECONDS = 5
 POLLS = 360
 TIMEOUT = 60
 DATA_URI_BYTES = 30 * 1000 * 1000
+REFERENCE_MAX_BYTES = 30000000
+RUN = subprocess.run
 
 MANIFEST = "media/manifest.tsv"
 REQUEST_KEYS = ["for", "prompt", "refs"]
 REF_PREFIX = "media:"
 DATA_URI_PREFIX = "data:application/octet-stream;base64,"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_SIZE = re.compile(r"[1-9][0-9]*")
 
 NOT_A_REQUEST = "request is not {for, prompt, refs}"
 NO_REFERENCE = "request names no reference image"
@@ -57,9 +62,12 @@ TOO_LARGE = "model is larger than a data URI allows"
 NO_MODEL = "request names no asset model"
 NO_STATE = "asset state is not an input"
 NOT_A_GLB = "output is not a GLB the kit can read"
+FRAMED = "reference is framed like a card scan"
+NOT_DECODED = "reference image could not be decoded"
 REASONS = (NOT_A_REQUEST, NO_REFERENCE, NOT_IN_MANIFEST, REFUSED, UNREACHABLE, VENDOR_FAILED, TOO_SLOW,
            DOWNLOAD_FAILED, NOT_STORED, NOT_A_GLB)
 RIG_REASONS = REASONS + (NOT_IN_STORE, TOO_LARGE, NO_MODEL, NO_STATE)
+MODEL_REASONS = REASONS + (FRAMED, NOT_DECODED)
 ASSET_PREFIX = "asset:"
 
 
@@ -96,9 +104,9 @@ def asset(call):
     return found
 
 
-def reference(call):
-    """The sha256 of the job's reference image: ``refs[0]`` of the request (the first input), looked up in
-    the manifest (the second input)."""
+def reference_row(call):
+    """``(sha256, size)`` of the job's reference image: ``refs[0]`` of the request (the first input), looked
+    up in the manifest (the second input), its size a whole number of bytes."""
     inputs = call["inputs"]
     refs = request(call)["refs"]
     if not refs or not isinstance(refs[0], str) or not refs[0].startswith(REF_PREFIX) or refs[0] == REF_PREFIX:
@@ -108,9 +116,36 @@ def reference(call):
         raise _before(NOT_IN_MANIFEST)
     for line in inputs[1]["text"].splitlines()[1:]:
         fields = line.split("\t")
-        if len(fields) >= 2 and fields[0] == name and _SHA256.fullmatch(fields[1]):
-            return fields[1]
+        if (len(fields) >= 3 and fields[0] == name and _SHA256.fullmatch(fields[1])
+                and _SIZE.fullmatch(fields[2])):
+            return fields[1], int(fields[2])
     raise _before(NOT_IN_MANIFEST)
+
+
+def reference(call):
+    """The sha256 of the job's reference image (`reference_row`)."""
+    return reference_row(call)[0]
+
+
+def check_reference(call, sha256, size):
+    """Refuse, before any vendor request, a reference image that does not decode or is framed like a card
+    scan (`kit/lib/cardscan.py`). It is fetched from its public link into a temporary directory, never
+    into the job's ``out``, and the directory is gone afterwards; ``Down`` when the link does not serve it."""
+    if size > REFERENCE_MAX_BYTES:
+        raise _before(NOT_DECODED)
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "reference")
+        try:
+            media.fetch(call["settings"], sha256, size, path)
+            with open(path, "rb") as handle:
+                data = handle.read()
+        except (media.Refused, media.Failed, OSError):
+            raise Down() from None
+    pixels = cardscan.decode(data, RUN)
+    if pixels is None:
+        raise _before(NOT_DECODED)
+    if cardscan.art_region(pixels) is not None:
+        raise _before(FRAMED)
 
 
 def model(call):

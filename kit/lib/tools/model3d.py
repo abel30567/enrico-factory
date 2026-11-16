@@ -15,7 +15,7 @@ import os
 from kit.lib import vendor
 
 RESOURCE = "gen.model3d"
-REASONS = vendor.REASONS
+REASONS = vendor.MODEL_REASONS
 OUTPUT = "model.glb"
 STATE, MANIFEST = "state.json", "manifest.json"
 STAGE_FILES = ("manifest.json", "state.json")
@@ -29,10 +29,11 @@ def asset_kind(call, asset):
 
 
 def run(call):
-    sha256 = vendor.reference(call)
+    sha256, size = vendor.reference_row(call)
     asset = vendor.asset(call)
     authorization = "Key " + vendor.read_key(call["secrets"]["gen.model3d"])
     image_url = vendor.link(call["settings"], sha256)
+    vendor.check_reference(call, sha256, size)
     answer = vendor.submit(f"{vendor.MODEL_API}/{vendor.MODEL_PATH}", authorization, {"image_url": image_url})
     status_url = vendor.under(answer.get("status_url"), vendor.MODEL_API)
     response_url = vendor.under(answer.get("response_url"), vendor.MODEL_API)
