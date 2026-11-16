@@ -12,6 +12,7 @@
 - No inference API key anywhere: no code, test or document may read, require or mention one as a way to run a role.
 - Only `kit/lib/harness.py` may know which agent harness runs. No other file names a harness flag.
 - This repository is public: no production material (lore, art, rulings, media), machine paths, account names or credentials.
+- When your work makes or checks something visual (a picture, a rendered frame or sheet, a chart, a screenshot of a failure), attach it to your marker comment so the reviewer sees it: `gh pr comment <PR> --body-file <file> --attach '<path>#<what it shows>'` (gh 2.99 or later). Attach only what the kit, a test or a sample made, never production material.
 <!-- Examples of project-specific rules:
 - UI sizes use rem on a 10px root; no raw hex colours, use the design tokens.
 - Database changes need a reversible migration.

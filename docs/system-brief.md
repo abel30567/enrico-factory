@@ -617,7 +617,9 @@ Specified in `docs/harness.md` and `docs/resources.md`. The rules:
 - **What a pull hands off is shown.** When a maker's pull or a job hands off a stored output, `factory`
   posts one preview comment on the pull (role `program:preview`, first line `## Preview of what this
   pull hands off`, not a marker): pictures as they are, a GLB as a four-view sheet, a video as a contact
-  sheet, made locally without spending.
+  sheet, made locally without spending. The pictures and sheets are GitHub attachments of the comment
+  (`gh pr comment --attach`), so only people who can read the repository see them; the comment holds no
+  media store link and the preview stores nothing.
 
 ## 15. Command line
 
