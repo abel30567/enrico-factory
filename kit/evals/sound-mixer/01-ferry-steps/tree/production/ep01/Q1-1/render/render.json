@@ -1,0 +1,14 @@
+{
+  "fps": 24,
+  "frames": {"first": 0, "last": 11},
+  "count": 12,
+  "width": 1920,
+  "height": 1080,
+  "frames_sha256": ["b4147140f5e5fb36c4d5499a3a5a956b835c9b5c7368b40a2b2de11204b519e4", "90d6b235fbb7f7a49d700bc1042a7b66b7e6b92216af900d95572cab420f6f9c", "8e34e86e1864885405f63252f5a61dbc20d703a77d3a12296e1c17278b41028a", "1abaef79108b47aa912f815fd6e7a45ecfdbe00dd0a958dedd4c1261adffa3e1", "b2e923cd2a01a4027fb50f7f79ab8bc98ae7c75c9fb244f64f49f21f9d59f421", "6c04410293ab893656706c51bb5de50eb16cf0c2768886e2cef1a79d3c102601", "168d6c396e8421e0e307bf175521f4700d7b33caaa8f6c1c742fdf2ab4f0fb43", "ea3637e149ffd0f8b82c30b2072d417169b496b77144b2fd0c9bcf52e54e2d7b", "0c69cbc9f1f03ddc01220b4609085ae28d7fb17f089dc3a65884bfbb525ce2ce", "bee52fe9aa473c83dff6d64a406c30fa384f6d432641f5f53815500ca15c4470", "a23966026b2757200a7d5082c7cefc8fc799d3f0751b830bac86fd559aa5e781", "a80f476bbaf591f2b80b313452940d140d6f7c26c2cfd89d44041c95b4bd35d0"],
+  "sequence_sha256": "24e1de57b970ca34ccda417b4426315098205702e42a7ec50f13c491ae761e5c",
+  "black": [],
+  "nan": [],
+  "text": [],
+  "samples": [{"frame": 0, "luma": 0.42, "clipped": 0.0, "color": [0.4, 0.38, 0.35]}],
+  "rerender": {"frames": [0], "metric": "ColorVideoVDP", "scores": [9.97]}
+}

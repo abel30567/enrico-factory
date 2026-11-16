@@ -1,0 +1,1 @@
+Mix the sound of episode ep01 from the locked files in this tree: its three lines from their voice files and the score lamp-house-score under them, in a cold, lonely mood, at -14 LUFS with a true peak under -1 dBTP. Write only production/ep01/conform/scene.py.
