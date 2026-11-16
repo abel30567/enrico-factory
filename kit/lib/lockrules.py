@@ -40,6 +40,7 @@ PIVOT_LIMITS = {"P2": 3, "P3": 1}
 PIVOT_VOTED = ("P2", "P3")
 COOLDOWN_DAYS = 14
 MANIFEST_HEADER = "id\tsha256\tbytes\tsource"
+CHEAPER = "cheaper stage(s) not locked: "
 
 _AMENDMENT = re.compile(r"bible/amendments/A-\d+\.json")
 _CHECKS = re.compile(r"Checks required by stage (\S+): (.*)")
@@ -135,7 +136,7 @@ def cheaper_stages(p, state, ticket, root) -> str:
             targets = [target] if target is not None else []
         missing.extend(f"{e['stage']} for {target}" for target in targets
                        if not tickets.is_locked(state, room, e["stage"], target))
-    return f"cheaper stage(s) not locked: {', '.join(missing)}" if missing else ""
+    return f"{CHEAPER}{', '.join(missing)}" if missing else ""
 
 
 def needs_amendment(entry, changed) -> bool:
@@ -220,7 +221,7 @@ def _judges(p, state, pull):
 
 def _upstream(p, state, ticket, root):
     ok, reason = tickets.upstream(p, state, ticket, root)
-    if not ok:
+    if not ok and not reason.startswith(CHEAPER):
         return reason
     return cheaper_stages(p, state, ticket, root)
 
@@ -378,6 +379,13 @@ def _writes(p, room, maker, changed, accepted, recorded=()):
     if outside_room:
         reasons.append(f"outside room {room}: {', '.join(outside_room)}")
     return "; ".join(reasons)
+
+
+def _no_writes(entry, changed):
+    """Rule 7 at a stage with no maker: no role writes there, so the pull changes no file."""
+    if not changed:
+        return ""
+    return f"stage {entry['stage']} has no maker and the pull changes files: {', '.join(sorted(changed))}"
 
 
 def _lab_writes(p, room, changed):
@@ -715,6 +723,7 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
     maker = maker_role(entry, pull)
     in_lab = is_lab(p, maker)
     no_maker = f"no maker of stage {entry['stage']} has posted READY"
+    stage_makers = production.stage_roles(entry, "maker")
     reasons = [
         _lint(entry, pull),
         _checkers(pull["summary"]) or _verified(p, maker, pull),
@@ -725,9 +734,9 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         (_lab_writes(p, ticket["room"], changed) if in_lab
          else _writes(p, ticket["room"], maker, changed, operator_paths(p, state, ticket, pull, root),
                       recorded_answers(ticket, pull, root)))
-        if maker else no_maker,
+        if maker else _no_writes(entry, changed) if not stage_makers else no_maker,
         _repeat_notes(p, state, ticket, entry, pull),
-        _gate(p, state, ticket, entry, pull, maker) if maker else no_maker,
+        _gate(p, state, ticket, entry, pull, maker) if maker or not stage_makers else no_maker,
         _base(ticket, pull, root),
         _released(pull, root),
         _bible_version(pull, root),

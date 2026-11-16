@@ -72,6 +72,7 @@ ERRORS = (github.GitHubError, gitstate.GitError, blind.BlindError, lintpost.Post
           production.ProductionError, OSError)
 READ_ERRORS = (production.ProductionError, github.GitHubError, tickets.TicketError, gitstate.GitError, OSError)
 SYNCED = ("blocked", "ruling")
+UNION = f"/{gitstate.MANIFEST} merge=union\n"
 
 
 class Failed(Exception):
@@ -457,20 +458,28 @@ class Tick:
             raise Failed("merge failed")
 
     def sync(self, n, pull):
-        """Merge the base into the pull's branch with a merge commit, then push the branch."""
+        """Merge the base into the pull's branch with a merge commit, then push the branch. ``media/manifest.tsv``
+        merges as the union of both sides' rows (``UNION``); a merged manifest whose id repeats in neither side is a
+        ``NEED`` and moves nothing."""
         root = self.p.root
         old = pull["git"]["head"]
         base = gitstate.head(root, pull["base_ref"])
         with tempfile.TemporaryDirectory(prefix="factory-sync-") as tmp:
             tree = Path(tmp) / "tree"
             gitstate.add_worktree(root, tree, old)
+            attributes = Path(tmp) / "attributes"
+            attributes.write_text(UNION)
             try:
                 try:
-                    gitstate.git(tree, "merge", "--no-ff", "--no-edit", base, author="factory")
+                    gitstate.git(tree, "-c", f"core.attributesFile={attributes}", "merge", "--no-ff", "--no-edit",
+                                 base, author="factory")
                 except gitstate.GitError:
                     if _merging(tree):
                         return f"NEED #{n} conflict with base"
                     raise
+                repeated = _repeated(root, old, base, tree)
+                if repeated:
+                    return f"NEED #{n} conflict with base: {repeated}"
                 new = gitstate.head(tree)
             finally:
                 gitstate.remove_worktree(root, tree)
@@ -482,6 +491,30 @@ class Tick:
             gitstate.git(root, "update-ref", ref, old, new)
             raise
         return None
+
+
+def _repeats(text):
+    """``(line, id, first line)`` of each row of the manifest ``text`` whose id an earlier row has."""
+    seen, found = {}, []
+    for n, row in enumerate((text or "").splitlines()[1:], 2):
+        mid = row.split("\t", 1)[0].strip()
+        if not mid:
+            continue
+        if mid in seen:
+            found.append((n, mid, seen[mid]))
+        else:
+            seen[mid] = n
+    return found
+
+
+def _repeated(root, old, base, tree) -> str:
+    """``media/manifest.tsv:<line> id <id> repeats line <first>`` for the first row of the merged manifest in
+    ``tree`` whose id an earlier row has and repeats in neither parent; "" when there is none."""
+    known = {mid for ref in (old, base) for _, mid, _ in _repeats(gitstate.show(root, ref, gitstate.MANIFEST))}
+    for line, mid, first in _repeats(gitstate.show(tree, "HEAD", gitstate.MANIFEST)):
+        if mid not in known:
+            return f"{gitstate.MANIFEST}:{line} id {mid} repeats line {first}"
+    return ""
 
 
 def _merging(tree) -> bool:
