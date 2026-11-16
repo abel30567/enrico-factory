@@ -254,8 +254,10 @@ class Rows(Case):
         self.dry_then_apply(w, ["STEP #18 launch painter on #18"])
         [record] = w.comments(18)
         self.assertEqual((record["role"], record["body"].split("\n")[0]), ("foreman", "[FOREMAN] LAUNCH painter 18-1"))
-        [ready] = w.comments(19)
+        [ready, preview] = w.comments(19)
         self.assertEqual((ready["role"], ready["body"].split("\n")[0]), ("painter", "[PAINTER] READY"))
+        self.assertEqual((preview["role"], preview["body"].split("\n")[0]),
+                         ("program:preview", "## Preview of what this pull hands off"))
         self.assertEqual(w.record("pulls", 19)["ticket"], 18)
 
     def test_launch_a_checker_on_a_pull(self):
@@ -1366,7 +1368,8 @@ class Jobs(Case):
                 step("You are the writer", {"marker": "READY", "summary": "Cited.", "evidence": EVIDENCE}))
         self.tick(w, ["STEP #5 launch fetcher on PR #6"])
         self.assertEqual(gitstate.show(w.root, w.ref(6), self.JOB), json.dumps(self.job, indent=1) + "\n")
-        self.assertEqual(firsts(w.comments(6))[-1], ("fetcher", "[FETCHER] READY"))
+        self.assertEqual(firsts(w.comments(6))[-2:], [("fetcher", "[FETCHER] READY"),
+                                                      ("program:preview", "## Preview of what this pull hands off")])
         self.tick(w, ["STEP #5 lint PR #6"])
         self.assertEqual(firsts(w.comments(6))[-1], ("program:lint", "[LINT] PASS"))
         self.verdicts(w)

@@ -1271,7 +1271,7 @@ class MediaStoreTest(unittest.TestCase):
             r + "\n" for r in manifest_rows(digest, self.outputs({"notes.txt": self.NOTES}))))
         self.assertEqual(self.store.requests, [])
 
-    def test_twin_stage_files_tool_puts_no_picture_in_the_media_store(self):
+    def test_twin_stage_files_tool_puts_only_the_previews_picture_in_the_media_store(self):
         w = self.w
         tools = w.tmp / "tools"
         tools.mkdir()
@@ -1282,8 +1282,11 @@ class MediaStoreTest(unittest.TestCase):
         self.settings(ASSET_STORE=assets.url("/b"))
         job, digest = self.panel_job()
         self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
-        self.assertEqual(self.store.requests, [])
         panel = self.PANEL.encode()
+        # The preview comment (kit/lib/handoff.py) embeds the picture output: its one PUT. No output is uploaded.
+        self.assertEqual([r["path"] for r in self.store.requests if r["method"] == "PUT"],
+                         [f"/b/{hashlib.sha256(panel).hexdigest()}"])
+        self.assertEqual(self.store.objects, {hashlib.sha256(panel).hexdigest(): panel})
         self.assertEqual(assets.objects, {hashlib.sha256(panel).hexdigest(): panel})
         self.assertIsNone(w.manifest())
 
