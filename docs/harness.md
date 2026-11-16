@@ -264,7 +264,8 @@ made by the worker still runs; for GitHub the boundary is that the worker cannot
   by an agent directly. An operator writes a job file, and the launcher commits it on the pull request's
   branch. `factory tick` runs `factory gate <job> --pull <pr>`, which passes or stops it, then
   `factory run <job> --pull <pr>`, which makes the call with the credential and writes the outputs, the
-  manifest rows and the ledger line. The operator is launched again and reports from its task, which
+  manifest rows and the ledger line; a FAILED call's reason is posted on the ticket as `program:run`.
+  The operator is launched again and reports from its task, which
   names each job's result, its cost and the ids of its manifest rows. The outputs are in the state
   directory, which no worker can read. The credential never enters the worker.
 - **Injected credentials** are the exception, for a tool an agent must drive step by step (the render

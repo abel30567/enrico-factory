@@ -533,7 +533,8 @@ per ticket; from the third round on, every round of notes needs its own ruling. 
 orchestrator (a `NEED` line and the label `needs:orchestrator`) only when that one run did not settle
 the judgment, and for a pivot triage, a BLOCKED worker, a job that failed or that the gate stopped, or
 a request its operator left without a job. A BLOCKED checker or judge is such a `NEED` at once and is
-not launched again; a BLOCKED operator is launched again after its ruling.
+not launched again; a BLOCKED operator is launched again after its ruling. A failed job's reason is
+posted on its ticket as `program:run` by `factory run`, before its `run` row.
 
 On a pull request that holds a request, at a stage whose `maker` place names an operator, the tick
 carries the jobs (section 11) in this order, one step per pull request per tick. What is next is read
