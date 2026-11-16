@@ -13,6 +13,9 @@ answer the tool recorded at `distribution/<unit>/post.json`, and appends the `ru
 on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down
 and one preview comment on the pull (`kit/lib/handoff.py`): after the outputs are stored and before the `run` row,
 a DONE job's outputs are shown there once, and a preview that cannot be posted is only said on standard error.
+A FAILED job's reason is posted once on the job's ticket, as `program:run`, before the `run` row; when that post
+fails the run is refused, nothing is recorded, and a later run posts it and records the kept call without calling
+the tool again.
 Without `--apply` it makes every check, calls no tool and writes nothing. A media store that is not usable or does
 not take a picture refuses the run after the call: nothing is recorded, and a later run records the kept call
 without calling the tool again.
@@ -59,6 +62,7 @@ RECORD = "record"
 DONE, FAILED = "DONE", "FAILED"
 CRASHED, BROKE, NO_RESULT, TOOL_FAILED = "tool crashed", "tool broke the interface", "no result", "tool failed"
 ERRORS = cmd_gate.ERRORS + (OSError,)
+ROLE = "program:run"
 
 
 class Refused(Exception):
@@ -79,6 +83,19 @@ def _text(amount):
 
 def _printed(digest, verdict, usd, compute_min):
     return f"run job {digest}: {verdict} usd {usd} compute_min {compute_min}"
+
+
+def _failure(digest, name, pull, reason, usd, compute_min):
+    """The comment on the ticket of a job that failed."""
+    return (f"Job {digest} failed: {reason}\n"
+            f"tool {name}, pull #{pull}, usd {_text(usd)} compute_min {_text(compute_min)}\n")
+
+
+def _post_failure(gh, request, body):
+    """Post ``body`` on the job's ticket unless a ``program:run`` comment there already has its first line."""
+    first = body.split("\n", 1)[0]
+    if not any(c["role"] == ROLE and c["body"].split("\n", 1)[0] == first for c in request["comments"]):
+        gh.post(request["ticket"]["number"], body, ROLE)
 
 
 @contextlib.contextmanager
@@ -470,6 +487,8 @@ def _run(p, gh, state, rows, target, apply, number=None):
         message = handoff.after_job(p, gh, pull["number"], digest, name, job_dir / "out", outputs)
         if message is not None:
             print(f"run: preview not posted: {message}", file=sys.stderr)
+    if verdict == FAILED:
+        _post_failure(gh, request, _failure(digest, name, pull["number"], reason, usd, compute_min))
     ticket = request["ticket"]
     ledger.append(p, gh, p.root, {
         "time": production.now(), "kind": "run", "hash": digest, "ticket": ticket["number"],
