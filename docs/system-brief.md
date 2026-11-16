@@ -613,6 +613,10 @@ Specified in `docs/harness.md` and `docs/resources.md`. The rules:
   `docs/resources.md`, R7 to R9).
 - **Only programs write state.** No agent holds the GitHub credential. `factory` commits a worker's
   files, opens the pull request and posts the markers, so a role cannot post another role's verdict.
+- **What a pull hands off is shown.** When a maker's pull or a job hands off a stored output, `factory`
+  posts one preview comment on the pull (role `program:preview`, first line `## Preview of what this
+  pull hands off`, not a marker): pictures as they are, a GLB as a four-view sheet, a video as a contact
+  sheet, made locally without spending.
 
 ## 15. Command line
 
