@@ -471,6 +471,9 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
     if kind == "checker":
         staged.append(review_dir)
         review = reviewfiles.place(p, gh, root, role, ticket, pull, issues, review_dir)
+    sheets = None
+    if cited is not None and review is not None:
+        sheets = citedmedia.sheets(root, ticket, pull, review_dir, media_dir, run_dir / "media")
 
     # The prompt, the model and the harness version: all read before anything is created.
     if task_file is not None:
@@ -486,7 +489,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
             found = jobs.of(p, root, state, ticket, pull)
             if found is not None and not found["uncovered"] and all(job["run"] == "DONE" for job in found["jobs"]):
                 task = _cite_task(root, pull, found, task)
-    blocks = [b for b in (cited, review) if b is not None]
+    blocks = [b for b in (cited, review, sheets) if b is not None]
     if blocks:
         task = _joined([task, *blocks])
     issue = gh.issue(t)

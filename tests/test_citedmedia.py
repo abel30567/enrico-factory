@@ -6,18 +6,24 @@ fixture's ``reviewer.md``; the media store is the fake S3 store of tests/test_me
 """
 
 import hashlib
+import importlib.util
+import json
 import os
+import re
 import stat
+import struct
 import subprocess
 import sys
+import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import citedmedia, gitstate  # noqa: E402
+from kit.lib import citedmedia, glb, gitstate  # noqa: E402
 from kit.lib.launch import LaunchError  # noqa: E402
 from test_launch import FailingPost, World  # noqa: E402
 from test_media import FakeStore, free_port  # noqa: E402
@@ -29,6 +35,13 @@ OTHER = b"\x89PNG\r\n\x1a\ninvented image BYTES"  # the same length as PNG
 JPEG = b"\xff\xd8\xff\xe0invented jpeg bytes"
 TEXT = b"invented words, not a picture"
 DOWN = "[DOWN] store.media"
+JOB = "cd" * 32
+UNIT = "production/ep02/beats"
+SHEET = b"\x89PNG\r\n\x1a\ninvented sheet"
+NOTES = ("4 views: front, right, back, three-quarter", "12 triangles", "flat shading")
+HEADER_SHEETS = "Sheets of the models of the job of pull request #7, outside the worktree; open each with Read:"
+NO_BOUNDS = "  no bounds: not a GLB the kit can read"
+ROLE = ROOT / "kit" / "roles" / "look-reviewer.md"
 
 
 def sha(data):
@@ -37,6 +50,108 @@ def sha(data):
 
 def mode(path):
     return stat.S_IMODE(os.stat(path).st_mode)
+
+
+def _pad(data, fill):
+    return data + fill * (-len(data) % 4)
+
+
+def make_glb(document, binary=b""):
+    """A GLB of ``document`` (a JSON value) and, when not empty, ``binary``: the lines of tests/test_glb.py."""
+    chunks = [(glb.JSON_CHUNK, _pad(json.dumps(document).encode("utf-8"), b" "))]
+    if binary:
+        chunks.append((glb.BIN_CHUNK, _pad(binary, b"\x00")))
+    body = b"".join(struct.pack("<II", len(data), kind) + data for kind, data in chunks)
+    return struct.pack("<4sII", glb.MAGIC, glb.VERSION, 12 + len(body)) + body
+
+
+# The 12 triangles of a box whose corners are numbered by bits: x 1, y 2, z 4.
+FACES = (0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7, 5)
+
+
+def box_document(*boxes):
+    """``(document, binary)`` of one primitive per box ``(low, high)``: ``POSITION`` with ``min`` and
+    ``max``, and ``uint16`` indices."""
+    doc = {"asset": {"version": "2.0"}, "buffers": [], "bufferViews": [], "accessors": [], "meshes": [],
+           "nodes": [], "scenes": [{"nodes": []}], "scene": 0}
+    binary, primitives = b"", []
+    for low, high in boxes:
+        corners = [[(high if bit & n else low)[axis] for axis, bit in enumerate((1, 2, 4))] for n in range(8)]
+        positions = b"".join(struct.pack("<3f", *corner) for corner in corners)
+        indices = struct.pack(f"<{len(FACES)}H", *FACES)
+        for data, target in ((positions, 34962), (indices, 34963)):
+            binary += b"\x00" * (-len(binary) % 4)
+            doc["bufferViews"].append({"buffer": 0, "byteOffset": len(binary), "byteLength": len(data),
+                                       "target": target})
+            binary += data
+        views = len(doc["bufferViews"])
+        doc["accessors"].append({"bufferView": views - 2, "componentType": 5126, "count": 8, "type": "VEC3",
+                                 "min": list(low), "max": list(high)})
+        doc["accessors"].append({"bufferView": views - 1, "componentType": 5123, "count": len(FACES),
+                                 "type": "SCALAR"})
+        count = len(doc["accessors"])
+        primitives.append({"attributes": {"POSITION": count - 2}, "indices": count - 1})
+    doc["meshes"].append({"primitives": primitives})
+    doc["nodes"].append({"mesh": 0})
+    doc["scenes"][0]["nodes"].append(0)
+    doc["buffers"].append({"byteLength": len(_pad(binary, b"\x00"))})
+    return doc, binary
+
+
+def box(*boxes):
+    """A GLB of boxes ``(low, high)``, each a corner of three numbers."""
+    return make_glb(*box_document(*boxes))
+
+
+def sized(x, y, z):
+    """One box ``x`` by ``y`` by ``z`` metres, standing on the origin."""
+    return box(((0, 0, 0), (x, y, z)))
+
+
+HUMAN = sized(0.9, 1.75, 0.31)  # a human 1.75 m, A-pose, feet
+PLANK = sized(0.63, 0.88, 0.03)  # a card plank
+WALL = sized(4, 3, 0.1)
+SWORD = sized(0.1, 1.0, 0.02)
+EDGE = sized(0.09, 1, 0.5)  # a depth of exactly the line
+SHIP = box(((-1, 0, -3), (1, 1.5, 3)), ((-0.05, 1.5, -0.05), (0.05, 7.5, 0.05)))  # a hull and a mast 6 m
+
+
+def stub(raises=None):
+    """A ``kit.lib.preview`` that counts its calls and returns the invented sheet, or raises ``raises``."""
+    module = types.ModuleType("kit.lib.preview")
+
+    class PreviewError(Exception):
+        pass
+
+    module.PreviewError, module.calls = PreviewError, []
+
+    def glb_sheet(data):
+        module.calls.append(data)
+        if raises is not None:
+            raise raises(module) if callable(raises) else raises
+        return types.SimpleNamespace(data=SHEET, notes=NOTES)
+
+    module.glb_sheet = glb_sheet
+    return module
+
+
+def role_problems(text):
+    """What the look reviewer's role file lacks for a model3d pull: [] when it has everything."""
+    problems = []
+    lines = text.splitlines()
+    if len(lines) > 120:
+        problems.append(f"{len(lines)} lines, over 120")
+    reads = next((line for line in lines if line.startswith("reads:")), "")
+    if "production/**" not in reads:
+        problems.append("reads lacks production/**")
+    rubric = text.split("## Rubric", 1)[1].split("\n## ", 1)[0] if "## Rubric" in text else ""
+    criteria = re.split(r"\n(?=[0-9]+\. )", rubric)
+    terms = ("requests/model3d.json", "pose", "under the line", "Blocker:", "Issue:")
+    if sum(all(term in c for term in terms) for c in criteria) != 1:
+        problems.append("no one criterion of the model")
+    if "a model with no sheet is" not in text:
+        problems.append("a model with no sheet does not block")
+    return problems
 
 
 class Cited(unittest.TestCase):
@@ -316,6 +431,232 @@ class B8NoBytesInGit(Cited):
         lint = subprocess.run([sys.executable, str(ROOT / "kit" / "factory"), "lint", "--root", str(run.worktree),
                                "--only", "media"], capture_output=True, text=True)
         self.assertEqual((lint.returncode, lint.stdout), (0, "media PASS\n"), lint.stderr)
+
+
+class Sheets(Cited):
+    """A job on pull #7 whose outputs are in ``<STATE_DIR>/jobs/<JOB>/out``, and a stubbed ``kit.lib.preview``."""
+
+    def job(self, models, kind=None):
+        """Commit the job's manifest of ``models`` (``{name: bytes}``) and, with ``kind``, the canon file of
+        unit ep02; write each model's bytes to the job's output directory."""
+        outputs = [{"name": name, "sha256": sha(data), "bytes": len(data)} for name, data in models.items()]
+        files = {f"{UNIT}/manifest.json": json.dumps({"job": JOB, "outputs": outputs, "tool": "invented"})}
+        if kind is not None:
+            files[f"{dict(citedmedia.KINDS)[kind]}/ep02.md"] = f"# Ep02\n\nAn invented {kind}.\n"
+        tree = self.w.tmp / "job"
+        self.w.git("worktree", "add", "-q", str(tree), BRANCH)
+        for rel, text in files.items():
+            (tree / rel).parent.mkdir(parents=True, exist_ok=True)
+            (tree / rel).write_text(text)
+        identity = ("-c", "user.name=tester", "-c", "user.email=tester@example.invalid")
+        gitstate.git(tree, "add", "-A")
+        gitstate.git(tree, *identity, "commit", "-q", "-m", "a job's manifest")
+        self.w.git("worktree", "remove", str(tree))
+        out = self.w.state / "jobs" / JOB / "out"
+        out.mkdir(parents=True, exist_ok=True)
+        for name, data in models.items():
+            (out / name).write_bytes(data)
+
+    def launch(self, module):
+        with mock.patch.dict(sys.modules, {"kit.lib.preview": module}):
+            return self.w.prepare("reviewer", 7)
+
+    def ask(self):
+        path = self.w.root / ".factory" / "roles" / "reviewer.md"
+        path.write_text(path.read_text().replace("gated: no\n", "gated: no\nmedia: cited\n"))
+        self.settings(MEDIA_PUBLIC_BASE=self.store.url("/pub"))
+
+    def lines(self, *lines):
+        """The sheets block: after the review block, the last of the task."""
+        return "\n".join([HEADER_SHEETS, *lines]) + "\n"
+
+
+class B9SheetClean(Sheets):
+    def test_clean_a_character_gets_its_sheet_and_bounds(self):
+        self.job({"model.glb": HUMAN}, "character")
+        module = stub()
+        run = self.launch(module)
+        text = self.prompt(run)
+        expected = self.lines(f"- review/model.glb: {run.dir}/media/sheets/model.glb.png",
+                              "  4 views: front, right, back, three-quarter; 12 triangles; flat shading",
+                              "  x 0.9 m, y 1.75 m, z 0.31 m; depth 0.1771 of the height: "
+                              "not under the line of 0.09 for a character")
+        review = text.index("Files of the job of pull request #7, from production/ep02/beats/manifest.json")
+        self.assertIn("\n\n" + expected, text[review:])
+        sheet = run.dir / "media" / "sheets" / "model.glb.png"
+        self.assertEqual(sheet.read_bytes(), SHEET)
+        self.assertEqual(mode(sheet), 0o600)
+        self.assertEqual(mode(sheet.parent), 0o700)
+        self.assertEqual(mode(run.dir / "media"), 0o700)
+        self.assertEqual(module.calls, [HUMAN])
+        self.assertEqual((run.worktree / "review" / "model.glb").read_bytes(), HUMAN)
+        self.assertFalse((run.worktree / "review" / "sheets").exists())
+
+
+class B10Depth(Sheets):
+    CASES = (
+        ("plank", PLANK, "character", "x 0.63 m, y 0.88 m, z 0.03 m; depth 0.0341 of the height: "
+                                      "under the line of 0.09 for a character"),
+        ("wall", WALL, "set", "x 4 m, y 3 m, z 0.1 m; depth 0.0333 of the height: under the line of 0.09 for a set"),
+        ("sword", SWORD, None, "x 0.1 m, y 1 m, z 0.02 m; depth 0.02 of the height: no line for a prop"),
+        ("edge", EDGE, "character", "x 0.09 m, y 1 m, z 0.5 m; depth 0.09 of the height: "
+                                    "not under the line of 0.09 for a character"),
+        ("human", HUMAN, "character", "x 0.9 m, y 1.75 m, z 0.31 m; depth 0.1771 of the height: "
+                                      "not under the line of 0.09 for a character"),
+        ("ship", SHIP, "set", "x 2 m, y 7.5 m, z 6 m; depth 0.2667 of the height: not under the line of 0.09 for a set"),
+    )
+
+    def test_each_kind_and_its_line(self):
+        for label, model, kind, line in self.CASES:
+            with self.subTest(label):
+                self.assertEqual(citedmedia.extents(model)[1], glb.summary(model)["height_m"])
+                self.setUp()
+                self.job({"model.glb": model}, kind)
+                text = self.prompt(self.launch(stub()))
+                self.assertIn("flat shading\n  " + line + "\n", text)
+
+    def test_the_extents(self):
+        self.assertEqual(citedmedia.extents(SHIP), (2, 7.5, 6))
+        self.assertEqual(citedmedia.extents(PLANK), (0.63, 0.88, 0.03))
+        self.assertEqual(citedmedia.DEPTH_MIN, 0.09)
+
+
+class B11NoSheet(Sheets):
+    def no_sheet(self, module, text):
+        self.job({"model.glb": HUMAN}, "character")
+        run = self.launch(module)
+        self.assertIn(self.lines(
+            f"- review/model.glb: no sheet: {text}",
+            "  x 0.9 m, y 1.75 m, z 0.31 m; depth 0.1771 of the height: not under the line of 0.09 for a character"),
+            self.prompt(run))
+        self.assertFalse((run.dir / "media" / "sheets").exists())
+        self.assertTrue((run.dir / "prompt.md").is_file())
+        return module
+
+    def test_seeded_preview_error(self):
+        module = self.no_sheet(stub(lambda m: m.PreviewError("glb: preview took longer than 180 s")),
+                               "glb: preview took longer than 180 s")
+        self.assertEqual(len(module.calls), 1)
+
+    def test_seeded_not_installed(self):
+        self.no_sheet(None, "kit.lib.preview is not installed")
+
+    def test_seeded_other_exception(self):
+        self.no_sheet(stub(RuntimeError("x")), "RuntimeError")
+
+    def test_seeded_a_sheet_that_cannot_be_written_fails_the_launch(self):
+        self.job({"model.glb": HUMAN}, "character")
+        with mock.patch.object(citedmedia, "_write_sheet", side_effect=PermissionError(13, "Permission denied")):
+            with self.assertRaisesRegex(LaunchError, "^cited media: Permission denied$"):
+                self.launch(stub())
+        self.assertEqual(self.runs(), [])
+
+
+class B12Bounds(Sheets):
+    def seeded(self):
+        doc, binary = box_document(((0, 0, 0), (1, 1, 1)))
+        yield "not a GLB", b"invented words, not a GLB"
+        for label, change in (
+                ("no min", lambda d: d["accessors"][0].pop("min")),
+                ("max of 2", lambda d: d["accessors"][0].update(max=[1, 1])),
+                ("min true", lambda d: d["accessors"][0].update(min=[0, True, 0])),
+                ("index -1", lambda d: d["meshes"][0]["primitives"][0]["attributes"].update(POSITION=-1)),
+                ("meshes a string", lambda d: d.update(meshes="meshes")),
+                ("height 0", lambda d: d["accessors"][0].update(max=[1, 0, 1])),
+                ("no primitive", lambda d: d["meshes"][0].update(primitives=[])),
+                ("index true", lambda d: d["meshes"][0]["primitives"][0]["attributes"].update(POSITION=True)),
+                ("min infinite", lambda d: d["accessors"][0].update(min=[0, float("-inf"), 0]))):
+            copy = json.loads(json.dumps(doc))
+            change(copy)
+            yield label, make_glb(copy, binary)
+
+    def test_seeded_each_raises_broken(self):
+        for label, data in self.seeded():
+            with self.subTest(label):
+                with self.assertRaises(glb.Broken) as caught:
+                    citedmedia.extents(data)
+                self.assertIs(type(caught.exception), glb.Broken)
+
+    def test_twin_a_box_reads(self):
+        self.assertEqual(citedmedia.extents(box(((0, 0, 0), (1, 1, 1)))), (1, 1, 1))
+
+    def test_in_a_launch_no_bounds_follows_the_sheet(self):
+        doc, binary = box_document(((0, 0, 0), (1, 1, 1)))
+        doc["accessors"][0].pop("min")
+        self.job({"model.glb": make_glb(doc, binary)}, "character")
+        run = self.launch(stub())
+        self.assertIn(self.lines(
+            f"- review/model.glb: {run.dir}/media/sheets/model.glb.png",
+            "  4 views: front, right, back, three-quarter; 12 triangles; flat shading", NO_BOUNDS), self.prompt(run))
+
+
+class B13NotAsked(Sheets):
+    KEY = False
+
+    def test_seeded_no_key_no_sheet(self):
+        self.job({"model.glb": HUMAN}, "character")
+        module = stub()
+        run = self.launch(module)
+        self.assertNotIn("Sheets of the models", self.prompt(run))
+        self.assertFalse((run.dir / "media").exists())
+        self.assertEqual(module.calls, [])
+
+    def test_seeded_a_png_only_is_not_drawn(self):
+        self.ask()
+        self.job({"pose.png": PNG}, "character")
+        module = stub()
+        run = self.launch(module)
+        self.assertNotIn("Sheets of the models", self.prompt(run))
+        self.assertFalse((run.dir / "media").exists())
+        self.assertEqual(module.calls, [])
+
+    def test_no_review_directory_creates_nothing(self):
+        staged = self.w.tmp / "staged"
+        module = stub()
+        self.assertIsNone(citedmedia.sheets(self.w.root, {"unit": "ep02"}, {"number": 7}, self.w.tmp / "none",
+                                            staged, self.w.tmp / "final", module))
+        self.assertFalse(staged.exists())
+        self.assertEqual(module.calls, [])
+
+    def test_the_models_are_sorted(self):
+        self.ask()
+        self.job({"b.glb": SWORD, "a.glb": HUMAN}, "character")
+        module = stub()
+        run = self.launch(module)
+        text = self.prompt(run)
+        self.assertLess(text.index("- review/a.glb: "), text.index("- review/b.glb: "))
+        self.assertEqual(module.calls, [HUMAN, SWORD])
+        self.assertEqual(sorted(p.name for p in (run.dir / "media" / "sheets").iterdir()),
+                         ["a.glb.png", "b.glb.png"])
+
+
+@unittest.skipUnless(importlib.util.find_spec("kit.lib.preview"), "needs kit.lib.preview")
+class B14RealPreview(Sheets):
+    def test_a_real_sheet_of_a_box(self):
+        self.job({"model.glb": HUMAN}, "character")
+        run = self.w.prepare("reviewer", 7)
+        sheet = (run.dir / "media" / "sheets" / "model.glb.png").read_bytes()
+        self.assertTrue(sheet.startswith(glb.PNG))
+        self.assertEqual(sheet[12:16], b"IHDR")
+        self.assertEqual(struct.unpack_from(">II", sheet, 16), (1024, 1024))
+        self.assertIn("\n  4 views: front, right, back, three-quarter; 12 triangles;", self.prompt(run))
+
+
+class B15RoleFile(unittest.TestCase):
+    def test_clean_the_shipped_role_file(self):
+        self.assertEqual(role_problems(ROLE.read_text(encoding="utf-8")), [])
+
+    def test_seeded_no_criterion_of_the_model(self):
+        text = ROLE.read_text(encoding="utf-8")
+        start = text.index("8. **The model.**")
+        end = text.index("\n## ", start)
+        self.assertEqual(role_problems(text[:start] + text[end + 1:]), ["no one criterion of the model"])
+
+    def test_seeded_121_lines(self):
+        text = ROLE.read_text(encoding="utf-8")
+        longer = text + "\n" * (121 - len(text.splitlines()))
+        self.assertEqual(len(longer.splitlines()), 121)
+        self.assertEqual(role_problems(longer), ["121 lines, over 120"])
 
 
 if __name__ == "__main__":

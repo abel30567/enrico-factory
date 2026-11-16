@@ -6,14 +6,22 @@ A job's picture is copied from ``<STATE_DIR>/jobs/<digest>/out/<name>`` when it 
 other comes from the media store's public link. The files go to a staged directory under ``<STATE_DIR>/runs``
 that the launcher renames to ``<run dir>/media`` once the run directory exists. A store that does not serve
 a picture is an outage: the staged directory is removed and ``[DOWN] store.media`` is found or filed.
+
+``sheets`` draws each GLB of the checker's job in its staged ``review`` directory (``kit.lib.preview``,
+loaded when there is a model to draw) and writes the four-view sheet to ``sheets/<name>.png`` of the same
+staged directory, so it lands in ``<run dir>/media/sheets``. Its block names each sheet, or why there is none,
+with the model's bounds and its depth (the smaller of x and z over the height), which is under the line below
+``DEPTH_MIN`` for a character or a set.
 """
 
+import importlib
+import math
 import os
 import re
 import shutil
 from pathlib import Path
 
-from kit.lib import down, gitstate, media, production
+from kit.lib import down, glb, gitstate, media, production
 from kit.lib.gitstate import GitError
 
 # The alphabet of an id (``cmd_media.ID``) with no trailing ``.``, ``-`` or ``_``.
@@ -26,6 +34,12 @@ COUNT, BYTES, TOTAL = "MEDIA_FETCH_COUNT", "MEDIA_FETCH_BYTES", "MEDIA_FETCH_TOT
 DEFAULTS = {COUNT: "20", BYTES: "5000000", TOTAL: "40000000"}
 _SIZE = re.compile(r"[1-9][0-9]*")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
+SHEETS = "sheets"
+# The depth under which a character or a set is flat: the thinnest human measured is 0.1, a card plank 0.034.
+DEPTH_MIN = 0.09
+KINDS = (("character", "bible/canon/characters"), ("set", "bible/canon/places"))
+NOT_INSTALLED = "kit.lib.preview is not installed"
+NO_BOUNDS = "no bounds: not a GLB the kit can read"
 
 NO_ROW = "no row in media/manifest.tsv"
 NO_SIZE = "its manifest row gives no size"
@@ -195,3 +209,133 @@ def place(p, gh, root, role, pull, issues, staged, final):
     if not placed:
         staged.rmdir()
     return block(number, placed, skipped)
+
+
+def _index(value):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError("index")
+    return value
+
+
+def _corner(value):
+    if not isinstance(value, list) or len(value) != 3:
+        raise ValueError("bound")
+    for number in value:
+        if not isinstance(number, (int, float)) or isinstance(number, bool) or not math.isfinite(number):
+            raise ValueError("bound")
+    return value
+
+
+def _extents(document):
+    accessors, lows, highs = document["accessors"], [], []
+    for mesh in document["meshes"]:
+        for primitive in mesh["primitives"]:
+            position = accessors[_index(primitive["attributes"]["POSITION"])]
+            lows.append(_corner(position["min"]))
+            highs.append(_corner(position["max"]))
+    if not lows:
+        raise ValueError("no primitive")
+    size = tuple(round(max(h[i] for h in highs) - min(low[i] for low in lows), 4) for i in range(3))
+    if not all(math.isfinite(value) for value in size) or not size[1] > 0:
+        raise ValueError("height")
+    return size
+
+
+def extents(data):
+    """``(x, y, z)`` in metres of a GLB: per axis, the highest ``max`` less the lowest ``min`` of the
+    ``POSITION`` accessors, rounded to 4 places, no node transform. ``glb.Broken`` when it cannot be read."""
+    document, _ = glb.read(data)
+    try:
+        return _extents(document)
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError, OverflowError):
+        raise glb.Broken() from None
+
+
+def _kind(root, pull, unit):
+    head = pull["git"]["head"]
+    try:
+        for kind, directory in KINDS:
+            if gitstate.show(root, head, f"{directory}/{unit}.md") is not None:
+                return kind
+    except GitError as error:
+        raise CitedError(f"cited media: {error}") from None
+    return "prop"
+
+
+def _models(review):
+    found = []
+    for path in sorted(Path(review).iterdir()) if Path(review).is_dir() else []:
+        if path.is_file() and not path.is_symlink():
+            with open(path, "rb") as handle:
+                if handle.read(len(glb.MAGIC)) == glb.MAGIC:
+                    found.append(path)
+    return found
+
+
+def _bounds(data, kind):
+    try:
+        x, y, z = extents(data)
+    except glb.Broken:
+        return f"  {NO_BOUNDS}"
+    depth = round(min(x, z) / y, 4)
+    if kind == "prop":
+        verdict = "no line for a prop"
+    else:
+        verdict = f"{'under' if depth < DEPTH_MIN else 'not under'} the line of {DEPTH_MIN:g} for a {kind}"
+    return f"  x {x:g} m, y {y:g} m, z {z:g} m; depth {depth:g} of the height: {verdict}"
+
+
+def _write_sheet(staged, path, data):
+    sheets_dir = staged / SHEETS
+    if not sheets_dir.exists():
+        _mkdirs(sheets_dir)
+        os.chmod(staged, 0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+
+
+def sheets(root, ticket, pull, review, staged, final, previews=None):
+    """Write a sheet of each GLB in ``review`` to ``staged``/sheets (made only for the first sheet) and return
+    the task block, which names each sheet under ``final``; None when ``review`` holds no GLB."""
+    try:
+        models = _models(review) if review is not None else []
+    except OSError as error:
+        raise CitedError(f"cited media: {error.strerror}") from None
+    if not models:
+        return None
+    staged, final = Path(staged), Path(final)
+    kind = _kind(root, pull, ticket["unit"])
+    lines = [f"Sheets of the models of the job of pull request #{pull['number']}, outside the worktree; "
+             "open each with Read:"]
+    missing = False
+    if previews is None:
+        try:
+            previews = importlib.import_module("kit.lib.preview")
+        except ImportError:
+            missing = True
+    for path in models:
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            raise CitedError(f"cited media: {error.strerror}") from None
+        sheet, text = None, NOT_INSTALLED
+        if not missing:
+            try:
+                sheet = previews.glb_sheet(data)
+            except previews.PreviewError as error:
+                text = str(error)
+            except Exception as error:  # noqa: BLE001 - a sheet that fails does not fail the launch
+                text = type(error).__name__
+        if sheet is None:
+            lines.append(f"- review/{path.name}: no sheet: {text}")
+        else:
+            file = f"{path.name}.png"
+            try:
+                _write_sheet(staged, staged / SHEETS / file, sheet.data)
+            except OSError as error:
+                raise CitedError(f"cited media: {error.strerror}") from None
+            lines.append(f"- review/{path.name}: {final / SHEETS / file}")
+            lines.append("  " + "; ".join(sheet.notes))
+        lines.append(_bounds(data, kind))
+    return "\n".join(lines)
