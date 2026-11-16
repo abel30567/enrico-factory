@@ -38,7 +38,6 @@ SHEETS = "sheets"
 # The depth under which a character or a set is flat: the thinnest human measured is 0.1, a card plank 0.034.
 DEPTH_MIN = 0.09
 KINDS = (("character", "bible/canon/characters"), ("set", "bible/canon/places"))
-PREVIEW = "kit.lib.preview"
 NOT_INSTALLED = "kit.lib.preview is not installed"
 NO_BOUNDS = "no bounds: not a GLB the kit can read"
 
@@ -312,7 +311,7 @@ def sheets(root, ticket, pull, review, staged, final, previews=None):
     missing = False
     if previews is None:
         try:
-            previews = importlib.import_module(PREVIEW)
+            previews = importlib.import_module("kit.lib.preview")
         except ImportError:
             missing = True
     for path in models:
@@ -320,24 +319,23 @@ def sheets(root, ticket, pull, review, staged, final, previews=None):
             data = path.read_bytes()
         except OSError as error:
             raise CitedError(f"cited media: {error.strerror}") from None
-        if missing:
-            lines.append(f"- review/{path.name}: no sheet: {NOT_INSTALLED}")
-        else:
+        sheet, text = None, NOT_INSTALLED
+        if not missing:
             try:
                 sheet = previews.glb_sheet(data)
             except previews.PreviewError as error:
-                sheet, text = None, str(error)
+                text = str(error)
             except Exception as error:  # noqa: BLE001 - a sheet that fails does not fail the launch
-                sheet, text = None, type(error).__name__
-            if sheet is None:
-                lines.append(f"- review/{path.name}: no sheet: {text}")
-            else:
-                file = f"{path.name}.png"
-                try:
-                    _write_sheet(staged, staged / SHEETS / file, sheet.data)
-                except OSError as error:
-                    raise CitedError(f"cited media: {error.strerror}") from None
-                lines.append(f"- review/{path.name}: {final / SHEETS / file}")
-                lines.append("  " + "; ".join(sheet.notes))
+                text = type(error).__name__
+        if sheet is None:
+            lines.append(f"- review/{path.name}: no sheet: {text}")
+        else:
+            file = f"{path.name}.png"
+            try:
+                _write_sheet(staged, staged / SHEETS / file, sheet.data)
+            except OSError as error:
+                raise CitedError(f"cited media: {error.strerror}") from None
+            lines.append(f"- review/{path.name}: {final / SHEETS / file}")
+            lines.append("  " + "; ".join(sheet.notes))
         lines.append(_bounds(data, kind))
     return "\n".join(lines)
