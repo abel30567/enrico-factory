@@ -17,14 +17,15 @@ from kit.lib import frontmatter, harness, lint, roles
 
 CASE_KEYS = {"seeded": ("catches",), "clean": (), "replay": ("lint", "expect_files"),
              "refusal": ("lint", "expect_files", "forbid"), "pair": ("better",), "verdict": ("verdicts",),
-             "ruling": ("results",), "selection": ("selected",)}
+             "symptoms": ("beats",), "ruling": ("results",), "selection": ("selected",)}
 CASE_KINDS = {"checker": ("seeded", "clean"), "maker": ("replay", "refusal", "verdict"), "judge": ("pair",),
-              "analyst": ("verdict",), "orchestrator": ("ruling", "selection")}
+              "analyst": ("verdict", "symptoms"), "orchestrator": ("ruling", "selection")}
 # The kinds whose suite needs at least one case, an orchestrator's a ruling or selection case; a role
 # of another kind may have none.
 NEEDS_CASES = ("checker", "maker", "judge", "orchestrator")
 RULINGS = ("acted on", "rejected")
 VERDICTS = ("usable", "not usable")
+BEAT_SYMPTOMS = ("held", "dropped", "rewatched")
 SIDES = ("old", "new")
 PLACES = 4
 MEASURED_RUNS = 5
@@ -92,6 +93,12 @@ def _spec_problem(spec, role_kind, lint_ids):
                 or any(not isinstance(vid, str) or not vid for vid in verdicts) \
                 or any(value not in VERDICTS for value in verdicts.values()):
             return "verdicts is not an object of video id to usable or not usable"
+    if kind == "symptoms":
+        beats = spec["beats"]
+        if not isinstance(beats, dict) or not beats \
+                or any(not isinstance(beat, str) or not beat for beat in beats) \
+                or any(value not in BEAT_SYMPTOMS for value in beats.values()):
+            return "beats is not an object of beat id to held, dropped or rewatched"
     if kind == "ruling":
         results = spec["results"]
         if not isinstance(results, dict) or not results \
@@ -268,6 +275,23 @@ def _grade_verdict(case, result, run_dir):
     return True, "every verdict right"
 
 
+def _grade_symptoms(case, result):
+    """A symptoms case passes when each beat's symptoms, read at the start of the notes' text, are
+    exactly the case's one."""
+    if result["marker"] != "SYMPTOMS":
+        return False, f"marker {result['marker']}, not SYMPTOMS"
+    found = {}
+    for note in result.get("notes", []):
+        for beat in case.spec["beats"]:
+            m = re.match(re.escape(beat) + r" (held|dropped|rewatched): \S", note["text"])
+            if m:
+                found.setdefault(beat, set()).add(m.group(1))
+    wrong = sorted(beat for beat, symptom in case.spec["beats"].items() if found.get(beat) != {symptom})
+    if wrong:
+        return False, "wrong or no symptom: " + ", ".join(wrong)
+    return True, "every beat right"
+
+
 def _grade_ruling(case, result):
     """A ruling case passes when each note's evidence results are exactly the case's one."""
     if result["marker"] != "RULING":
@@ -322,6 +346,8 @@ def grade(case, result, run=1, run_dir=None):
         passed, detail = _grade_refusal(case, result, run_dir)
     elif case.kind == "verdict":
         passed, detail = _grade_verdict(case, result, run_dir)
+    elif case.kind == "symptoms":
+        passed, detail = _grade_symptoms(case, result)
     elif case.kind == "ruling":
         passed, detail = _grade_ruling(case, result)
     elif case.kind == "selection":
@@ -354,6 +380,8 @@ def metrics(kind, graded):
     not pass and is not ``BLOCKED`` counts as an alarm). A maker: lint pass rate on replay cases and,
     with a refusal case, refusal rate; its score is the share passed over both kinds; with a verdict
     case, also verdict rate. A maker with verdict cases only, and an analyst: verdict rate, its score.
+    An analyst with a symptoms case: symptom rate, and verdict rate with a verdict case; its score is
+    the share of all its cases passed.
     A judge: agreement.
     An orchestrator: decision rate, the share of its ruling and selection cases passed, its score.
     A blocked case counts in each denominator and in no numerator; ``blocked`` is the number of
@@ -364,6 +392,10 @@ def metrics(kind, graded):
         rates = {"catch_rate": _rate(graded, "seeded", _passed),
                  "false_alarm_rate": _rate(graded, "clean",
                                            lambda g: g["pass"] is False and not _blocked(g))}
+    elif kind == "analyst" and any(g["kind"] == "symptoms" for g in graded):
+        rates = {"symptom_rate": _rate(graded, "symptoms", _passed)}
+        if any(g["kind"] == "verdict" for g in graded):
+            rates["verdict_rate"] = _rate(graded, "verdict", _passed)
     elif kind == "analyst" or kind == "maker" and graded and all(g["kind"] == "verdict" for g in graded):
         rates = {"verdict_rate": _rate(graded, "verdict", _passed)}
     elif kind == "maker":
@@ -388,6 +420,8 @@ def metrics(kind, graded):
     elif "lint_pass_rate" in rates:
         counted = [g for g in graded if g["kind"] in ("replay", "refusal")]
         score = sum(_passed(g) for g in counted) / len(counted)
+    elif "symptom_rate" in rates:
+        score = sum(_passed(g) for g in graded) / len(graded)
     else:
         score = values[0]
     out = {name: round(value, PLACES) for name, value in rates.items()}

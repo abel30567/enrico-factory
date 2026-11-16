@@ -41,7 +41,8 @@ change nothing.
 No files. Symptom notes in the result object:
 
 - telemetry on beats: for each beat ID (`B<n>`), what the audience did over its time span in the
-  edit list: held, dropped, rewatched;
+  edit list: held, dropped, rewatched. One note per beat; its `text` starts with `B<n> held: `,
+  `B<n> dropped: ` or `B<n> rewatched: `;
 - comment clusters: what viewers say, grouped, each with a count and the beats it names;
 - hypothesis results: per hypothesis the task names, held or not held, and by how much.
 

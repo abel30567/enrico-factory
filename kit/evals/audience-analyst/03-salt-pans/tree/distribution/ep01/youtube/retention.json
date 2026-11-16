@@ -1,0 +1,40 @@
+{
+ "beats": [
+  {
+   "beat": "B1",
+   "end": 10,
+   "first": 1,
+   "last": 25,
+   "retention": 0.945,
+   "start": 0
+  },
+  {
+   "beat": "B2",
+   "end": 20,
+   "first": 26,
+   "last": 50,
+   "retention": 1.125,
+   "start": 10
+  },
+  {
+   "beat": "B3",
+   "end": 30,
+   "first": 51,
+   "last": 75,
+   "retention": 0.915,
+   "start": 20
+  },
+  {
+   "beat": "B4",
+   "end": 40,
+   "first": 76,
+   "last": 100,
+   "retention": 0.625,
+   "start": 30
+  }
+ ],
+ "length": 40,
+ "post": "ep01/youtube",
+ "post_id": "aa-salt",
+ "snapshot_sha256": "3999b0dc2baed2e092a1ede047442c7df0c75f5848f3310dce4f513568a75daa"
+}

@@ -1,0 +1,1 @@
+Season 1 is episode ep01, locked. The verdict to learn from: audience-sim on the reel of ep01: B4 ends the problem without Oda doing anything; viewers who stayed to B4 could not retell how it ended. Write the season's next lesson in playbook/ and one proposal in lab/proposals/.
