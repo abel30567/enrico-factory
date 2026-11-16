@@ -1,0 +1,16 @@
+{
+  "shot": "Q1-1",
+  "stage": "layout",
+  "fps": 24,
+  "frames": {"first": 0, "last": 11},
+  "actors": [{"id": "adair", "kind": "character", "asset": "asset:adair", "sha256": "f62bb2df96efc7bb6945177fc48d77409b0cd584869f90053840fb813609c76f", "scale": [1, 1, 1], "height_m": 1.8, "start": {"location": [0.0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0.0, 0, 0], "rotation": [0, 0, 90]}}, {"id": "cistern", "kind": "set", "asset": "asset:cistern", "sha256": "7a9c736afd6ec10035e752eef9ae34707e42898308784609558cdf27c6a5de2b", "scale": [1, 1, 1], "height_m": 4.0, "start": {"location": [0, 0, 0], "rotation": [0, 0, 90]}, "end": {"location": [0, 0, 0], "rotation": [0, 0, 90]}}],
+  "camera": {"focal_mm": {"min": 35, "max": 35}, "sensor_mm": [36, 20.25], "start": {"location": [0.25, -5, 1.5], "rotation": [0, 0, 0]}, "end": {"location": [0.25, -5, 1.5], "rotation": [0, 0, 0]}},
+  "framing": [{"frame": 0, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 1, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 2, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 3, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 4, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 5, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 6, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 7, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 8, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 9, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 10, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}, {"frame": 11, "actor": "adair", "box": [0.42, 0.2, 0.58, 0.95]}],
+  "line_flips": [],
+  "motion": [],
+  "lipsync": [],
+  "caches": [],
+  "lights": [],
+  "sun": null,
+  "render": null
+}

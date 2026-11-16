@@ -1,0 +1,10 @@
+{
+  "asset": "dovecote",
+  "kind": "set",
+  "sha256": "a834d8f0e5306beea7332cefd926c0c91572f92e463c6b38279c5df8dd60282b",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "dovecote_body", "width": 2048, "height": 2048}],
+  "height_m": 9.0,
+  "skeleton": null
+}

@@ -1,0 +1,10 @@
+{
+  "asset": "tannery",
+  "kind": "set",
+  "sha256": "22d9fef5947538c4def72cd4afb0e0567310a5936b20b637ddc80f69197aeb06",
+  "triangles": 40000,
+  "materials": 3,
+  "textures": [{"name": "tannery_body", "width": 2048, "height": 2048}],
+  "height_m": 7.0,
+  "skeleton": null
+}
