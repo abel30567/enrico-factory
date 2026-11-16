@@ -1,0 +1,7 @@
+{
+ "for": "tamsin",
+ "prompt": "Rig the character tamsin for the poses walk, reach overhead and crouch, with a limit on every joint.",
+ "refs": [
+  "asset:tamsin"
+ ]
+}

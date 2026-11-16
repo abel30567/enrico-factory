@@ -1,0 +1,7 @@
+{
+ "for": "juno",
+ "prompt": "Rig the character juno for the poses climb, jump and sit, with a limit on every joint.",
+ "refs": [
+  "asset:juno"
+ ]
+}

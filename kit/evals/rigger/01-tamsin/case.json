@@ -1,0 +1,1 @@
+{"kind": "replay", "lint": ["rigging"], "expect_files": ["production/assets/tamsin/rigging/scene.py", "production/assets/tamsin/rigging/requests/rig.json"]}

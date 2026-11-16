@@ -1,0 +1,1 @@
+Build the asset nessa, a character, from its canon and model sheets: its scene script and the request of its model3d job. Write only production/assets/nessa/assets/scene.py and production/assets/nessa/assets/requests/model3d.json.
