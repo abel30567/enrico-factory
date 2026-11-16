@@ -1,0 +1,12 @@
+{
+  "id": "Q1-1",
+  "scene": "S1",
+  "beat": "B1",
+  "duration": 0.5,
+  "characters": [
+    "maren"
+  ],
+  "set": "flax-field",
+  "camera": "wide shot, eye level, static",
+  "action": "Maren walks through the flax as the wind lifts her shawl."
+}

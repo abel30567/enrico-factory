@@ -1,0 +1,1 @@
+Simulate the effects of shot Q1-1 of ep01 over its locked animation, the sparks as particles, each with a fixed seed: its scene script and the request of its render job. Write only production/ep01/Q1-1/simulation/scene.py and production/ep01/Q1-1/simulation/requests/render.json.
