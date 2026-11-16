@@ -1,0 +1,1 @@
+Season 1 is episode ep01, locked. The verdict to learn from: pitch-judge on the boards of ep01: the losing board opened on a wide shot of the yard and named no one in its first shot. Write the season's next lesson in playbook/ and one proposal in lab/proposals/.

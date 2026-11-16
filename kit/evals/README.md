@@ -37,6 +37,7 @@ each case's model sheets, style lock and canon ledger; run it again after changi
 | maker | `{"kind": "replay", "lint": [...], "expect_files": [glob, ...]}` | READY, files present, lints pass |
 | maker | `{"kind": "refusal", "lint": [...], "expect_files": [glob, ...], "forbid": [regex, ...]}` | BLOCKED whose missing matches every regex; or READY, files present, lints pass, no regex in the files |
 | maker or analyst | `{"kind": "verdict", "verdicts": {id: "usable" or "not usable"}}` | READY (maker) or SYMPTOMS (analyst), each video's verdict as given |
+| analyst | `{"kind": "symptoms", "beats": {beat: "held", "dropped" or "rewatched"}}` | SYMPTOMS, each beat's symptom as given |
 | judge | `{"kind": "pair", "better": "old"}` or `"new"` | PREFERS the side that shows `better` |
 | orchestrator | `{"kind": "ruling", "results": {note: "acted on" or "rejected"}}` | RULING, each note's `evidence` result as given |
 | orchestrator | `{"kind": "selection", "selected": n}` | SELECTED, and `selected` is n |
@@ -47,11 +48,13 @@ its tree passes those lints. A clean case is a near miss: it looks suspicious an
 id, a value), never prose. A refusal case gives a task that can only be done with something the role
 may not use, such as a subject with no canon sheet; a forbid regex matches its id. Its twin is a replay
 case with the same task and the same tree plus what was missing. A replay case's `lint` is its stage's
-`lint` in `pipeline.json`. A pair
+`lint` in `pipeline.json`; a `retro` replay case, whose stage names no lint, has `["playbook"]`. A pair
 case's two versions differ for one reason the rubric names and in no other way.
 
 A verdict case's ids are the videos of its tree's `.snapshot/`. A maker gives a verdict at the start of a note in
 `research/trends/*.tsv`, an analyst at the start of a note's text after the id: `"usable: "` or `"not usable: "`.
+A symptoms case's beats are the beat IDs of its tree's `episodes/<ep>/reel/edit-list.json`; the analyst gives a beat's
+symptom at the start of a note's text after the beat ID: `"held: "`, `"dropped: "` or `"rewatched: "`.
 
 ## Case ids
 

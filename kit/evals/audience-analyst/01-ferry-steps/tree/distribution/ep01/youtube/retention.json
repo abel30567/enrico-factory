@@ -1,0 +1,40 @@
+{
+ "beats": [
+  {
+   "beat": "B1",
+   "end": 10,
+   "first": 1,
+   "last": 25,
+   "retention": 0.96,
+   "start": 0
+  },
+  {
+   "beat": "B2",
+   "end": 20,
+   "first": 26,
+   "last": 50,
+   "retention": 0.92,
+   "start": 10
+  },
+  {
+   "beat": "B3",
+   "end": 30,
+   "first": 51,
+   "last": 75,
+   "retention": 0.65,
+   "start": 20
+  },
+  {
+   "beat": "B4",
+   "end": 40,
+   "first": 76,
+   "last": 100,
+   "retention": 0.385,
+   "start": 30
+  }
+ ],
+ "length": 40,
+ "post": "ep01/youtube",
+ "post_id": "aa-ferry",
+ "snapshot_sha256": "5e467abf5da010d56bff0729b52c5be69e780d8b91513612c49c289e4de8b9fe"
+}
