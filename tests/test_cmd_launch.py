@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import blind, lint, markers  # noqa: E402
+from kit.lib.handoff import HEADING  # noqa: E402
 from kit.lib import gitstate, github, launch  # noqa: E402
 from test_finish import CRITIC, WEIGHER, WRITER, World, approved, last_line, notes, ready, result_step  # noqa: E402
 
@@ -256,13 +257,30 @@ class MarkersLint(unittest.TestCase):
         (tree / ".factory-state" / "comments.json").write_text(json.dumps(comments, indent=1) + "\n")
         return lint.run(tree, only=["markers"])["markers"]
 
+    @staticmethod
+    def is_preview(comment):
+        """The preview comment (``kit/lib/handoff.py``): not a marker, known by its exact first line."""
+        return comment["body"].split("\n", 1)[0] == HEADING
+
     def test_everything_posted_passes(self):
         self.assertEqual(self.codes, [0, 0, 0, 0])
-        verbs = sorted(markers.parse(c["body"]).verb for c in self.comments)
+        previews = [c for c in self.comments if self.is_preview(c)]
+        self.assertTrue(previews)
+        self.assertEqual({c["role"] for c in previews}, {"program:preview"})
+        verbs = sorted(markers.parse(c["body"]).verb for c in self.comments if not self.is_preview(c))
         self.assertEqual(verbs, ["ADDRESSED", "LAUNCH", "LAUNCH", "LAUNCH", "LAUNCH", "NOTES", "PREFERS A",
                                  "READY", "READY"])
         result = self.lint(self.comments)
         self.assertEqual((result.status, result.findings), (lint.PASS, []))
+
+    def test_a_comment_that_is_neither_a_marker_nor_the_preview_fails(self):
+        stray = {"id": max(c["id"] for c in self.comments) + 1, "role": "writer",
+                 "body": "Preview of what this pull hands off\n\nNot the preview's first line.\n"}
+        self.assertFalse(self.is_preview(stray))
+        self.assertIsNone(markers.parse(stray["body"]))
+        result = self.lint(self.comments + [stray])
+        self.assertEqual(result.status, lint.FAIL)
+        self.assertEqual([f.rule for f in result.findings], ["marker-missing"])
 
     def test_checker_comment_without_its_last_line_fails(self):
         seeded = []
