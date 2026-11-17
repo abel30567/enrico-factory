@@ -1,0 +1,8 @@
+{
+  "job": "1999513440b5f3fab3f81872841e1b0da1ebd7b87ff7bdab1f0d34aeaf63867d",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "adair_rig.uasset", "sha256": "7a4ed4f8d504654b9153bb3cb7dd584fe47836812d880bb937ad80907a5663a1", "bytes": 2097152}]
+}

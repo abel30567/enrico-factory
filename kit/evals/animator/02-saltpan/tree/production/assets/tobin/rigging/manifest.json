@@ -1,0 +1,8 @@
+{
+  "job": "a0caa5e8994de52044318e204b93e0e7b393b58d7409cdac7d5722b8ce34baac",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "tobin_rig.uasset", "sha256": "68b088e59aa26af73825227414f177fc70733b488e216bf554407d615db00888", "bytes": 2097152}]
+}

@@ -6,7 +6,10 @@ of the pipeline's `production/animation` entry, not in a loop list.
 The animation lint does not read requests, so a request's shape is not graded here.
 """
 
+import contextlib
+import dataclasses
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,9 +20,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kit.lib import evals, lint
+from kit.lib import cmd_eval, evals, lint
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+
+from test_eval_trees_agree import MERGE_IS_THE_LOCK, _joined, blocked_section  # noqa: E402
+
 KIT = ROOT / "kit"
 FIX = ROOT / "tests" / "fixtures" / "story_evals"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -36,6 +43,8 @@ LAYOUT = "production/ep01/Q1-1/layout/state.json"
 SHOT = "episodes/ep01/sequences/Q1/shots/Q1-1.json"
 READY = {"marker": "READY", "summary": "Done.",
          "evidence": [{"criterion": "stage files", "result": "written", "command": "ls"}]}
+
+CHECKS = ("rigging", "layout", "animation")
 
 
 def tree_hash(path):
@@ -128,6 +137,25 @@ NEAR_MISSES = (("no refs", edit_request(lambda d: d.update(refs=[]))),
                ("another shot", edit_request(lambda d: d.update({"for": "ep01/Q1-2"}))))
 
 
+
+def built(case, change=None, checks=CHECKS):
+    """``{check: result}`` of the lints on ``case``'s run directory as ``factory eval`` builds it, on a copy of
+    the case whose tree is edited by ``change(tree)`` (ISSUE-574)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "case"
+        shutil.copytree(case.path, copy)
+        if change:
+            change(copy / "tree")
+        run_dir = Path(tmp) / "run"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cmd_eval.build_run_dir(KIT, dataclasses.replace(case, path=copy), 1, run_dir)
+        return lint.run(run_dir, only=list(checks))
+
+
+def messages(found, check):
+    return [(f.rule, f.message) for f in found[check].findings]
+
+
 class AnimatorEvalsTest(unittest.TestCase):
     def test_the_suite_is_the_animation_entrys(self):
         self.assertIn(ROLE, ENTRY["maker"])
@@ -193,6 +221,35 @@ class AnimatorEvalsTest(unittest.TestCase):
                     grade, _ = graded(case, change)
                     self.assertTrue(grade["pass"], grade["detail"])
                     self.assertEqual(grade["detail"], "lint PASS")
+
+    def test_each_run_directory_passes_with_its_rig_manifests(self):
+        cases = evals.load(KIT, ROLE)
+        self.assertEqual(len(cases), 3)
+        for case in cases:
+            with self.subTest(case=case.id):
+                found = built(case)
+                for check in CHECKS:
+                    self.assertEqual(found[check].status, "PASS", lint.text(found))
+
+    def test_a_rig_hash_off_its_manifest_fails(self):
+        case = next(c for c in evals.load(KIT, ROLE) if c.id == "01-cistern")
+        manifest = "production/assets/adair/rigging/manifest.json"
+
+        def off_by_one_digit(tree):
+            text = (tree / manifest).read_text(encoding="utf-8")
+            digest = json.loads(text)["outputs"][0]["sha256"]
+            other = digest[:-1] + ("0" if digest[-1] != "0" else "1")
+            (tree / manifest).write_text(text.replace(digest, other), encoding="utf-8")
+
+        self.assertIn(("rig-hash", f"rig_sha256 is not the sha256 of an output of {manifest}"),
+                      messages(built(case, off_by_one_digit), "rigging"))
+        self.assertIn(("rig-hash", f"{manifest} is missing"),
+                      messages(built(case, lambda tree: (tree / manifest).unlink()), "rigging"))
+
+    def test_the_role_says_the_merge_is_the_lock(self):
+        section = _joined(blocked_section((KIT / "roles" / f"{ROLE}.md").read_text(encoding="utf-8")))
+        self.assertIn(MERGE_IS_THE_LOCK, section)
+        self.assertNotIn("not locked", section)
 
     def test_it_runs_on_the_fake_harness(self):
         before = tree_hash(KIT / "evals")

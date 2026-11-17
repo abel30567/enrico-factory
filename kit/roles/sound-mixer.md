@@ -25,7 +25,6 @@ the score and the effects against the conformed cut. The mix reviewer checks it.
    and `production/<ep>/shots.json`.
 3. The locked `render` files of every shot of the episode, and the episode's voice and music in
    `media/manifest.tsv`.
-4. `production/<ep>/conform/edit-list.json` and `captions.json`, the conform editor's.
 
 When two files disagree, this order wins: the rules of power, the charter, the production rules, the
 canon ledger, the episode ledger, the role file, the task.
@@ -48,7 +47,9 @@ files and posts your result.
   no path outside the job's directory, no network call, no clock read and no random number without a
   seed. It never writes the state.
 - The job writes `conform/mix.json` (`loudness_lufs`, `true_peak_dbtp`, `lines`, `stems`, `master`)
-  and `conform/manifest.json`. Every line of `lines.json` is heard where its caption is.
+  and `conform/manifest.json`. Place each line of `lines.json` inside the frames
+  (`production/<ep>/shots.json`) of a shot of the line's scene; the conform editor times the captions
+  to your mix.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the
   other files of the stage beside it; you never write them.
 - On a relaunch, read what the job committed and every `[LINT]` blocker before you change your
@@ -98,8 +99,10 @@ End with one JSON object, the result object, and nothing after it:
 
 ## Blocked
 
-Return `BLOCKED` only when you cannot do the work from the files: the episode's reel is not locked,
-or a shot of it has no locked `render`. Fill `blocked` with:
+Return `BLOCKED` only when you cannot do the work from the files: the episode has no reel, or a
+shot of it has no `render`. A file of an earlier stage in your worktree is locked: it reached the base
+branch by a merged pull request, and that merge is the lock. No file records a lock; do not ask for
+one. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;

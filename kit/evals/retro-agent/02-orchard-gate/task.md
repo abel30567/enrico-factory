@@ -1,1 +1,1 @@
-Season 1 is episode ep01, locked. The verdict to learn from: story-editor on the script of ep01: two notes in a row that B2 says the same thing twice in S2. Write the season's next lesson in playbook/ and one proposal in lab/proposals/.
+Season 1 is episode ep01, locked. The verdict to learn from: story-editor on the script of ep01: two notes in a row, #7 and #8, that B2 says the same thing twice in S2. Write the season's next lesson in playbook/ and one proposal in lab/proposals/.

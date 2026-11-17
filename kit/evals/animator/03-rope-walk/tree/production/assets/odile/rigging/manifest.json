@@ -1,0 +1,8 @@
+{
+  "job": "63609c8fde6434d0520caa53c0773ff43584118075b987bb9667a327fc931589",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "odile_rig.uasset", "sha256": "34dea17275678d527cee9eccd93e8bb9ff7c4d820326c205691aa78f71d2f9f5", "bytes": 2097152}]
+}

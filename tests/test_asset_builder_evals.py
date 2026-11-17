@@ -6,7 +6,10 @@ of the pipeline's `production/assets` entry, not in a loop list.
 The assets lint does not read a request's prompt, so prompt text is not graded here.
 """
 
+import contextlib
+import dataclasses
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,7 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kit.lib import evals, lint
+from kit.lib import cmd_eval, evals, lint
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
@@ -30,6 +33,10 @@ ENTRY = next(e for e in json.loads((KIT / "pipeline.json").read_text(encoding="u
 ROLE = "asset-builder"
 READY = {"marker": "READY", "summary": "Done.",
          "evidence": [{"criterion": "stage files", "result": "written", "command": "ls"}]}
+
+CHECKS = ("structure", "assets")
+LEDGER = "bible/canon/ledger.tsv"
+SHEET = "bible/canon/places/mill-yard.md"
 
 
 def tree_hash(path):
@@ -123,6 +130,31 @@ CUTS = (("01-pell", "refs media:pell-sketch", edit("refs", ["media:pell-sketch"]
          "not by bible/style/characters/nessa.md"))
 
 
+
+def built(case, change=None, checks=CHECKS):
+    """``{check: result}`` of the lints on ``case``'s run directory as ``factory eval`` builds it, on a copy of
+    the case whose tree is edited by ``change(tree)`` (ISSUE-574)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "case"
+        shutil.copytree(case.path, copy)
+        if change:
+            change(copy / "tree")
+        run_dir = Path(tmp) / "run"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cmd_eval.build_run_dir(KIT, dataclasses.replace(case, path=copy), 1, run_dir)
+        return lint.run(run_dir, only=list(checks))
+
+
+def height_row(tree, subject):
+    """Whether ``tree``'s canon ledger has a ``height`` row of ``subject``."""
+    rows = [line.split("\t") for line in (Path(tree) / LEDGER).read_text(encoding="utf-8").splitlines()]
+    return any(row[:2] == [subject, "height"] for row in rows)
+
+
+def messages(found, check):
+    return [(f.rule, f.message) for f in found[check].findings]
+
+
 class AssetBuilderEvalsTest(unittest.TestCase):
     def cases(self):
         return {case.id: case for case in evals.load(KIT, ROLE)}
@@ -188,6 +220,29 @@ class AssetBuilderEvalsTest(unittest.TestCase):
                     grade, _ = graded(case, change)
                     self.assertTrue(grade["pass"], grade["detail"])
                     self.assertEqual(grade["detail"], "lint PASS")
+
+    def test_the_set_case_has_its_origin_and_size(self):
+        case = next(c for c in evals.load(KIT, ROLE) if c.id == "02-mill-yard")
+        found = built(case)
+        for check in CHECKS:
+            self.assertEqual(found[check].status, "PASS", lint.text(found))
+        self.assertTrue(height_row(case.path / "tree", "mill-yard"))
+
+    def test_a_set_without_its_origin_or_size_fails(self):
+        case = next(c for c in evals.load(KIT, ROLE) if c.id == "02-mill-yard")
+
+        def no_origin(tree):
+            text = (tree / SHEET).read_text(encoding="utf-8")
+            (tree / SHEET).write_text(re.sub(r"(?m)^origin:.*\n", "", text), encoding="utf-8")
+
+        self.assertIn("no line 'origin: source' or 'origin: house'",
+                      [m for _, m in messages(built(case, no_origin), "structure")])
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp) / "tree"
+            shutil.copytree(case.path / "tree", tree)
+            text = (tree / LEDGER).read_text(encoding="utf-8")
+            (tree / LEDGER).write_text(re.sub(r"(?m)^mill-yard\t.*\n", "", text), encoding="utf-8")
+            self.assertFalse(height_row(tree, "mill-yard"))
 
     def test_it_runs_on_the_fake_harness(self):
         before = tree_hash(KIT / "evals")

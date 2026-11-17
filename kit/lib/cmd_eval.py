@@ -72,8 +72,9 @@ PAIR_FILES = ("bible/charter.md", "bible/canon/ledger.tsv")
 def build_run_dir(kit, case, run, run_dir):
     """Build the directory ``run_dir`` a role works in for ``case`` in ``run``. Starts no harness.
 
-    A ``seeded``, ``clean`` or ``replay`` case: a production as ``factory init`` makes it, with
-    ``.factory/`` copied from ``kit`` without ``evals/``, then the case's ``tree/`` over it (a tree file
+    A ``seeded``, ``clean`` or ``replay`` case: a production as ``factory init`` makes it for the story
+    room and the room of the case's role (a studio role adds none), with ``.factory/`` copied from
+    ``kit`` without ``evals/``, then the case's ``tree/`` over it (a tree file
     wins). A ``pair`` case: ``A/`` and ``B/`` only, each the version ``evals.sides`` gives it, plus the
     init charter and canon ledger where the version has none. A ``ruling`` or ``selection`` case: a copy
     of its ``tree/`` and nothing else, one directory ``pr-<n>/`` for each pull request its task names.
@@ -91,7 +92,9 @@ def build_run_dir(kit, case, run, run_dir):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(cmd_init.FILES[rel], encoding="utf-8")
         return
-    cmd_init.install(run_dir, Path(kit), cmd_init.parse_rooms(cmd_init.DEFAULT_ROOMS), evals=False)
+    room = evals.role_file(kit, case.role)[0].get("room")
+    rooms = [cmd_init.DEFAULT_ROOMS] + ([room] if room in cmd_init.ROOMS else [])
+    cmd_init.install(run_dir, Path(kit), cmd_init.parse_rooms(",".join(rooms)), evals=False)
     shutil.copytree(case.path / "tree", run_dir, dirs_exist_ok=True)
 
 

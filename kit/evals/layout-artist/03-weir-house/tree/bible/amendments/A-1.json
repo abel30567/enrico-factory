@@ -1,0 +1,10 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/hesper.md": "adds Hesper, the keeper of the weir house",
+    "bible/canon/places/weir-house.md": "adds the weir house",
+    "bible/canon/ledger.tsv": "adds the height of Hesper"
+  },
+  "why": "the weir episode needs its keeper and the weir house",
+  "evidence": {"episodes/ep01/sequences/Q1/shots/Q1-1.json": "Hesper lifts the lantern to read the water mark"}
+}

@@ -1,0 +1,8 @@
+{
+  "job": "6c998e17f35718a005d99330765e0afb3e4794a05f4fe5f25e8a2b9400e00aa0",
+  "engine": "5.5",
+  "flags": [],
+  "inputs": [],
+  "seeds": {},
+  "outputs": [{"name": "blythe_rig.uasset", "sha256": "e79e68fb881c78ce8458754ca5e46623d3bdfdb0c246b9df41a9a1dfa7ba4a39", "bytes": 2097152}]
+}

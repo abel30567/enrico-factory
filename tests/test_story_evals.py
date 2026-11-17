@@ -209,6 +209,17 @@ class BuildRunDirTest(unittest.TestCase):
         for path in tree:
             self.assertEqual((run_dir / path).read_bytes(), (case.path / "tree" / path).read_bytes(), path)
 
+    def test_a_production_role_gets_its_room(self):
+        """ISSUE-574: the run directory installs the story room and the room of the case's role."""
+        _, run_dir = self.build("sound-mixer", "01-ferry-steps")
+        self.assertTrue((run_dir / ".factory/roles/sound-mixer.md").is_file())
+        pipeline = json.loads((run_dir / ".factory/pipeline.json").read_text(encoding="utf-8"))
+        self.assertIn("conform", [entry["stage"] for entry in pipeline])
+        self.assertEqual({entry["room"] for entry in pipeline}, {"story", "production"})
+        _, run_dir = self.build("story-writer", "01-tide-bell")
+        pipeline = json.loads((run_dir / ".factory/pipeline.json").read_text(encoding="utf-8"))
+        self.assertEqual({entry["room"] for entry in pipeline}, {"story"})
+
     def test_no_answer_in_the_run_directory(self):
         _, run_dir = self.build("story-writer", "01-tide-bell")
         self.assertFalse((run_dir / ".factory" / "evals").exists())
