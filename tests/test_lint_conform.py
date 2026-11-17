@@ -15,6 +15,9 @@ FIX = ROOT / "tests" / "fixtures" / "lint_conform"
 CLEAN = FIX / "clean"
 LINES, REEL = "episodes/ep01/lines.json", "episodes/ep01/reel/edit-list.json"
 CAPTIONS, EDIT, MIX = (f"production/ep01/conform/{name}.json" for name in ("captions", "edit-list", "mix"))
+SHOTS, SCENE = "production/ep01/shots.json", "production/ep01/conform/scene.py"
+REQUEST, PLAN = "production/ep01/conform/requests/mix.json", "production/ep01/conform/mix-plan.json"
+NOT_A_SHA256 = "master is not a sha256 of 64 lowercase hex digits"
 DEFECTS = {
     "loud": f"B1 conform {MIX}:1 integrated loudness -11.5 LUFS is outside -15 to -13 LUFS",
     "peak": f"B1 conform {MIX}:1 true peak -0.4 dBTP is above -1 dBTP",
@@ -189,11 +192,51 @@ class Conform(LintCase):
     def test_mix_l3_entry_removed(self):
         self.says([(MIX, "mix", "lines has no entry for L3")], {MIX: lambda d: d["lines"].pop()})
 
-    def test_mix_without_stems_and_master_and_with_an_extra_key_passes(self):
+    def test_mix_with_an_extra_key_passes(self):
+        self.passes({MIX: lambda d: d.update(engineer="nobody")})
+
+    def test_mix_without_stems_and_master(self):
         def edit(data):
             del data["stems"], data["master"]
-            data["engineer"] = "nobody"
-        self.passes({MIX: edit})
+        self.says([(MIX, "mix", "stems is not a list of {name, sha256}"), (MIX, "mix", NOT_A_SHA256)], {MIX: edit})
+
+    def test_mix_stems_empty(self):
+        self.says([(MIX, "mix", "stems has no dialogue")], {MIX: lambda d: d.update(stems=[])})
+
+    def test_mix_stems_unknown_repeated_and_upper_case(self):
+        self.says([(MIX, "mix", "stems entry 2: 'Music' is not dialogue, music or effects"),
+                   (MIX, "mix", "stems entry 3: dialogue is listed already"),
+                   (MIX, "mix", "stems entry 4 is not {name, sha256} with a sha256 of 64 lowercase hex digits")],
+                  {MIX: lambda d: d["stems"].extend([{"name": "Music", "sha256": "a" * 64},
+                                                     {"name": "dialogue", "sha256": "b" * 64},
+                                                     {"name": "effects", "sha256": "B" * 64}])})
+
+    def test_mix_stems_music_and_effects_pass(self):
+        self.passes({MIX: lambda d: d["stems"].extend([{"name": "music", "sha256": "a" * 64},
+                                                       {"name": "effects", "sha256": "b" * 64}])})
+
+    def test_mix_master_not_a_sha256(self):
+        for master in ("not-a-hash", "F" * 64, "f" * 63):
+            with self.subTest(master=master):
+                self.says([(MIX, "mix", NOT_A_SHA256)], {MIX: lambda d: d.update(master=master)})
+
+    # Heard lines inside the shots
+
+    def test_shots_l3_heard_after_the_last_frame(self):
+        self.says([(MIX, "shots", f"lines entry 3: L3 is heard at 400-420, outside frames 0-407 of {SHOTS}")],
+                  {MIX: lambda d: d["lines"][2].update(start=400, end=420),
+                   CAPTIONS: lambda d: d[2].update(start=400, end=420)})
+
+    def test_shots_l3_heard_to_the_last_frame_passes(self):
+        self.passes({MIX: lambda d: d["lines"][2].update(start=388, end=407),
+                     CAPTIONS: lambda d: d[2].update(start=388, end=407)})
+
+    def test_shots_an_object(self):
+        self.says([(MIX, "shots", f"{SHOTS} is not a list of {{shot, first, last}} with frames 0 <= first <= last")],
+                  {SHOTS: Replace(lambda d: {row["shot"]: [row["first"], row["last"]] for row in d})})
+
+    def test_shots_absent_passes(self):
+        self.passes(drop=(SHOTS,))
 
     # Behaviour 5: captions
 
@@ -242,6 +285,24 @@ class Conform(LintCase):
         shutil.copyfile(CLEAN / MIX, root / "production/assets/conform/mix.json")
         (root / "episodes").rename(root / "gone")
         self.passes(root=root)
+
+    def test_scene_script_alone_depends(self):
+        root = self.tree(drop=(CAPTIONS, EDIT, MIX))
+        (root / SCENE).write_text("import unreal\n", encoding="utf-8")
+        self.says([(SCENE, "depends", f"{rel} is missing") for rel in (CAPTIONS, EDIT, MIX)], root=root)
+
+    def test_a_request_or_the_plan_holds_an_episode_without_a_mix(self):
+        for hold in (REQUEST, PLAN):
+            with self.subTest(hold=hold):
+                root = self.tree(drop=(EDIT, MIX))
+                for rel in (CAPTIONS, hold):
+                    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (root / rel).write_text("{}", encoding="utf-8")
+                self.passes(root=root)
+
+    def test_a_request_does_not_hold_a_mix(self):
+        root = self.variant({REQUEST: "{}"}, base=FIX / "loud")
+        self.says([(MIX, "loudness", "integrated loudness -11.5 LUFS is outside -15 to -13 LUFS")], root=root)
 
     # Behaviour 7
 
