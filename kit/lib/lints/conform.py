@@ -1,9 +1,17 @@
 """Conform: integrated loudness, true peak, captions aligned with the mix, and the conformed edit list
 equal to the locked one, event by event (brief sections 6 and 16).
 
-Rule ids: depends, edit-list, captions, mix, loudness, true-peak. An episode is checked when it has a
-file under `production/<ep>/conform/`; it then needs `conform/captions.json`, `conform/edit-list.json`,
-`conform/mix.json`, `episodes/<ep>/lines.json` and the locked `episodes/<ep>/reel/edit-list.json`.
+Rule ids: depends, edit-list, captions, mix, loudness, true-peak, shots. Any file under
+`production/<ep>/conform/` puts the episode in scope, a scene script, the plan and a request included;
+it then needs `conform/captions.json`, `conform/edit-list.json`, `conform/mix.json`,
+`episodes/<ep>/lines.json` and the locked `episodes/<ep>/reel/edit-list.json`.
+While `conform/mix.json` does not exist, `conform/mix-plan.json` or a request `conform/requests/<id>.json`
+holds back every finding of the episode, and neither is opened.
+`stems` is a list of `{name, sha256}` with distinct names among dialogue, music and effects, dialogue
+among them.
+`master` is a sha256 of 64 lowercase hex digits.
+When `production/<ep>/shots.json` exists, each line of the mix is heard inside its frames, from the
+smallest `first` to the largest `last`.
 Findings are on line 1. Frames are whole numbers from the episode's first frame, 0. Edit list values
 are compared with `==`, so equal seconds at one `fps` are equal frames and nothing is converted.
 """
@@ -15,7 +23,10 @@ from pathlib import Path
 
 from ..lint import Finding, files, read_json
 
-CONFORM = re.compile(r"^production/([^/]+)/conform/(captions|edit-list|mix)\.json$")
+CONFORM = re.compile(r"^production/([^/]+)/conform/")
+HOLD = re.compile(r"^production/[^/]+/conform/(mix-plan\.json|requests/[^/]+\.json)$")
+SHA256 = re.compile(r"[0-9a-f]{64}")
+STEMS = ("dialogue", "music", "effects")
 EVENT_KEYS = ("shot", "beat", "start", "duration")
 LOUDNESS_MIN, LOUDNESS_MAX = -15, -13  # LUFS, placeholder (brief section 16)
 TRUE_PEAK_MAX = -1  # dBTP, placeholder (brief section 16)
@@ -28,6 +39,10 @@ def _number(value) -> bool:
 
 def _frame(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _sha256(value) -> bool:
+    return isinstance(value, str) and SHA256.fullmatch(value) is not None
 
 
 def _span(item, *strings) -> bool:
@@ -63,6 +78,41 @@ def _compare(rel: str, reel: str, got, want) -> list[Finding]:
     return found
 
 
+def _stems(rel: str, stems) -> list[Finding]:
+    def finding(message):
+        return Finding(rel, 1, "mix", message)
+
+    if not isinstance(stems, list):
+        return [finding("stems is not a list of {name, sha256}")]
+    found, seen = [], set()
+    for i, stem in enumerate(stems, 1):
+        if not (isinstance(stem, dict) and isinstance(stem.get("name"), str) and _sha256(stem.get("sha256"))):
+            found.append(finding(f"stems entry {i} is not {{name, sha256}} with a sha256 of 64 lowercase hex digits"))
+        elif stem["name"] not in STEMS:
+            found.append(finding(f"stems entry {i}: {stem['name']!r} is not dialogue, music or effects"))
+        elif stem["name"] in seen:
+            found.append(finding(f"stems entry {i}: {stem['name']} is listed already"))
+        else:
+            seen.add(stem["name"])
+    if "dialogue" not in seen:
+        found.append(finding("stems has no dialogue"))
+    return found
+
+
+def _shots(rel: str, lines, shots_rel: str, shots) -> list[Finding]:
+    """Each line of the mix heard outside the frames of `shots_rel`, rule `shots`."""
+    if not isinstance(shots, list) or not shots or not all(
+            isinstance(row, dict) and _frame(row.get("first")) and _frame(row.get("last"))
+            and 0 <= row["first"] <= row["last"] for row in shots):
+        return [Finding(rel, 1, "shots", f"{shots_rel} is not a list of {{shot, first, last}} "
+                                         "with frames 0 <= first <= last")]
+    first, last = min(row["first"] for row in shots), max(row["last"] for row in shots)
+    return [Finding(rel, 1, "shots", f"lines entry {i}: {entry['line']} is heard at {entry['start']}-{entry['end']}, "
+                                     f"outside frames {first}-{last} of {shots_rel}")
+            for i, entry in enumerate(lines, 1)
+            if _span(entry, "line") and (entry["start"] < first or entry["end"] > last)]
+
+
 def _mix(rel: str, data, ids):
     """The mix's findings and the frames each line is heard at, or None when no cue can be compared."""
     if not isinstance(data, dict):
@@ -78,6 +128,9 @@ def _mix(rel: str, data, ids):
         found.append(Finding(rel, 1, "mix", "true_peak_dbtp is not a number"))
     elif peak > TRUE_PEAK_MAX:
         found.append(Finding(rel, 1, "true-peak", f"true peak {peak:g} dBTP is above {TRUE_PEAK_MAX:g} dBTP"))
+    found += _stems(rel, data.get("stems"))
+    if not _sha256(data.get("master")):
+        found.append(Finding(rel, 1, "mix", "master is not a sha256 of 64 lowercase hex digits"))
     if not isinstance(data.get("lines"), list):
         return found + [Finding(rel, 1, "mix", "lines is not a list of {line, start, end}")], None
     heard = {}
@@ -131,17 +184,23 @@ def _line_ids(data):
 
 def _episode(root: Path, ep: str, have: set[str]) -> list[Finding]:
     conform = {name: f"production/{ep}/conform/{name}.json" for name in ("captions", "edit-list", "mix")}
+    mine = sorted(rel for rel in have if rel.startswith(f"production/{ep}/conform/"))
+    if conform["mix"] not in have and any(HOLD.match(rel) for rel in mine):
+        return []
     lines_rel, reel = f"episodes/{ep}/lines.json", f"episodes/{ep}/reel/edit-list.json"
     needed = [*conform.values(), lines_rel, reel]
     missing = [rel for rel in needed if rel not in have]
     if missing:
-        on = next(rel for rel in conform.values() if rel in have)
+        on = next((rel for rel in conform.values() if rel in have), mine[0])
         return [Finding(on, 1, "depends", f"{rel} is missing") for rel in missing]
     data = {rel: read_json(root, rel)[1] for rel in needed}
     ids = _line_ids(data[lines_rel])
     found = _compare(conform["edit-list"], reel, data[conform["edit-list"]], data[reel])
     mix_found, heard = _mix(conform["mix"], data[conform["mix"]], ids)
     found += mix_found
+    shots_rel, mix = f"production/{ep}/shots.json", data[conform["mix"]]
+    if shots_rel in have and isinstance(mix, dict) and isinstance(mix.get("lines"), list):
+        found += _shots(conform["mix"], mix["lines"], shots_rel, read_json(root, shots_rel)[1])
     found += _captions(conform["captions"], data[conform["captions"]], ids, heard, lines_rel, conform["mix"])
     return found
 
