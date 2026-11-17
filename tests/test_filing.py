@@ -985,3 +985,105 @@ class ConformBody(Case):
                                         "Upstream: #9 render ep01/Q2-1, locked by PR #10.\n"
                                         "Upstream: #7 render ep01/Q1-1, locked by PR #8.\n"
                                         "Filed by factory tick.\n")
+
+
+MIX_PATH = "production/ep01/conform/mix.json"
+CONFORMED_PATH = "production/ep01/conform/edit-list.json"
+MIX = {"loudness_lufs": -14.2, "true_peak_dbtp": -1.6, "lines": [{"line": "L1", "start": 12, "end": 60}],
+       "stems": [{"name": "dialogue", "sha256": "a" * 64}, {"name": "music", "sha256": "b" * 64},
+                 {"name": "effects", "sha256": "c" * 64}], "master": "d" * 64}
+CONFORMED = json.dumps({"events": [{"shot": "Q1-1"}]}) + "\n"
+MASTER_FILES = {MIX_PATH: json.dumps(MIX) + "\n", CONFORMED_PATH: CONFORMED}
+MASTER_TITLE = "[MASTER-EP01] locked master for ep01"
+MASTER_HEAD = "Locked master for episode ep01, locked by PR #32 (ticket #31).\n\n"
+MASTER_TAIL = ("\nThe production room owns the master, the stems and the edit list; post reads them and does not edit "
+               "them.\nFiled by factory tick.\n")
+MASTER_BODY = (MASTER_HEAD + f"Master: sha256 {'d' * 64}, in {MIX_PATH}.\n"
+               f"Stem dialogue: sha256 {'a' * 64}.\nStem effects: sha256 {'c' * 64}.\nStem music: sha256 {'b' * 64}.\n"
+               f"Edit list: {CONFORMED_PATH}.\n" + MASTER_TAIL)
+MASTER = {"from": 31, "pull": 32, "room": "production", "stage": "master", "unit": "ep01", "title": MASTER_TITLE,
+          "body": MASTER_BODY, "labels": ["room:post"]}
+
+
+def conform_locked():
+    return make_state([ticket(31, "conform", "ep01", room="production")], [pull(32, 31)])
+
+
+class MasterPacket(Case):
+    """ISSUE-586: a locked conform files one master issue for the post room, once."""
+
+    def test_clean(self):
+        self.commit(MASTER_FILES)
+        self.assertEqual(self.due(conform_locked()), [MASTER])
+
+    def test_once(self):
+        self.commit(MASTER_FILES)
+        for state in ("open", "closed"):
+            with self.subTest(state=state):
+                found = conform_locked()
+                found.others = [other(40, MASTER_TITLE, state)]
+                self.assertEqual(self.due(found), [])
+                found.others = [other(40, "[MASTER-EP02] locked master for ep02", state)]
+                self.assertEqual(self.due(found), [MASTER])
+        state = make_state([ticket(31, "conform", "ep01", room="production"),
+                            ticket(41, "conform", "ep01", room="production")], [pull(32, 31), pull(42, 41)])
+        self.assertEqual(self.due(state), [MASTER])
+
+    def test_not_locked(self):
+        self.commit(MASTER_FILES)
+        cases = {"open with an open pull": make_state([ticket(31, "conform", "ep01", state="open", room="production")],
+                                                      [pull(32, 31, state="open")]),
+                 "closed with a closed pull": make_state([ticket(31, "conform", "ep01", room="production")],
+                                                         [pull(32, 31, state="closed")])}
+        for name, state in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.due(state), [])
+
+    def test_not_on_the_base(self):
+        self.write(MASTER_FILES)
+        [found] = self.due(conform_locked())
+        self.assertEqual(found["body"], MASTER_HEAD + f"{MIX_PATH} is not on the base.\n"
+                                                      f"{CONFORMED_PATH} is not on the base.\n" + MASTER_TAIL)
+
+    def test_a_broken_mix(self):
+        dialogue = {"name": "dialogue", "sha256": "a" * 64}
+        cases = {"not JSON": "{\n",
+                 "a master of 63 hex": json.dumps({**MIX, "master": "d" * 63}) + "\n",
+                 "no stems": json.dumps({**MIX, "stems": []}) + "\n",
+                 "a stem with no sha256": json.dumps({**MIX, "stems": [{"name": "dialogue"}]}) + "\n",
+                 "a stem twice": json.dumps({**MIX, "stems": [dialogue, dialogue]}) + "\n"}
+        for name, text in cases.items():
+            with self.subTest(name):
+                self.commit({MIX_PATH: text, CONFORMED_PATH: CONFORMED})
+                [found] = self.due(conform_locked())
+                self.assertEqual(found["body"], MASTER_HEAD + f"{MIX_PATH} does not name the master and its stems.\n"
+                                                              f"Edit list: {CONFORMED_PATH}.\n" + MASTER_TAIL)
+
+    def test_an_unreadable_ticket(self):
+        self.commit(MASTER_FILES)
+        state = make_state([ticket(31, "conform", "ep01", room="production")], [pull(32, 31)],
+                           errors=["ticket #9: title is not [KEY] summary"])
+        self.assertEqual(self.due(state), [])
+
+    def test_through_the_tick(self):
+        self.commit(MASTER_FILES)
+        gh = github.Recorded(self.tmp / "github")
+        record(gh, issue_record(31, "conform", "ep01", room="production"), pull_record(32, 31))
+
+        def tick(rooms):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                cmd_tick.Tick(self.p(), gh, True, production.now()).file(rooms)
+            return out.getvalue()
+
+        def created():
+            return [i for i in gh.issues("all") if i["number"] != 31]
+
+        self.assertEqual(tick(["post"]), "")
+        self.assertEqual(created(), [])
+        self.assertEqual(tick(["production"]), "STEP #31 file master ep01\n")
+        [made] = created()
+        self.assertEqual((made["title"], made["labels"], made["body"]), (MASTER_TITLE, ["room:post"], MASTER_BODY))
+        self.assertIsNone(tickets.parse(made))
+        self.assertEqual(tick(["production"]), "")
+        self.assertEqual(len(created()), 1)
