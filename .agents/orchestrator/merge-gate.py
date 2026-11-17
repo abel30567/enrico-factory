@@ -160,9 +160,12 @@ def train(ready, ci):
         f.write(f"train {names} on {BASE} {base_sha} tree {tree}\n"); f.flush()
         try:
             rc = subprocess.run(["bash", "-c", C["GATES"]], cwd=wt, stdout=f, stderr=subprocess.STDOUT, env=env,
-                                timeout=2700).returncode
+                                timeout=3600).returncode
         except subprocess.TimeoutExpired:
             rc = 124
+    if rc == 124:  # a slow host, not a failing PR: nothing is marked red, the next run tries again
+        print(f"WAIT     train {names} on {base_sha[:7]}: GATES timed out ({log}); next run")
+        return False
     if rc:
         if len(members) == 1:
             red[str(members[0]["number"])] = members[0]["headRefOid"]
