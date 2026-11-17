@@ -871,6 +871,44 @@ class AssetInputTest(unittest.TestCase):
                 self.assertEqual(self.w.snapshot(), before)
 
 
+class MetricSettingTest(unittest.TestCase):
+    """ISSUE-578: the production's `PERCEPTUAL_METRIC`, not a check of the tool's resource, reaches every tool call."""
+
+    def setUp(self):
+        self.calls, real = [], cmd_run._call
+
+        def spy(tool, call, expected):
+            self.calls.append(dict(call["settings"]))
+            return real(tool, call, expected)
+
+        patch = mock.patch.object(cmd_run, "_call", spy)
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def settings_of_a_run(self, metric):
+        """The settings the tool is called with when ``production.env`` sets ``metric`` (no line when None)."""
+        w = World(self)
+        if metric is not None:
+            w.set_env("PERCEPTUAL_METRIC", metric)
+        digest = w.passed()
+        self.assertEqual(w.run(), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        self.assertEqual(w.fake_calls(), [digest])
+        [settings] = self.calls
+        return settings
+
+    def test_the_metric_reaches_the_tool(self):
+        settings = self.settings_of_a_run("python3 metric.py --score")
+        self.assertEqual(settings["PERCEPTUAL_METRIC"], "python3 metric.py --score")
+        self.assertEqual(sorted(settings), ["FAKE_LOG", "PERCEPTUAL_METRIC"])
+        self.assertTrue(settings["FAKE_LOG"].endswith("fake.log"))
+
+    def test_unset_or_empty_metric_leaves_the_resource_settings(self):
+        for metric in (None, ""):
+            with self.subTest(metric=metric):
+                self.calls.clear()
+                self.assertEqual(sorted(self.settings_of_a_run(metric)), ["FAKE_LOG"])
+
+
 class ManifestInputTest(unittest.TestCase):
     """ISSUE-480: a job that names the manifest after its request runs after another job of the pull added rows."""
 
