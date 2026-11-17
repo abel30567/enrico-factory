@@ -169,11 +169,11 @@ class AudioTest(unittest.TestCase):
         self.assertEqual(self.assets.objects, {sha: data})
         self.assertEqual([r["path"] for r in self.assets.requests if r["method"] == "PUT"], [f"/b/{sha}"])
 
-    def assert_refused(self, job, digest, message):
-        """The run of ``job`` is refused after the call with ``message``: nothing is recorded."""
+    def assert_refused(self, job, digest, err):
+        """The run of ``job`` is refused after the call with the line ``err``: nothing is recorded."""
         w = self.w
         branch, trunk = w.head(BRANCH), w.head()
-        self.assertEqual(self.factory_run(job), (2, "", f"run: {message}\n"))
+        self.assertEqual(self.factory_run(job), (2, "", err + "\n"))
         self.assertTrue((w.job_dir(digest) / "result.json").is_file())
         self.assertEqual(w.rows("run"), [])
         self.assertIsNone(w.manifest())
@@ -344,7 +344,7 @@ class AudioTest(unittest.TestCase):
     def test_store_refuses_then_rerun(self):
         job, digest = self.voice_job()
         self.assets.status["PUT"] = (500, b"")
-        self.assert_refused(job, digest, "the asset store did not take voice.mp3: store answered 500")
+        self.assert_refused(job, digest, "run: the asset store did not take voice.mp3: store answered 500")
         del self.assets.status["PUT"]
         self.assets.requests.clear()
         self.assert_rerun(job, digest)
@@ -353,12 +353,12 @@ class AudioTest(unittest.TestCase):
         w = self.w
         job, digest = self.voice_job()
         w.local(STATE_DIR=w.state, SECRETS_DIR=w.secrets, FAKE_LOG=w.fake_log)
-        self.assert_refused(job, digest, "resource store.assets is not usable: setting ASSET_STORE is empty")
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: setting ASSET_STORE is empty")
         self.store_url("")
-        self.assert_refused(job, digest, "resource store.assets is not usable: setting ASSET_STORE is empty")
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: setting ASSET_STORE is empty")
         self.store_url()
         (w.secrets / "store.assets").unlink()
-        self.assert_refused(job, digest, "resource store.assets is not usable: secret store.assets: missing")
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: secret store.assets: missing")
         self.assertEqual(self.assets.requests, [])
         self.key("store.assets", f"{KEY_ID}\n{SECRET}\n{REGION}\n")
         self.assert_rerun(job, digest)
@@ -366,7 +366,7 @@ class AudioTest(unittest.TestCase):
     def test_store_unreachable(self):
         job, digest = self.voice_job()
         self.store_url(f"http://127.0.0.1:{free_port()}/b")
-        self.assert_refused(job, digest, "the asset store did not take voice.mp3: store unreachable")
+        self.assert_refused(job, digest, "run: the asset store did not take voice.mp3: store unreachable")
         self.assertEqual(self.assets.requests, [])
 
     def test_register_without_the_asset_store(self):
@@ -376,7 +376,7 @@ class AudioTest(unittest.TestCase):
         path.write_text(json.dumps(register, indent=2) + "\n")
         job, digest = self.voice_job()
         with mock.patch.object(resources, "REGISTER", path):
-            self.assert_refused(job, digest, "the register has no resource store.assets")
+            self.assert_refused(job, digest, "run: the register has no resource store.assets")
         self.assertEqual(self.assets.requests, [])
 
     def test_mp3_frame_without_a_tag(self):
