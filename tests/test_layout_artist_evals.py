@@ -6,7 +6,10 @@ of the pipeline's `production/layout` entry, not in a loop list.
 The layout lint does not read requests, so a request's shape is not graded here.
 """
 
+import contextlib
+import dataclasses
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,7 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kit.lib import evals, lint
+from kit.lib import cmd_eval, evals, lint
 
 ROOT = Path(__file__).resolve().parent.parent
 KIT = ROOT / "kit"
@@ -35,6 +38,9 @@ REQUEST = f"{DIR}/requests/render.json"
 SHOT = "episodes/ep01/sequences/Q1/shots/Q1-1.json"
 READY = {"marker": "READY", "summary": "Done.",
          "evidence": [{"criterion": "stage files", "result": "written", "command": "ls"}]}
+
+CHECKS = ("assets", "layout")
+LEDGER = "bible/canon/ledger.tsv"
 
 
 def tree_hash(path):
@@ -127,6 +133,25 @@ NEAR_MISSES = (("no refs", edit_request(lambda d: d.update(refs=[]))),
                ("another shot", edit_request(lambda d: d.update({"for": "ep01/Q1-2"}))))
 
 
+
+def built(case, change=None, checks=CHECKS):
+    """``{check: result}`` of the lints on ``case``'s run directory as ``factory eval`` builds it, on a copy of
+    the case whose tree is edited by ``change(tree)`` (ISSUE-574)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "case"
+        shutil.copytree(case.path, copy)
+        if change:
+            change(copy / "tree")
+        run_dir = Path(tmp) / "run"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cmd_eval.build_run_dir(KIT, dataclasses.replace(case, path=copy), 1, run_dir)
+        return lint.run(run_dir, only=list(checks))
+
+
+def messages(found, check):
+    return [(f.rule, f.message) for f in found[check].findings]
+
+
 class LayoutArtistEvalsTest(unittest.TestCase):
     def test_the_suite_is_the_layout_entrys(self):
         self.assertIn(ROLE, ENTRY["maker"])
@@ -178,6 +203,30 @@ class LayoutArtistEvalsTest(unittest.TestCase):
                     grade, _ = graded(case, change)
                     self.assertTrue(grade["pass"], grade["detail"])
                     self.assertEqual(grade["detail"], "lint PASS")
+
+    def test_each_run_directory_passes_with_its_canon(self):
+        cases = evals.load(KIT, ROLE)
+        self.assertEqual(len(cases), 3)
+        for case in cases:
+            with self.subTest(case=case.id):
+                found = built(case)
+                for check in CHECKS:
+                    self.assertEqual(found[check].status, "PASS", lint.text(found))
+
+    def test_an_actor_without_its_canon_fails(self):
+        case = next(c for c in evals.load(KIT, ROLE) if c.id == "02-dovecote")
+
+        def no_corin_row(tree):
+            text = (tree / LEDGER).read_text(encoding="utf-8")
+            kept = [line for line in text.splitlines(keepends=True) if not line.startswith("corin\t")]
+            self.assertEqual(len(kept), len(text.splitlines()) - 1)
+            (tree / LEDGER).write_text("".join(kept), encoding="utf-8")
+
+        self.assertIn("no height row for corin in bible/canon/ledger.tsv",
+                      [m for _, m in messages(built(case, no_corin_row), "assets")])
+        self.assertIn("set dovecote has no bible/canon/places/dovecote.md",
+                      [m for _, m in messages(built(case, lambda t: (t / "bible/canon/places/dovecote.md").unlink()),
+                                              "assets")])
 
     def test_it_runs_on_the_fake_harness(self):
         before = tree_hash(KIT / "evals")

@@ -1,0 +1,11 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/characters/corin.md": "adds Corin, the courier",
+    "bible/canon/characters/linnet.md": "adds Linnet, the keeper of the dovecote",
+    "bible/canon/places/dovecote.md": "adds the dovecote",
+    "bible/canon/ledger.tsv": "adds the heights of Corin and Linnet"
+  },
+  "why": "the dovecote episode needs its courier, its keeper and its dovecote",
+  "evidence": {"episodes/ep01/sequences/Q1/shots/Q1-1.json": "Corin hands Linnet a sealed letter"}
+}

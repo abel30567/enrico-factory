@@ -32,6 +32,8 @@ SPEC = {"kind": "replay", "lint": ["playbook"], "expect_files": ["playbook/PB-2.
 LESSON = "playbook/PB-2.md"
 EVIDENCE = re.compile(r"(?m)^evidence: episodes/ep01/beats\.md:[0-9]+$")
 FAR = "evidence: episodes/ep01/beats.md:99"
+SCRIPT = "episodes/ep01/script.md"
+NUMBER = re.compile(r"#[1-9][0-9]*")
 
 
 def tree_hash(path):
@@ -68,6 +70,25 @@ def grade_with(case, files):
             (run_dir / relative).parent.mkdir(parents=True, exist_ok=True)
             (run_dir / relative).write_text(text, encoding="utf-8")
         return evals.grade(case, READY, run_dir=run_dir)
+
+
+def scene_beats(tree):
+    """``{S<n>: beats line}`` of the scenes of ``tree``'s ep01 script; empty when there is no script."""
+    path = Path(tree) / SCRIPT
+    if not path.is_file():
+        return {}
+    found, scene = {}, None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        heading = re.match(r"^## (S[0-9]+) \S", line)
+        if heading:
+            scene = heading.group(1)
+        elif scene and line.startswith("beats:"):
+            found.setdefault(scene, line[len("beats:"):].strip())
+    return found
+
+
+def structure(tree):
+    return [(f.path, f.message) for f in lint.run(Path(tree), only=["structure"])["structure"].findings]
 
 
 def run_eval(answer):
@@ -123,6 +144,23 @@ class RetroAgentSuite(unittest.TestCase):
             graded = grade_with(case, files)
             self.assertFalse(graded["pass"], case.id)
             self.assertIn("missing lab/proposals/*.md", graded["detail"], case.id)
+
+    def test_the_script_verdict_has_its_scene_and_numbers(self):
+        """ISSUE-574: the verdict on the script of 02-orchard-gate names notes #<n> and a scene the tree holds."""
+        case = next(c for c in cases() if c.id == "02-orchard-gate")
+        tree = case.path / "tree"
+        self.assertEqual(scene_beats(tree).get("S2"), "B2")
+        self.assertRegex(case.task, NUMBER)
+        boat_shed = next(c for c in cases() if c.id == "01-boat-shed")
+        self.assertEqual(structure(tree), structure(boat_shed.path / "tree"))
+        self.assertEqual(structure(tree), [("episodes/ep01/beats.md", "episodes/ep01/premise.md is missing")])
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "tree"
+            shutil.copytree(tree, copy)
+            (copy / SCRIPT).unlink()
+            self.assertIsNone(scene_beats(copy).get("S2"))
+        self.assertNotRegex(NUMBER.sub("", case.task), NUMBER)
+        self.assertNotRegex("two notes in a row that B2 says the same thing twice in S2", NUMBER)
 
     def test_factory_eval(self):
         """Behaviour 7."""

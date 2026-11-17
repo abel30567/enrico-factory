@@ -1,0 +1,9 @@
+{
+  "class": "canon",
+  "changes": {
+    "bible/canon/places/mill-yard.md": "adds the mill yard",
+    "bible/canon/ledger.tsv": "adds the height of the mill yard"
+  },
+  "why": "the mill episode needs its yard",
+  "evidence": {"bible/style/places/mill-yard.md": "the model sheet of the mill yard"}
+}

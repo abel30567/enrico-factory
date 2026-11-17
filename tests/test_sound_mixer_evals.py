@@ -6,7 +6,10 @@ of the pipeline's `production/conform` entry, not in a loop list.
 The conform lint does not read the scene script, so a scene script's content is not graded here.
 """
 
+import contextlib
+import dataclasses
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,9 +20,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kit.lib import evals, lint
+from kit.lib import cmd_eval, evals, lint
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tests"))
+
+from test_eval_trees_agree import MERGE_IS_THE_LOCK, _joined, blocked_section  # noqa: E402
+
 KIT = ROOT / "kit"
 FIX = ROOT / "tests" / "fixtures" / "story_evals"
 FAKE = ROOT / "tests" / "fixtures" / "harness" / "fake-harness"
@@ -33,6 +40,36 @@ SCENE = f"{CONFORM}/scene.py"
 READY = {"marker": "READY", "summary": "Done.",
          "evidence": [{"criterion": "stage files", "result": "written", "command": "ls"}]}
 CUES = {"L1": (2, 10), "L2": (13, 22), "L3": (26, 44)}
+ROLE_FILE = KIT / "roles" / f"{ROLE}.md"
+REEL = "episodes/ep01/reel/edit-list.json"
+# What kit/roles/sound-mixer.md said at main 6cd943f, before ISSUE-574: Read first, the job's files and Blocked.
+MAIN_ROLE = """## Read first
+
+1. The task: the episode and the acceptance criteria.
+2. The episode's locked `episodes/<ep>/reel/edit-list.json`, `lines.json` and `intent-packet.json`,
+   and `production/<ep>/shots.json`.
+3. The locked `render` files of every shot of the episode, and the episode's voice and music in
+   `media/manifest.tsv`.
+4. `production/<ep>/conform/edit-list.json` and `captions.json`, the conform editor's.
+
+## What you produce
+
+- The job writes `conform/mix.json` (`loudness_lufs`, `true_peak_dbtp`, `lines`, `stems`, `master`)
+  and `conform/manifest.json`. Every line of `lines.json` is heard where its caption is.
+
+## Blocked
+
+Return `BLOCKED` only when you cannot do the work from the files: the episode's reel is not locked,
+or a shot of it has no locked `render`. Fill `blocked` with:
+
+- `missing`: exactly what you needed and did not have;
+- `tried`: what you opened or ran;
+- `resume_from`: what must exist for a relaunch to succeed.
+
+Do not guess to avoid blocking.
+
+## Rules
+"""
 
 
 def tree_hash(path):
@@ -124,6 +161,34 @@ NEAR_MISSES = (("a manifest", writes(f"{CONFORM}/manifest.json", "{}")),
                ("every conform file, consistent", conforms))
 
 
+def role_problems(text):
+    """What in the role file ``text`` asks for the conform editor's files or for a proof of lock (ISSUE-574)."""
+    out = []
+    read_first = re.search(r"(?ms)^## Read first[ \t]*$(.*?)(?=^## )", text)
+    if read_first and "conform/" in read_first.group(1):
+        out.append("Read first names a path under conform/")
+    if re.search(r"\bcaption\b", text):
+        out.append("the role holds caption")
+    section = _joined(blocked_section(text))
+    if MERGE_IS_THE_LOCK not in section or "not locked" in section:
+        out.append("the Blocked section asks for a proof of lock")
+    return out
+
+
+def built(case, change=None):
+    """The lint findings of ``case``'s run directory as ``factory eval`` builds it, on a copy of the case
+    edited by ``change(tree)``."""
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "case"
+        shutil.copytree(case.path, copy)
+        if change:
+            change(copy / "tree")
+        run_dir = Path(tmp) / "run"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            cmd_eval.build_run_dir(KIT, dataclasses.replace(case, path=copy), 1, run_dir)
+        return {check: lint.run(run_dir, only=[check]) for check in ("structure", "conform", "render")}
+
+
 def graded(case, change=None):
     """``(grade, run directory text of the conform lint)`` of READY on the case's tree with its recorded
     output, the run directory then edited by ``change(run_dir)``."""
@@ -210,6 +275,34 @@ class SoundMixerEvalsTest(unittest.TestCase):
                     near, _ = graded(case, change)
                     self.assertTrue(near["pass"], near["detail"])
                     self.assertEqual(near["detail"], "lint PASS")
+
+    def test_the_role_asks_for_no_conform_file_and_no_proof_of_lock(self):
+        text = ROLE_FILE.read_text(encoding="utf-8")
+        self.assertEqual(role_problems(text), [])
+        self.assertLessEqual(len(text.splitlines()), 120)
+
+    def test_the_main_role_asked_for_the_captions_and_a_lock(self):
+        self.assertEqual(role_problems(MAIN_ROLE), ["Read first names a path under conform/", "the role holds caption",
+                                                    "the Blocked section asks for a proof of lock"])
+
+    def test_each_reel_names_what_its_tree_holds(self):
+        cases = evals.load(KIT, ROLE)
+        self.assertEqual(len(cases), 3)
+        for case in cases:
+            with self.subTest(case=case.id):
+                found = built(case)
+                self.assertEqual([f for f in found["structure"]["structure"].findings if f.path == REEL], [],
+                                 lint.text(found["structure"]))
+                for check in ("conform", "render"):
+                    self.assertEqual(found[check][check].status, "PASS", lint.text(found[check]))
+                self.assertEqual(list((case.path / "tree" / CONFORM).rglob("*")), [])
+
+    def test_a_reel_without_its_amendment_fails(self):
+        for case in evals.load(KIT, ROLE):
+            with self.subTest(case=case.id):
+                found = built(case, lambda tree: (tree / "bible/amendments/A-1.json").unlink())
+                self.assertIn((REEL, "bible A-1: bible/amendments/A-1.json is missing"),
+                              [(f.path, f.message) for f in found["structure"]["structure"].findings])
 
     def test_it_runs_on_the_fake_harness(self):
         before = tree_hash(KIT / "evals")
