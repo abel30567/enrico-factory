@@ -862,3 +862,66 @@ class OperatorBodies(Case):
         self.git("rm", "-q", "production/ep01/shots.json")
         self.git("commit", "-q", "-m", "no shots")
         self.assertNotIn("cross-shot", [f["stage"] for f in self.due(make_state(both, [pull(8, 7), pull(10, 9)]))])
+
+
+CONFORM_SHOTS = {"production/ep01/shots.json": json.dumps([{"shot": "Q2-1"}, {"shot": "Q1-1"}]) + "\n"}
+RENDERS = [production_ticket(7, "render", "ep01/Q1-1"), production_ticket(9, "render", "ep01/Q2-1")]
+CONFORM = [(7, 8, "production", "conform", "ep01")]
+
+
+class EpisodeAfterShot(Case):
+    """ISSUE-579: an episode stage after a shot stage is filed once every shot of the episode is locked."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit(CONFORM_SHOTS)
+
+    def conform(self, state):
+        return [f for f in self.filed(state) if f[3] == "conform"]
+
+    def assertFiledWhenBothLocked(self):
+        self.assertEqual(self.conform(make_state(RENDERS, [pull(8, 7), pull(10, 9)])), CONFORM)
+
+    def test_filed_once_every_render_is_locked(self):
+        state = make_state(RENDERS, [pull(8, 7), pull(10, 9)])
+        self.assertEqual(self.conform(state), CONFORM)
+        [found] = [f for f in self.due(state) if f["stage"] == "conform"]
+        self.assertEqual(found["title"], "[CONFORM-EP01] conform for ep01")
+        self.assertEqual(found["labels"], ["tracked", "room:production", "stage:conform", "unit:ep01"])
+        self.assertEqual(found["body"], "Do the stage conform for unit ep01.\n\n"
+                                        "Upstream: #9 render ep01/Q2-1, locked by PR #10.\n"
+                                        "Upstream: #7 render ep01/Q1-1, locked by PR #8.\n"
+                                        "Filed by factory tick.\n")
+
+    def test_one_render_not_locked_files_nothing(self):
+        self.assertFiledWhenBothLocked()
+        cases = {"pull 10 absent": make_state(RENDERS, [pull(8, 7)]),
+                 "ticket 9 open": make_state(RENDERS[:1] + [production_ticket(9, "render", "ep01/Q2-1", "open")],
+                                             [pull(8, 7)])}
+        for name, state in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.conform(state), [])
+
+    def test_only_from_the_lowest_and_once(self):
+        state = make_state(RENDERS, [pull(8, 7), pull(10, 9)])
+        entry = production.stage(self.p(), "production", "conform")
+        self.assertEqual(filing._units(self.p(), self.root, state, RENDERS[1], pull(10, 9), "shot", entry), [])
+        self.assertEqual([u for u, _ in filing._units(self.p(), self.root, state, RENDERS[0], pull(8, 7),
+                                                      "shot", entry)], ["ep01"])
+        self.assertEqual(self.conform(state), CONFORM)
+        for other in ("open", "closed"):
+            with self.subTest(conform=other):
+                filed = make_state(RENDERS + [production_ticket(11, "conform", "ep01", state=other)],
+                                   [pull(8, 7), pull(10, 9)])
+                self.assertEqual(self.conform(filed), [])
+
+    def test_no_shots_file_on_the_base_files_nothing(self):
+        self.assertFiledWhenBothLocked()
+        self.git("rm", "-q", "production/ep01/shots.json")
+        self.git("commit", "-q", "-m", "no shots")
+        self.assertEqual(self.conform(make_state(RENDERS, [pull(8, 7), pull(10, 9)])), [])
+
+    def test_an_unreadable_issue_files_nothing(self):
+        self.assertFiledWhenBothLocked()
+        state = make_state(RENDERS, [pull(8, 7), pull(10, 9)], ["ticket #3: title is not [KEY] summary"])
+        self.assertEqual(self.conform(state), [])
