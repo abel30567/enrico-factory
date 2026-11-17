@@ -85,7 +85,7 @@ class FakeFfmpeg:
         if self.fail and self.fail[0] in argv:
             return subprocess.CompletedProcess(argv, self.fail[1], b"", b"failed")
         if argv == ["ffmpeg", "-version"]:
-            return subprocess.CompletedProcess(argv, 0, b"ffmpeg version 6.1.1-fake\nbuilt with an invented compiler\n", b"")
+            return subprocess.CompletedProcess(argv, 0, b"ffmpeg version 6.1.1-fake\nbuilt by hand\n", b"")
         if "ebur128=peak=true" in argv:
             return subprocess.CompletedProcess(argv, 0, b"", SUMMARY.format(peak=self.peak).encode())
         Path(argv[-1]).write_bytes(b"fake " + os.path.basename(argv[-1]).encode())
@@ -347,8 +347,9 @@ class RealFfmpegTest(unittest.TestCase):
             SHOTS: dumps(shots),
         }
         for row in shots:
-            texts[f"production/ep01/{row['shot']}/render/manifest.json"] = dumps({"outputs": [
-                {"name": f"frame-{n:06d}.png", "sha256": sha(frames[n])} for n in range(row["first"], row["last"] + 1)]})
+            outputs = [{"name": f"frame-{n:06d}.png", "sha256": sha(frames[n])}
+                       for n in range(row["first"], row["last"] + 1)]
+            texts[f"production/ep01/{row['shot']}/render/manifest.json"] = dumps({"outputs": outputs})
         out = tmp / "out"
         out.mkdir()
         call = {"hash": JOB, "ticket": 9, "caller": "sound-mixer", "expected": {"compute_min": 0, "usd": 0},
