@@ -16,10 +16,9 @@ tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MED
 ``grok-imagine``, ``0.1`` and ``1``). The body of a stage of ``TOOLS`` whose makers name ``render-wrangler`` (and not
 ``media-wrangler``) names its tool and expected cost, the settings ``<TOOL>_USD`` and ``<TOOL>_COMPUTE_MIN`` (``<TOOL>``
 the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot file on the base and the job's inputs
-in order. The body of the ``conform`` stage, when its makers name ``render-wrangler``, names a tool, its expected
-cost and its inputs for each request name of ``CONFORM_TOOLS`` under ``production/<ep>/conform/requests/``, with
-the same settings. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the
-base. A
+in order. The body of the ``conform`` stage, when its makers name ``render-wrangler``, names a tool, its expected cost
+and its inputs for each request name of ``CONFORM_TOOLS`` under ``production/<ep>/conform/requests/``, with the same
+settings. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
 ``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
 shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
 from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
