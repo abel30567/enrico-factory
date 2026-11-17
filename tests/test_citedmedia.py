@@ -661,3 +661,70 @@ class B15RoleFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class B8PullAddsRows(Cited):
+    """The rows the pull adds to the manifest against the merge base are cited; no other row is."""
+
+    PAD = sha(b"an invented pad job")
+    PID = f"{PAD[:16]}-a-pad.png"
+
+    def manifest(self, tree, rows):
+        (tree / "media").mkdir(exist_ok=True)
+        (tree / "media" / "manifest.tsv").write_text(HEADER + "".join("\t".join(map(str, r)) + "\n" for r in rows))
+
+    def trunk(self, rows, message):
+        """Commit on ``trunk`` a manifest of ``rows``."""
+        self.manifest(self.w.root, rows)
+        self.w.commit(message)
+
+    def branch_point(self, rows):
+        """A manifest of ``rows`` on ``trunk``, merged into pull #7's branch: the merge base holds them."""
+        self.trunk(rows, "the base manifest")
+        tree = self.w.tmp / "merge"
+        self.w.git("worktree", "add", "-q", str(tree), BRANCH)
+        gitstate.git(tree, "-c", "user.name=tester", "-c", "user.email=tester@example.invalid",
+                     "merge", "-q", "--no-edit", "trunk")
+        self.w.git("worktree", "remove", str(tree))
+
+    def pad(self, data):
+        out = self.w.state / "jobs" / self.PAD / "out"
+        out.mkdir(parents=True)
+        (out / "a-pad.png").write_bytes(data)
+        return (self.PID, sha(PNG), len(PNG), f"job {self.PAD}")
+
+    def lines(self, run, *names):
+        return [f"- media:{name}: {run.dir}/media/{name}" for name in sorted(names)]
+
+    def test_clean_the_added_row_and_the_cited_source_are_placed(self):
+        self.serve(OTHER)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.pad(PNG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", self.PID]))
+        self.assertEqual((run.dir / "media" / self.PID).read_bytes(), PNG)
+        self.assertEqual((run.dir / "media" / "a.png").read_bytes(), OTHER)
+        self.assertIn(self.task(run, "Pictures cited by the files of pull request #7, outside the worktree; "
+                                     "open each with Read:", *self.lines(run, "a.png", self.PID)), self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def test_seeded_a_row_at_the_merge_base_reordered_is_not_placed(self):
+        self.serve(OTHER, JPEG)
+        self.branch_point([self.row("old.png", PNG), self.row("a.png", OTHER), self.row("kept.jpeg", JPEG)])
+        self.cite('{"source": "media:a.png"} and media:kept.jpeg',
+                  [self.row("a.png", OTHER), self.row("kept.jpeg", JPEG), self.pad(PNG), self.row("old.png", PNG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", "kept.jpeg", self.PID]))
+        self.assertNotIn("media:old.png", self.prompt(run))
+        self.assertNotIn(f"/pub/{sha(PNG)}", [r["path"] for r in self.store.requests])
+
+    def test_seeded_a_row_the_base_added_after_the_branch_point_is_not_placed(self):
+        self.serve(OTHER, JPEG)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.pad(PNG)])
+        self.trunk([self.row("a.png", OTHER), self.row("b.png", JPEG)], "the base moves")
+        self.assertIn("b.png", gitstate.show(self.w.root, "trunk", gitstate.MANIFEST))
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", self.PID]))
+        self.assertNotIn("media:b.png", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
