@@ -1,9 +1,10 @@
 """Tests for kit/lib/audioapi.py and the tools `voice`, `music` and `sfx`, through `factory run`.
 
 The world is the one of tests/test_run.py, with the kit's own tools (kit/lib/tools) and register
-(kit/resources.json), the three key files gen.voice, gen.music and gen.sfx holding one key, and the vendor a
-loopback HTTP server answering each path with a fixture of tests/fixtures/audioapi. The fixtures are written
-by hand from the vendor's public references, each naming its page. Nothing reaches the network.
+(kit/resources.json), the three key files gen.voice, gen.music and gen.sfx holding one key, the vendor a
+loopback HTTP server answering each path with a fixture of tests/fixtures/audioapi, and a loopback asset store
+(tests/test_assets.py) with its key file store.assets. The fixtures are written by hand from the vendor's public
+references, each naming its page. Nothing reaches the network.
 """
 
 import base64
@@ -21,7 +22,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import audioapi, cmd_run, gitstate, ledger, lint, resources  # noqa: E402
-from test_run import NOW, TICKET, World, line  # noqa: E402
+from test_assets import AssetStore  # noqa: E402
+from test_media import KEY_ID, REGION, SECRET, free_port  # noqa: E402
+from test_run import BRANCH, NOW, TICKET, World, line  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "audioapi"
 KEY = "xi-seeded-key-0c4f7a2e91"
@@ -98,6 +101,9 @@ class AudioTest(unittest.TestCase):
             self.addCleanup(patch.stop)
         for name in ("gen.voice", "gen.music", "gen.sfx"):
             self.key(name, KEY + "\n")
+        self.assets = AssetStore(self)
+        self.key("store.assets", f"{KEY_ID}\n{SECRET}\n{REGION}\n")
+        self.store_url()
         self.printed = []
 
     # -- helpers
@@ -106,6 +112,12 @@ class AudioTest(unittest.TestCase):
         path = self.w.secrets / name
         path.write_text(text)
         path.chmod(0o600)
+
+    def store_url(self, url=None):
+        """``production.local.env`` with ``ASSET_STORE`` at ``url``, by default the asset store's."""
+        w = self.w
+        w.local(STATE_DIR=w.state, SECRETS_DIR=w.secrets, FAKE_LOG=w.fake_log,
+                ASSET_STORE=self.assets.url("/b") if url is None else url)
 
     def committed(self, rel, text):
         """``rel`` committed on `trunk` with ``text``; its job input."""
@@ -139,6 +151,7 @@ class AudioTest(unittest.TestCase):
             "body": json.dumps(body, sort_keys=True)}])
         data = body_of(answer)
         self.assertEqual((w.job_dir(digest) / "out" / f"{tool}.mp3").read_bytes(), data)
+        self.assert_stored(data)
         self.assertEqual(w.manifest(), MANIFEST_HEADER + "\t".join(
             [f"{digest[:16]}-{tool}.mp3", hashlib.sha256(data).hexdigest(), str(len(data)), f"job {digest}"]) + "\n")
         [row] = w.rows("run")
@@ -149,6 +162,38 @@ class AudioTest(unittest.TestCase):
         result = lint.run(tree, ["media"])["media"]
         self.assertEqual((result.status, result.findings), ("PASS", []))
         return digest
+
+    def assert_stored(self, data):
+        """The asset store holds exactly ``data`` under its sha256, after one `PUT`."""
+        sha = hashlib.sha256(data).hexdigest()
+        self.assertEqual(self.assets.objects, {sha: data})
+        self.assertEqual([r["path"] for r in self.assets.requests if r["method"] == "PUT"], [f"/b/{sha}"])
+
+    def assert_refused(self, job, digest, err):
+        """The run of ``job`` is refused after the call with the line ``err``: nothing is recorded."""
+        w = self.w
+        branch, trunk = w.head(BRANCH), w.head()
+        self.assertEqual(self.factory_run(job), (2, "", err + "\n"))
+        self.assertTrue((w.job_dir(digest) / "result.json").is_file())
+        self.assertEqual(w.rows("run"), [])
+        self.assertIsNone(w.manifest())
+        self.assertEqual((w.head(BRANCH), w.head()), (branch, trunk))
+        self.assertEqual(self.assets.objects, {})
+        self.assertEqual(len(self.vendor.requests), 1)
+
+    def assert_rerun(self, job, digest):
+        """A later run of ``job`` records the kept call without calling the vendor again."""
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "2.5", "30") + "\n", ""))
+        self.assert_stored(body_of("voice-ok.json"))
+        self.assertEqual(len(self.vendor.requests), 1)
+        [row] = self.w.rows("run")
+        self.assertEqual((row["hash"], row["verdict"]), (digest, "DONE"))
+        self.assertIsNotNone(self.w.manifest())
+
+    def voice_job(self):
+        self.vendor.answers[TTS] = "voice-ok.json"
+        job = self.job("voice", "voice", [self.request("ama-line", "Ama says the tide is late."), self.voice("ama")])
+        return job, self.w.passed(job)
 
     def assert_failed(self, job, tool, reason, usd, compute_min):
         digest = self.w.passed(job)
@@ -215,6 +260,7 @@ class AudioTest(unittest.TestCase):
                                                  f"run: tool voice failed: {reason}\n"))
         self.assertEqual(self.vendor.requests, [])
         self.assertIsNone(self.w.manifest())
+        self.assertEqual(self.assets.requests, [])
 
     def test_unknown_voice(self):
         self.vendor.answers[TTS] = "voice-not-found.json"
@@ -228,6 +274,7 @@ class AudioTest(unittest.TestCase):
         job = self.job("odd", "voice", [self.request("odd-line", "Ama says the sea is late."), ama])
         self.assert_failed(job, "voice", "the vendor refused the request", "2.5", "30")
         self.assertEqual(len(self.vendor.requests), 2)
+        self.assertEqual(self.assets.requests, [])
 
     def test_not_a_request(self):
         self.vendor.answers[SFX] = "sfx-ok.json"
@@ -246,6 +293,7 @@ class AudioTest(unittest.TestCase):
         job, _ = self.sfx_job()
         self.assert_failed(job, "sfx", "the vendor answer is not audio", "2.5", "30")
         self.assertEqual(len(self.vendor.requests), 1)
+        self.assertEqual(self.assets.requests, [])
 
     def test_down(self):
         job, digest = self.sfx_job()
@@ -289,6 +337,56 @@ class AudioTest(unittest.TestCase):
         texts.append(w.git("log", "--all", "-p", "--format=%H %an %s%n%b"))
         for text in texts:
             self.assertNotIn(KEY, text)
+            self.assertNotIn(SECRET, text)
+
+    # -- ISSUE-583: an MP3 output goes to the asset store
+
+    def test_store_refuses_then_rerun(self):
+        job, digest = self.voice_job()
+        self.assets.status["PUT"] = (500, b"")
+        self.assert_refused(job, digest, "run: the asset store did not take voice.mp3: store answered 500")
+        del self.assets.status["PUT"]
+        self.assets.requests.clear()
+        self.assert_rerun(job, digest)
+
+    def test_store_not_usable_then_rerun(self):
+        w = self.w
+        job, digest = self.voice_job()
+        w.local(STATE_DIR=w.state, SECRETS_DIR=w.secrets, FAKE_LOG=w.fake_log)
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: setting ASSET_STORE is empty")
+        self.store_url("")
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: setting ASSET_STORE is empty")
+        self.store_url()
+        (w.secrets / "store.assets").unlink()
+        self.assert_refused(job, digest, "run: resource store.assets is not usable: secret store.assets: missing")
+        self.assertEqual(self.assets.requests, [])
+        self.key("store.assets", f"{KEY_ID}\n{SECRET}\n{REGION}\n")
+        self.assert_rerun(job, digest)
+
+    def test_store_unreachable(self):
+        job, digest = self.voice_job()
+        self.store_url(f"http://127.0.0.1:{free_port()}/b")
+        self.assert_refused(job, digest, "run: the asset store did not take voice.mp3: store unreachable")
+        self.assertEqual(self.assets.requests, [])
+
+    def test_register_without_the_asset_store(self):
+        register = json.loads((ROOT / "kit" / "resources.json").read_text())
+        register["resources"] = [r for r in register["resources"] if r["id"] != "store.assets"]
+        path = self.w.tmp / "resources.json"
+        path.write_text(json.dumps(register, indent=2) + "\n")
+        job, digest = self.voice_job()
+        with mock.patch.object(resources, "REGISTER", path):
+            self.assert_refused(job, digest, "run: the register has no resource store.assets")
+        self.assertEqual(self.assets.requests, [])
+
+    def test_mp3_frame_without_a_tag(self):
+        data = b"\xff\xfb" + bytes(range(30))
+        self.vendor.answers[SFX] = (200, data)
+        job, digest = self.sfx_job()
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "2.5", "30") + "\n", ""))
+        self.assertEqual(hashlib.sha256(data).hexdigest(),
+                         "38569a18e445c6c3f2d893021dd461d6f4f15c6108b64662af4d89cede492496")
+        self.assert_stored(data)
 
 
 if __name__ == "__main__":
