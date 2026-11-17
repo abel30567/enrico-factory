@@ -4,15 +4,21 @@ The node is the driver ``RENDER_PROVIDER`` names, made with the call's settings 
 name, or one that lacks a setting, a secret or a program it needs, the resource is down. The node is
 stopped once whenever ``start`` was called, and the amounts are what ``stop`` returns. The outputs named in
 ``STAGE_FILES`` are the stage's files; `factory run` commits them and sends every other output to the
-asset store.
+asset store. When the job fails and the driver has a ``failure``, it is written to `node-failure.json` in
+``call["record"]``, and a step of ``renderjob.STEPS`` in it makes the reason ``job failed on the node at step <step>``.
 """
 
-from kit.lib import node
+import json
+import os
+
+from kit.lib import node, renderjob
 from kit.lib.tools import Down, Failed
 
 RESOURCE = "render.node"
 NOT_STARTED, JOB_FAILED, NOT_STOPPED = "node did not start", "job failed on the node", "node did not stop"
-REASONS = (NOT_STARTED, JOB_FAILED, NOT_STOPPED)
+STEP_FAILED = "job failed on the node at step {}"
+REASONS = (NOT_STARTED, JOB_FAILED, NOT_STOPPED) + tuple(STEP_FAILED.format(step) for step in renderjob.STEPS)
+FAILURE = "node-failure.json"
 STAGE_FILES = ("manifest.json", "mix.json", "render.json", "rerun.json", "state.json")
 
 
@@ -37,6 +43,15 @@ def run(call):
             held = error
         except Exception:
             reason = JOB_FAILED
+            failure = getattr(driver, "failure", None)
+            if isinstance(failure, dict):
+                if failure.get("step") in renderjob.STEPS:
+                    reason = STEP_FAILED.format(failure["step"])
+                try:
+                    with open(os.path.join(call["record"], FAILURE), "w", encoding="utf-8") as handle:
+                        handle.write(json.dumps(failure, indent=1, sort_keys=True) + "\n")
+                except OSError:
+                    pass
     try:
         billed = driver.stop()
     except KeyboardInterrupt:

@@ -9,7 +9,8 @@ with that `sha256` (``asset_states``). ``in_tar`` packs `job.json`, the scripts 
 `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a directory, refusing any member that is
 not a regular file or a directory, whose path is absolute or holds `..`, or whose name is not one `job.sh` writes.
 ``finish`` checks the node's answer and writes the outputs into `out`, with `manifest.json` last. At `simulation` it
-also writes `rerun.json`, the state of the second build.
+also writes `rerun.json`, the state of the second build. ``failed_step`` reads the step of a failed node's
+`status.json`; ``tail`` keeps the end of its log without a line that may hold a secret.
 
 A refusal or a failed job is ``JobError``; its text never holds a value of a setting or a secret.
 """
@@ -53,6 +54,12 @@ NOT_LOCKED = "input asset:{} does not match its locked state"
 NAMES = re.compile(r"scene\.json|rerun-scene\.json|node\.json|engine-build\.log|engine-render\.log"
                    r"|frame-[0-9]{6}\.(png|exr)|rerender-[0-9]{6}\.png")
 FIXED_SEED = {"FixedSeed": 0}
+# The steps a node names in status.json when it fails: start.sh's, then job.sh's.
+STEPS = ("pull", "fetch", "build", "rebuild", "render", "rerender", "pack", "upload")
+TAIL_LINES = 40
+LINE_CHARS = 240
+WITHHELD = "[line withheld: it may hold a secret]"
+SIGNED = "X-Amz-"
 _RESOLUTION = re.compile(r"([1-9][0-9]*)x([1-9][0-9]*)")
 
 
@@ -223,6 +230,26 @@ def unpack(tar_path, directory) -> list:
     except (tarfile.TarError, OSError):
         raise JobError(JOB_FAILED) from None
     return sorted(names)
+
+
+def failed_step(status):
+    """The step of ``STEPS`` a failed node's `status.json` names, else None."""
+    if isinstance(status, dict) and status.get("result") == "failed" and status.get("step") in STEPS:
+        return status["step"]
+    return None
+
+
+def tail(text: str, hidden) -> list:
+    """The last ``TAIL_LINES`` lines of ``text``, a line holding ``SIGNED`` or a value of ``hidden`` withheld and
+    any other longer than ``LINE_CHARS`` cut."""
+    found = []
+    for line in text.splitlines()[-TAIL_LINES:]:
+        if SIGNED in line or any(value in line for value in hidden):
+            line = WITHHELD
+        elif len(line) > LINE_CHARS:
+            line = line[:LINE_CHARS - 1] + "…"
+        found.append(line)
+    return found
 
 
 def _json(path):

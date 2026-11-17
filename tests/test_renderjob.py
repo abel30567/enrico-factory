@@ -199,6 +199,7 @@ class Job(unittest.TestCase):
         self.members = sorted({**{p.name: p.read_bytes() for p in (FIX / "out-clean").iterdir()},
                                **frames()}.items())
         self.status = b'{"result": "ok"}\n'
+        self.log = b"NODE 12:01:00 result ok\n"
         self.inputs = [item(f"{STAGE}/requests/render.json", "{}\n"),
                        item("production/ep01/shots.json", json.dumps([{"shot": "Q1-1", "first": FIRST, "last": LAST}])),
                        item(f"{STAGE}/scene.py", SCENE.read_text(encoding="utf-8"))]
@@ -217,7 +218,7 @@ class Job(unittest.TestCase):
             self.got["links"] = links
             with OPENER.open(links["in"][1], timeout=10) as response:
                 self.got["in.tar"] = response.read()
-            for name, data in (("out", tar(self.members)), ("log", b"NODE 12:01:00 result ok\n"),
+            for name, data in (("out", None if self.members is None else tar(self.members)), ("log", self.log),
                                ("status", self.status)):
                 if data is None:
                     continue
@@ -500,6 +501,60 @@ class Seeded(Job):
         self.inputs.insert(2, item(EDIT, json.dumps({"fps": 25})))
         self.assert_before_upload(f"the unit's LEVEL has fps 24, {EDIT} has fps 25")
 
+    def test_a_member_outside_the_directory_leaves_no_step(self):
+        self.members.append(("../x", b"outside"))
+        _, driver = self.assert_failed()
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None,
+                                          "tail": ["NODE 12:01:00 result ok"]})
+
+    def test_no_status_leaves_no_step_and_no_tail(self):
+        self.status = None
+        exchanges = session("start-stop")
+        _, driver = self.assert_failed(exchanges=exchanges[:4] + [exchanges[5]] + exchanges[4:])
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None, "tail": []})
+
+    def test_a_refusal_of_describe_leaves_no_failure(self):
+        self.inputs = [i for i in self.inputs if not i["path"].endswith("scene.py")]
+        _, driver = self.assert_failed("no input named scene.py")
+        self.assertIsNone(driver.failure)
+
+    def test_the_clean_job_leaves_no_failure(self):
+        _, driver, error, _, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertIsNone(driver.failure)
+
+    def gets(self):
+        return [r["path"].rsplit("/", 1)[1] for r in self.store.requests if r["method"] == "GET"]
+
+    def test_each_step_of_a_failed_node(self):
+        for step in renderjob.STEPS:
+            with self.subTest(step=step):
+                self.store.requests.clear()
+                self.status = json.dumps({"result": "failed", "step": step}).encode()
+                _, driver = self.assert_failed()
+                self.assertEqual(driver.failure["step"], step)
+                self.assertEqual(self.gets(), ["status.json", "log.txt"])
+                self.assertEqual(os.listdir(self.out), [])
+
+    def test_a_status_without_a_step_of_steps(self):
+        for status in ({"result": "failed", "step": "warp"}, {"result": "failed"}):
+            with self.subTest(status=status):
+                self.store.requests.clear()
+                self.status = json.dumps(status).encode()
+                _, driver = self.assert_failed()
+                self.assertIsNone(driver.failure["step"])
+                self.assertEqual(self.gets(), ["status.json", "out.tar", "log.txt"])
+
+    def test_a_failed_pull_puts_no_out_tar(self):
+        self.members = None
+        self.status = b'{"result": "failed", "step": "pull"}\n'
+        self.log = b"NODE 12:00:01 pull rc=1\nNODE 12:00:02 result failed step=pull\n"
+        _, driver = self.assert_failed()
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "pull",
+                                          "tail": ["NODE 12:00:01 pull rc=1", "NODE 12:00:02 result failed step=pull"]})
+        self.assertEqual(self.gets(), ["status.json", "log.txt"])
+        self.assertEqual(os.listdir(self.out), [])
+
 
 class Simulation(Job):
     """The job at `simulation` (#500): the node builds twice and `finish` writes `rerun.json` beside `state.json`."""
@@ -579,6 +634,29 @@ class Simulation(Job):
         self.assert_failed()
         self.assertEqual(os.listdir(self.out), [])
 
+    def test_a_node_that_fails_at_rebuild_leaves_its_step_and_tail(self):
+        self.members = None
+        self.status = b'{"result": "failed", "step": "rebuild"}\n'
+        lines = [f"NODE 11:59:{n:02d} get x http=200" for n in range(40)]
+        lines += ["NODE 12:01:00 step rebuild rc=139 seconds=12", f"pull token {TOKEN} in the engine log",
+                  "GET https://store.invalid/b/x?X-Amz-Signature=" + "e" * 64, "x" * 300,
+                  "NODE 12:01:00 result failed step=rebuild"]
+        self.log = ("\n".join(lines) + "\n").encode()
+        _, driver = self.assert_failed()
+        tail = lines[5:41] + [renderjob.WITHHELD, renderjob.WITHHELD, "x" * 239 + "…", lines[44]]
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "rebuild", "tail": tail})
+        self.assertEqual(len(tail), 40)
+        self.assertEqual([r["path"].rsplit("/", 1)[1] for r in self.store.requests if r["method"] == "GET"],
+                         ["status.json", "log.txt"])
+        self.assertEqual(os.listdir(self.out), [])
+        for secret in (KEY_ID, SECRET, KEY[1], TOKEN):
+            self.assertNotIn(secret, json.dumps(driver.failure))
+
+    def test_the_clean_job_leaves_no_failure(self):
+        replay, driver, error, _, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertIsNone(driver.failure)
+
     def test_the_rerun_state_takes_the_asset_too(self):
         self.members = with_wren(self.members, "prop", ("scene.json", "rerun-scene.json"))
         self.inputs.append(asset_item(WREN))
@@ -587,6 +665,33 @@ class Simulation(Job):
         actors = json.loads((self.out / "rerun.json").read_text())["actors"]
         wren = next(actor for actor in actors if actor["id"] == "wren")
         self.assertEqual((wren["kind"], wren["asset"], wren["sha256"]), ("character", "asset:wren", BIN))
+
+
+class Tail(unittest.TestCase):
+    def test_the_last_lines(self):
+        lines = [f"line {n}" for n in range(41)]
+        self.assertEqual(renderjob.tail("\n".join(lines) + "\n", []), lines[1:])
+        self.assertEqual(renderjob.tail("", ["hidden"]), [])
+
+    def test_a_long_line_is_cut(self):
+        self.assertEqual(renderjob.tail("y" * 240, []), ["y" * 240])
+        [cut] = renderjob.tail("y" * 241, [])
+        self.assertEqual((len(cut), cut), (240, "y" * 239 + "…"))
+
+    def test_a_line_that_may_hold_a_secret_is_withheld(self):
+        text = "a seeded-secret-1 here\nhttps://x.invalid/?X-Amz-Credential=k\n" + "z" * 300 + "seeded-secret-1\nkept\n"
+        self.assertEqual(renderjob.tail(text, ["seeded-secret-1"]),
+                         [renderjob.WITHHELD, renderjob.WITHHELD, renderjob.WITHHELD, "kept"])
+
+    def test_a_short_clean_line_is_kept(self):
+        self.assertEqual(renderjob.tail("NODE 12:01:00 result ok\n", ["seeded-secret-1"]), ["NODE 12:01:00 result ok"])
+
+    def test_failed_step(self):
+        self.assertEqual(renderjob.failed_step({"result": "failed", "step": "rebuild"}), "rebuild")
+        for status in ({"result": "ok"}, None, [], {"result": "failed", "step": "warp"}, {"result": "failed"},
+                       {"result": "ok", "step": "rebuild"}):
+            with self.subTest(status=status):
+                self.assertIsNone(renderjob.failed_step(status))
 
 
 class Describe(unittest.TestCase):

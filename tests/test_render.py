@@ -6,7 +6,8 @@ kit/resources.json, and the fake asset store `AssetStore` of tests/test_assets.p
 `FakeNode`, added to `node.PROVIDERS` as `fake`: it logs each call, its `run` copies
 tests/fixtures/render/node/* into `out` (``{job}`` replaced by the hash and ``{input}`` by the first input's
 sha256) and its `stop` returns 0.35 USD and 12 minutes. ``FakeNode.plan`` makes a call raise an error whose
-text is the node key, `Unavailable`, `SystemExit` or `KeyboardInterrupt`. ``FakeNode.config`` is the
+text is the node key, `Unavailable`, `SystemExit` or `KeyboardInterrupt`; ``"failed step"`` on `run` also sets the
+driver's ``failure`` to ``NODE_FAILURE``. ``FakeNode.config`` is the
 ``config`` it was made with. Nothing reaches the network.
 """
 
@@ -39,11 +40,13 @@ NODE_CHECKS = [("setting", "RENDER_PROVIDER"), ("secret", "render.node"), *(("se
 STAGE_DIR = "production/ep01/render"
 STAGE_PATHS = [f"{STAGE_DIR}/manifest.json", f"{STAGE_DIR}/render.json"]
 FRAMES = ["frame-0000.bin", "frame-0001.bin"]
+NODE_FAILURE = {"log": "jobs/" + "5e" * 16 + "/log.txt", "step": "rebuild",
+                "tail": ["NODE 12:01:00 step rebuild rc=139 seconds=12", "NODE 12:01:00 result failed step=rebuild"]}
 
 
 class FakeNode:
     """A render node that logs each call to ``FakeNode.calls``, follows ``FakeNode.plan`` and keeps the
-    ``config`` it was made with in ``FakeNode.config``."""
+    ``config`` it was made with in ``FakeNode.config``; at ``"failed step"`` its ``failure`` is ``NODE_FAILURE``."""
 
     calls, plan, config = [], {}, None
     NEEDS, PROGRAMS = (), ()
@@ -56,6 +59,9 @@ class FakeNode:
         FakeNode.calls.append(name)
         what = FakeNode.plan.get(name)
         key = Path(self.key_file).read_text()
+        if what == "failed step":
+            self.failure = NODE_FAILURE
+            raise RuntimeError(key)
         if what == "error":
             raise RuntimeError(key)
         if what == "unavailable":
@@ -235,6 +241,50 @@ class RenderTest(unittest.TestCase):
         FakeNode.plan["run"] = "error"
         self.assert_failed("job failed on the node", "0.35", "12")
         self.assertEqual(FakeNode.calls, ["start", "run", "stop"])
+
+    def job_dir(self):
+        return sorted(p.name for p in self.w.job_dir(self.digest).iterdir())
+
+    def node_failure(self):
+        return (self.w.job_dir(self.digest) / "record" / "node-failure.json").read_text()
+
+    def test_job_fails_on_the_node_at_a_step(self):
+        FakeNode.plan["run"] = "failed step"
+        reason = "job failed on the node at step rebuild"
+        self.assert_failed(reason, "0.35", "12")
+        self.assertEqual(FakeNode.calls, ["start", "run", "stop"])
+        result = (self.w.job_dir(self.digest) / "result.json").read_text()
+        self.assertEqual(json.loads(result)["reason"], reason)
+        path = self.w.dir / "comments" / f"{TICKET}.json"
+        comments = [c["body"] for c in json.loads(path.read_text()) if c["role"] == "program:run"]
+        self.assertEqual([c.split("\n", 1)[0] for c in comments], [f"Job {self.digest} failed: {reason}"])
+        self.assertEqual(self.job_dir(), ["out", "record", "result.json"])
+        self.assertEqual(self.node_failure(), json.dumps(NODE_FAILURE, indent=1, sort_keys=True) + "\n")
+        for text in [result] + comments:
+            self.assertNotIn("NODE 12:01:00", text)
+
+    def test_job_fails_on_the_node_with_no_step(self):
+        patch = mock.patch.dict(NODE_FAILURE, step=None)
+        patch.start()
+        self.addCleanup(patch.stop)
+        FakeNode.plan["run"] = "failed step"
+        self.assert_failed("job failed on the node", "0.35", "12")
+        self.assertEqual(json.loads(self.node_failure())["step"], None)
+        self.assertEqual(self.node_failure(), json.dumps(NODE_FAILURE, indent=1, sort_keys=True) + "\n")
+
+    def test_a_job_failed_without_a_failure_leaves_no_record(self):
+        FakeNode.plan["run"] = "error"
+        self.assert_failed("job failed on the node", "0.35", "12")
+        self.assertEqual(self.job_dir(), ["out", "result.json"])
+
+    def test_a_clean_job_leaves_no_record(self):
+        self.assert_clean()
+        self.assertEqual(self.job_dir(), ["out", "result.json"])
+
+    def test_stop_fails_after_a_failed_step_keeps_the_record(self):
+        FakeNode.plan.update(run="failed step", stop="error")
+        self.assert_failed("node did not stop", "2.5", "30")
+        self.assertTrue((self.w.job_dir(self.digest) / "record" / "node-failure.json").is_file())
 
     # 3
     def test_start_fails(self):
@@ -428,7 +478,11 @@ class ToolShapeTest(unittest.TestCase):
     def test_render_tool(self):
         tool = cmd_run._load_tool("render")
         self.assertEqual((tool.RESOURCE, tool.REASONS, tool.STAGE_FILES), (
-            "render.node", ("node did not start", "job failed on the node", "node did not stop"),
+            "render.node", ("node did not start", "job failed on the node", "node did not stop",
+                            "job failed on the node at step pull", "job failed on the node at step fetch",
+                            "job failed on the node at step build", "job failed on the node at step rebuild",
+                            "job failed on the node at step render", "job failed on the node at step rerender",
+                            "job failed on the node at step pack", "job failed on the node at step upload"),
             ("manifest.json", "mix.json", "render.json", "rerun.json", "state.json")))
 
     def test_stage_files_must_be_a_tuple_of_strings(self):
