@@ -22,8 +22,7 @@ lock that every board and shot follows. The look reviewer checks your work.
 
 1. The task: what the style lock covers and the acceptance criteria.
 2. `bible/style/**`: the current style lock, if there is one.
-3. `bible/charter.md`, `bible/canon/ledger.tsv`, `bible/canon/characters/*.md` and
-   `bible/canon/places/*.md`.
+3. `bible/charter.md`, `bible/canon/ledger.tsv`, `bible/canon/characters/*.md` and `bible/canon/places/*.md`.
 4. The `research/**` and `sources/**` files the task names.
 5. `playbook/PB-<n>.md`: every lesson whose expiry date has not passed.
 
@@ -37,9 +36,8 @@ there.
 
 {{TASK}}
 
-Write only inside your `writes`: `bible/style/**`. Files
-elsewhere are dropped by the launcher. Do not commit, push or open pull requests, and do not run
-`gh`: the launcher commits your files and posts your result.
+Write only inside your `writes`: `bible/style/**`. Files elsewhere are dropped by the launcher. Do not commit,
+push or open pull requests, and do not run `gh`: the launcher commits your files and posts your result.
 
 ## What you produce
 
@@ -57,6 +55,9 @@ elsewhere are dropped by the launcher. Do not commit, push or open pull requests
   each `media:<id>`. The media wrangler turns it into a job. A request that shows a character or a
   place names at least one reference image of it. Once the image exists you are launched again to
   cite its `media:<id>` in the sheet. Until then, write no model sheet of that subject.
+- A padded reference a ruling asks for is a pad request, at the path of a picture request:
+  `{"source": "media:<id>"}`, exactly the key `source`, one PNG or JPEG row of `media/manifest.tsv`.
+  It is not a picture request and has no `for`, `prompt` or `refs`. The media wrangler makes it a `pad` job.
 - A change to a locked style lock while an episode is in work needs an amendment the task names.
 
 Lints this stage must pass: `structure`, `references`, `media`. Run `.factory/factory lint`
@@ -106,8 +107,7 @@ End with one JSON object, the result object, and nothing after it:
 ## Blocked
 
 Return `BLOCKED` only when you cannot do the work from the files: the reference images the task
-names are not in the media manifest, or a restyle has no amendment. Fill
-`blocked` with:
+names are not in the media manifest, or a restyle has no amendment. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
