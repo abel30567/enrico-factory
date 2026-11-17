@@ -729,6 +729,28 @@ class B8PullAddsRows(Cited):
         self.assertNotIn("media:b.png", self.prompt(run))
         self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
 
+    def test_seeded_a_row_the_base_tip_rewrote_after_the_branch_point_is_not_placed(self):
+        self.serve(OTHER, PNG, JPEG)
+        self.branch_point([self.row("a.png", OTHER), self.row("c.png", PNG)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.row("c.png", PNG)])
+        self.trunk([self.row("a.png", OTHER), self.row("c.png", JPEG)], "the base rewrites c.png")
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["a.png"])
+        self.assertNotIn("media:c.png", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def test_seeded_an_added_id_that_is_not_one_path_segment_is_not_placed(self):
+        bad = ["./../../escaped.png", "./../escaped.png", "x/../../escaped.png", "..", "."]
+        self.serve(OTHER, PNG)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER)] + [self.row(b, PNG) for b in bad])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["a.png"])
+        self.assertEqual(sorted(p.relative_to(self.w.state).as_posix() for p in self.w.state.rglob("*.png")),
+                         [f"runs/{run.dir.name}/media/a.png"])
+        self.assertNotIn("escaped", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
     def refused(self, pattern):
         """Seeded defect 1: the pull adds a job row whose job output holds other bytes and that the store
         does not serve. ``cited`` returns the row's id, and the launch is refused with ``pattern``."""
