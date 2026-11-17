@@ -1802,5 +1802,6 @@ class SeveralMakers(Case):
         self.assertEqual(lines(self.ticked(w)), ["STEP #19 launch sound-mixer on PR #20"])
 
     def test_notes_on_the_captions_go_to_the_conform_editor_twin(self):
+        # Passes on main.
         w = self.lint_fail(self.CAPTIONS)
         self.assertEqual(lines(self.ticked(w)), ["STEP #19 launch conform-editor on PR #20"])

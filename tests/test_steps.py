@@ -1101,21 +1101,24 @@ class SeveralMakersTest(ChainCase):
         self.check(("maker", "launch", "scout", 5), "scout has no READY on #5")
 
     def test_before_the_first_ready_the_pull_is_linted_twin(self):
+        # Passes on main.
         self.until("open-pull")
         self.check(BEATS["open-pull"])
 
     def test_both_ready_lints_twin(self):
+        # Passes on main.
         self.until("ready")
         self.post("scout", self.SCOUT_READY)
         self.check(("lint", "lint", None, 5))
 
     def test_the_second_maker_launched_is_running(self):
-        # Behaviour 2.
+        # Behaviour 2. Passes on main: row 6, the unanswered launch, comes before every other row of a pull.
         self.until("ready")
         self.post("chief", "[CHIEF] LAUNCH scout 5-1\n")
         self.check(("running", "none", "scout", 5))
 
     def test_a_pitched_stage_has_no_new_row_twin(self):
+        # Passes on main.
         self.until("ready")
         self.with_makers(["writer", "scout"], pitches=2)
         self.post("chief", "[CHIEF] LAUNCH writer BT-1-p\n", number=3)
@@ -1141,6 +1144,7 @@ class SeveralMakersTest(ChainCase):
         self.check(("notes", "launch", "writer", 5), "[LINT] FAIL on #5")
 
     def test_lint_notes_on_the_other_maker_s_file_twin(self):
+        # Passes on main.
         self.both_ready()
         self.lint_fail("- B1 structure research/ep01.md:2 out of order")
         self.check(("notes", "launch", "scout", 5))
@@ -1177,6 +1181,7 @@ class SeveralMakersJobsTest(OperatorRowsTest):
         w.reload()
 
     def test_the_gate_comes_before_the_second_maker_twin(self):
+        # Passes on main.
         self.written()
         self.check(("gate", "gate", None, 5))
 
