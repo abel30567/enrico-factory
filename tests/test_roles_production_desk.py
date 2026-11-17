@@ -57,7 +57,8 @@ SPECIFIC = {
                         "the value of that file's key `sha256`, the sha256 of the asset's binary",
                         "At `assets` and `rigging` the state stays a file input.",
                         "never the sha256 of the state's own bytes", "an asset input's is the one exception",
-                        "or holds no `sha256` for an asset input"),
+                        "or holds no `sha256` for an asset input", "`voice` for `voice-L<n>.json`",
+                        "`conform` for `mix.json`", "A request with another name has no tool: return `BLOCKED`."),
 }
 
 
