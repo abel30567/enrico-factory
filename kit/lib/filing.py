@@ -16,7 +16,10 @@ tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MED
 ``grok-imagine``, ``0.1`` and ``1``). The body of a stage of ``TOOLS`` whose makers name ``render-wrangler`` (and not
 ``media-wrangler``) names its tool and expected cost, the settings ``<TOOL>_USD`` and ``<TOOL>_COMPUTE_MIN`` (``<TOOL>``
 the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot file on the base and the job's inputs
-in order. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
+in order. The body of the ``conform`` stage, when its makers name ``render-wrangler``, names a tool, its expected
+cost and its inputs for each request name of ``CONFORM_TOOLS`` under ``production/<ep>/conform/requests/``, with
+the same settings. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the
+base. A
 ``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
 shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
 from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
@@ -61,6 +64,9 @@ OPERATOR = "render-wrangler"
 TOOLS = {"assets": ("model3d", "0.3", "1"), "rigging": ("rig", "0.55", "1"), "layout": ("render", "0.2", "20"),
          "animation": ("render", "0.2", "20"), "simulation": ("render", "0.2", "20"),
          "lighting": ("render", "0.2", "20"), "render": ("render", "0.2", "20")}
+CONFORM = "conform"
+CONFORM_TOOLS = (("voice-L<n>.json", "voice", "0.02", "1"), ("music-<id>.json", "music", "0.15", "1"),
+                 ("sfx-<id>.json", "sfx", "0.1", "1"), ("mix.json", "conform", "0", "10"))
 SEQUENCES = ("story", "sequences")
 STYLE = ("story", "style")
 SEQUENCE_KEY = "bible/style/keys/{}/{}.json"
@@ -192,13 +198,34 @@ def _operator(p, root, stage: str, unit: str) -> list:
     return [shot_line, f"Inputs, in this order: {', '.join(inputs)}."]
 
 
+def _conform(p, root, unit: str) -> list:
+    """The lines of the block of the ``conform`` stage ``render-wrangler`` operates, without the empty line."""
+    inputs = {
+        "voice": ["the request",
+                  f"bible/style/voices/<speaker>.json (the speaker of L<n> in episodes/{unit}/lines.json)"],
+        "music": ["the request"],
+        "sfx": ["the request"],
+        "conform": ["the request", f"production/{unit}/conform/mix-plan.json", "media/manifest.tsv",
+                    EDIT_LIST.format(unit), f"production/{unit}/shots.json",
+                    *(f"production/{shot}/render/manifest.json" for shot in tickets.shots(p, root, unit))],
+    }
+    lines = [f"Requests: production/{unit}/conform/requests/, one job per request, by its name."]
+    for name, tool, usd, compute_min in CONFORM_TOOLS:
+        cost = _cost(tool, production.setting(p, f"{tool.upper()}_USD", usd),
+                     production.setting(p, f"{tool.upper()}_COMPUTE_MIN", compute_min))
+        lines.append(f"{name}: {cost} Inputs, in this order: {', '.join(inputs[tool])}.")
+    return lines
+
+
 def _tool(p, root, room: str, stage: str, unit: str) -> str:
-    """The tool and expected cost line of a stage ``media-wrangler`` makes, or the block of a stage of ``TOOLS``
-    ``render-wrangler`` operates, with its empty line; else empty."""
+    """The tool and expected cost line of a stage ``media-wrangler`` makes, or the block of the ``conform`` stage or
+    of a stage of ``TOOLS`` ``render-wrangler`` operates, with its empty line; else empty."""
     makers = production.stage_roles(production.stage(p, room, stage) or {}, "maker")
     if MEDIA_MAKER in makers:
         return _cost(production.setting(p, "MEDIA_TOOL", "grok-imagine"), production.setting(p, "MEDIA_USD", "0.1"),
                      production.setting(p, "MEDIA_COMPUTE_MIN", "1")) + "\n\n"
+    if OPERATOR in makers and stage == CONFORM:
+        return "\n".join(_conform(p, root, unit)) + "\n\n"
     if OPERATOR not in makers or stage not in TOOLS:
         return ""
     tool, usd, compute_min = TOOLS[stage]

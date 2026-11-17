@@ -4,7 +4,7 @@ room: production
 kind: maker
 analog: re-recording mixer
 stage: conform
-writes: production/*/conform/scene.py
+writes: production/*/conform/scene.py, production/*/conform/requests/*.json, production/*/conform/mix-plan.json
 reads: bible/**, episodes/**, production/**
 checked_by: mix-reviewer
 may_not: change the locked story package
@@ -35,9 +35,9 @@ Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH
 
 {{TASK}}
 
-Write only inside your `writes`: `production/*/conform/scene.py`. Files elsewhere are dropped by the
-launcher. Do not commit, push or open pull requests, and do not run `gh`: the launcher commits your
-files and posts your result.
+Write only inside your `writes`: `production/*/conform/scene.py`, `production/*/conform/requests/*.json`
+and `production/*/conform/mix-plan.json`. Files elsewhere are dropped by the launcher. Do not commit,
+push or open pull requests, and do not run `gh`: the launcher commits your files and posts your result.
 
 ## What you produce
 
@@ -46,6 +46,11 @@ files and posts your result.
   `asset:<id>` and any other object only by its sha256 in the asset store, and holds no Blueprint,
   no path outside the job's directory, no network call, no clock read and no random number without a
   seed. It never writes the state.
+- **requests** `production/<ep>/conform/requests/*.json`, each `{for, prompt, refs}` with `refs`
+  empty: one `voice-L<n>.json` per line of `lines.json` (`for` the line id, `prompt` its text), one
+  `music-<id>.json` per cue and one `sfx-<id>.json` per effect (`for` the id, `prompt` the sound).
+- **mix plan** `production/<ep>/conform/mix-plan.json`: each stored line, music cue and effect, with
+  its media id, start and end frame and gain; then `requests/mix.json` (`for` the episode) for the mix.
 - The job writes `conform/mix.json` (`loudness_lufs`, `true_peak_dbtp`, `lines`, `stems`, `master`)
   and `conform/manifest.json`. Place each line of `lines.json` inside the frames
   (`production/<ep>/shots.json`) of a shot of the line's scene; the conform editor times the captions

@@ -53,8 +53,12 @@ run `gh`.
   the asset's binary, copied as it stands in your worktree. The gate checks it against the
   asset's locked state. At `assets` and `rigging` the state stays a file input. Write no other
   `asset:<id>`, and never the sha256 of the state's own bytes for one.
-- The job runs on `render.node` with the pinned `engine.unreal` and writes the stage's other
-  files (`manifest.json`, `state.json`, `render.json`, `mix.json`): the job, never you.
+- The job runs on `render.node` with the pinned `engine.unreal`, except at `conform`, and writes the
+  stage's other files (`manifest.json`, `state.json`, `render.json`, `mix.json`): the job, never you.
+- At `conform`, one job per request under `production/<ep>/conform/requests/`, with the tool, cost and
+  inputs the task gives for its name: `voice` for `voice-L<n>.json` (the voice file of the line's
+  `speaker` in `lines.json`), `music` for `music-<id>.json`, `sfx` for `sfx-<id>.json` and `conform`
+  for `mix.json`. A request with another name has no tool: return `BLOCKED`.
 - You copy, shorten or add no line of a scene script. You call no tool, do not run
   `factory gate` or `factory run`, and hold no credential: the gate decides and the tool runs.
 - At `render` the frames are checked by `dailies-reviewer`; at the other stages by the stage's
