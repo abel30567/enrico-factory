@@ -1067,5 +1067,135 @@ class SelectionAfterABlockTest(ChainCase):
         self.assertEqual(short(self.next()), ("selection", "wake", "chief", None))
 
 
+class SeveralMakersTest(ChainCase):
+    """ISSUE-580: a stage of one pitch whose `maker` list names two makers that are not operators."""
+
+    FIXTURE, TICKET = "steps", 3
+    SCOUT_READY = "[SCOUT] READY\nhead {head:5}\n"
+
+    def setUp(self):
+        super().setUp()
+        self.with_makers(["writer", "scout"])
+        self.minute = 20
+
+    def with_makers(self, makers, pitches=1, operators=()):
+        pipeline = [{**e, "maker": makers, "pitches": pitches} if e["stage"] == "beats" else e
+                    for e in self.w.p.pipeline]
+        kinds = {**self.w.p.kinds, **{role: "operator" for role in operators}}
+        roles = {**self.w.p.roles, **{role: {"meta": {"kind": "operator", "writes": "jobs/**"}} for role in operators}}
+        self.w.p = dataclasses.replace(self.w.p, pipeline=pipeline, kinds=kinds, roles=roles)
+
+    def post(self, role, body, number=5):
+        self.minute += 1
+        self.w.apply(comment(number, 900 + self.minute, self.minute, role, body))
+
+    def check(self, expected, reason=None):
+        entry = self.next()
+        self.assertEqual(short(entry), expected)
+        if reason is not None:
+            self.assertEqual(entry["reason"], reason)
+
+    def test_the_second_maker_after_the_first_ready(self):
+        # Behaviour 1.
+        self.until("ready")
+        self.check(("maker", "launch", "scout", 5), "scout has no READY on #5")
+
+    def test_before_the_first_ready_the_pull_is_linted_twin(self):
+        self.until("open-pull")
+        self.check(BEATS["open-pull"])
+
+    def test_both_ready_lints_twin(self):
+        self.until("ready")
+        self.post("scout", self.SCOUT_READY)
+        self.check(("lint", "lint", None, 5))
+
+    def test_the_second_maker_launched_is_running(self):
+        # Behaviour 2.
+        self.until("ready")
+        self.post("chief", "[CHIEF] LAUNCH scout 5-1\n")
+        self.check(("running", "none", "scout", 5))
+
+    def test_a_pitched_stage_has_no_new_row_twin(self):
+        self.until("ready")
+        self.with_makers(["writer", "scout"], pitches=2)
+        self.post("chief", "[CHIEF] LAUNCH writer BT-1-p\n", number=3)
+        self.assertIn(("lint", "lint", None, 5), [short(e) for e in self.all()])
+
+    def test_an_operator_is_not_a_second_maker_twin(self):
+        # Passes on main.
+        self.until("ready")
+        self.with_makers(["writer", "wrangler"], operators=("wrangler",))
+        self.check(("lint", "lint", None, 5))
+
+    def both_ready(self):
+        self.until("ready")
+        self.post("scout", self.SCOUT_READY)
+
+    def lint_fail(self, line):
+        self.post("program:lint", f"[LINT] FAIL\n\nBlockers:\n{line}\nreviewed head {{head:5}} manifest none\n")
+
+    def test_lint_notes_go_to_the_maker_of_the_cited_file(self):
+        # Behaviour 4.
+        self.both_ready()
+        self.lint_fail("- B1 structure episodes/ep01/beats.md:2 out of order")
+        self.check(("notes", "launch", "writer", 5), "[LINT] FAIL on #5")
+
+    def test_lint_notes_on_the_other_maker_s_file_twin(self):
+        self.both_ready()
+        self.lint_fail("- B1 structure research/ep01.md:2 out of order")
+        self.check(("notes", "launch", "scout", 5))
+
+    def test_checker_notes_go_to_the_maker_of_the_blocker_s_file(self):
+        # Behaviour 5: the Issue line is not read.
+        self.both_ready()
+        self.post("program:lint", "[LINT] PASS\nstructure: pass\nreviewed head {head:5} manifest none\n")
+        self.post("editor", "[EDITOR] NOTES\nI1 (Issue): odd. Evidence: research/ep01.md:1\n"
+                            "B1 (Blocker): the beat is late. Evidence: episodes/ep01/beats.md:4\n"
+                            "reviewed head {head:5} manifest none\n")
+        self.check(("notes", "launch", "writer", 5), "editor NOTES on #5")
+
+    def test_no_cited_path_goes_to_the_newest_maker_twin(self):
+        # Behaviour 6, passes on main: the body of the chain's step lint-fail.
+        self.both_ready()
+        self.lint_fail("B1 structure: beat out of order")
+        self.check(("notes", "launch", "scout", 5))
+
+
+class SeveralMakersJobsTest(OperatorRowsTest):
+    """ISSUE-580 behaviour 3: the second maker comes after the jobs ran and the first maker cited them."""
+
+    def setUp(self):
+        super().setUp()
+        w = self.w
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        for entry in entries:
+            if entry["stage"] == "beats":
+                entry["maker"] = ["writer", "scout", "fetcher"]
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("a second maker at beats")
+        w.reload()
+
+    def test_the_gate_comes_before_the_second_maker_twin(self):
+        self.written()
+        self.check(("gate", "gate", None, 5))
+
+    def test_the_second_maker_after_the_cite(self):
+        digest = self.written()
+        self.gated(digest)
+        self.ledger(digest, "run", "DONE")
+        self.post("chief", "[CHIEF] LAUNCH fetcher 5-2\n")
+        self.post("fetcher", "[FETCHER] READY\nhead {head:5}\n")
+        self.check(("cite", "launch", "writer", 5))
+        self.post("chief", "[CHIEF] LAUNCH writer 5-2\n")
+        self.post("writer", "[WRITER] READY\nhead {head:5}\n")
+        self.check(("maker", "launch", "scout", 5), "scout has no READY on #5")
+
+
+# Only the tests above: those of OperatorRowsTest hold for a stage whose only maker is the writer.
+for _name in [n for n in vars(OperatorRowsTest) if n.startswith("test_")]:
+    setattr(SeveralMakersJobsTest, _name, None)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,13 +15,19 @@ the job path. While a job of the pull has not run, its gate and its run come rig
 the checkers and the judges, which read what the jobs make. A job of a shot stage waits while a cheaper stage of
 its shot is not locked (``lockrules.cheaper_stages``), and its run waits while the resource of its tool has an
 open down issue. A job stopped at the gate on a cap that was not set is gated again once that cap has a value.
+
+At a stage of one pitch with two or more makers that are not operators, once one of them has a ``READY`` on the
+pull and the pull has no request or every job ran ``DONE``, the next of them with no ``READY`` there is launched
+on the pull before the lint. Notes go to the maker whose ``writes`` cover the first file a Blocker line cites,
+else to the pull's newest maker.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
-from kit.lib import cmd_gate, cmd_run, down, harness, jobs, lockrules, markers, production, tickets
+from kit.lib import cmd_gate, cmd_run, down, frontmatter, harness, jobs, lockrules, markers, production, tickets
 
 RUN_TIMEOUT_MIN = "120"
 RUN_ATTEMPTS = 2
@@ -31,6 +37,8 @@ NOT_SET = "cap not set"
 # usage left): the role is launched again, as before ISSUE-327.
 OUTAGES = tuple(harness.PHRASES[s] for s in ("login_ended", "out_of_usage", "proxy_down")) + (
     "every account's login has ended", "every account is out of usage")
+_BLOCKER_LINE = re.compile(r"(?:[-*]\s+)?B\d+\b")
+_LINE_SUFFIX = re.compile(r":\d+(?:-\d+)?$")
 
 
 def _entry(state, step, role=None, pull=None, reason=""):
@@ -159,6 +167,44 @@ def _maker_of(p, entry, pull, root):
         if m.verb in markers.MAKER_VERBS and m.actor.lower() in makers:
             found = m.actor.lower()
     return found
+
+
+def _makers(p, entry):
+    """The stage's makers that are not operators, in the stage's order."""
+    return [r for r in production.stage_roles(entry, "maker") if p.kinds.get(r) != "operator"]
+
+
+def _next_maker(p, entry, pull, found):
+    """At a stage of one pitch with two or more makers that are not operators: once one of them has a
+    ``READY`` on the pull, and the pull has no request (``found`` is None) or none is uncovered and every
+    job ran ``DONE``, the first of them in the stage's order with no ``READY`` there; else None."""
+    makers = _makers(p, entry)
+    if entry["pitches"] != 1 or len(makers) < 2:
+        return None
+    if found and (found["uncovered"] or not all(job["run"] == "DONE" for job in found["jobs"])):
+        return None
+    ready = {m.actor for _, m in _marked(pull["comments"]) if m.verb == "READY"}
+    if not any(_actor(p, r) in ready for r in makers):
+        return None
+    return next((r for r in makers if _actor(p, r) not in ready), None)
+
+
+def _cited_maker(p, entry, body):
+    """The maker, not an operator, whose ``writes`` match the first path a Blocker line of ``body`` cites
+    (``- B<n> <check> <path>:<line> ...`` or ``B<n> (Blocker): ...``), the first in the stage's order if two
+    match; else None. The marker line is not read."""
+    makers = _makers(p, entry)
+    writes = {r: frontmatter.as_list(p.roles[r]["meta"].get("writes")) for r in makers if r in p.roles}
+    for line in body.splitlines()[1:]:
+        line = line.strip()
+        if not _BLOCKER_LINE.match(line):
+            continue
+        for word in line.split():
+            word = _LINE_SUFFIX.sub("", word.strip("`*,;.()"))
+            role = next((r for r in makers if production.matches(word, writes.get(r, []))), None)
+            if role:
+                return role
+    return None
 
 
 def _operator_left(p, entry, pull, role):
@@ -308,6 +354,9 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
             row = _job_steps(p, state, ticket, pull, found, root)
             if row:
                 return row
+    role = _next_maker(p, entry, pull, found)
+    if role:
+        return _entry("maker", "launch", role, n, f"{role} has no READY on #{n}")
     lint = summary["lint"]
     if entry.get("lint"):
         if lint is None:
@@ -319,7 +368,10 @@ def _pull_step(p, state, ticket, entry, pull, now, has_key, root):
         why = f"[LINT] FAIL on #{n}" if lint and lint["verb"] == "FAIL" else f"{noted[0]} NOTES on #{n}"
         if not production.stage_roles(entry, "maker"):
             return _entry("notes", "none", None, n, f"{why} and stage {ticket['stage']} has no maker")
-        return _entry("notes", "launch", _maker_of(p, entry, pull, root), n, why)
+        counted = lint if lint and lint["verb"] == "FAIL" else summary["checkers"][noted[0]]
+        body = next(c["body"] for c in pull["comments"] if c["id"] == counted["id"])
+        role = _cited_maker(p, entry, body) or _maker_of(p, entry, pull, root)
+        return _entry("notes", "launch", role, n, why)
     if found and any(job["run"] is None for job in found["jobs"]):
         # The checkers and judges read what the jobs make: they come after every job has run.
         return _job_steps(p, state, ticket, pull, found, root)

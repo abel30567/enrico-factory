@@ -93,6 +93,18 @@ def maker_role(entry, pull):
     return None
 
 
+def writers(p, entry, pull, maker):
+    """The roles whose ``writes`` rule 7 reads: in the stage's order, the makers that are not operators with a
+    ``READY`` or ``ADDRESSED`` comment on the pull (the comment's ``role``); none: ``[maker]``."""
+    posted = set()
+    for c in pull["comments"]:
+        m = markers.parse(c["body"])
+        if m and m.verb in ("READY", "ADDRESSED"):
+            posted.add(c.get("role"))
+    found = [r for r in production.stage_roles(entry, "maker") if p.kinds.get(r) != "operator" and r in posted]
+    return found or [maker]
+
+
 def judge_sides(p, state, pull):
     """``{judge role: new|old|none}`` for the counting judge verdicts when a locked version exists for a
     blind stage, else None. ``blind.BlindError`` when there is no key for the head a verdict names."""
@@ -368,14 +380,17 @@ def recorded_answers(ticket, pull, root) -> set:
 
 
 def _writes(p, room, maker, changed, accepted, recorded=()):
+    """Rule 7: each changed path not in ``accepted`` is inside the ``writes`` of ``maker`` (a role id or a list
+    of them: any one's ``writes``) and inside the room's paths."""
+    makers = [maker] if isinstance(maker, str) else list(maker)
     changed = [path for path in changed if path not in accepted]
-    writes = frontmatter.as_list(p.roles[maker]["meta"].get("writes"))
+    writes = [glob for role in makers for glob in frontmatter.as_list(p.roles[role]["meta"].get("writes"))]
     room_paths = [glob for e in production.stages(p, room) for glob in e["paths"]]
     outside_writes = [path for path in changed if not production.matches(path, writes) and path not in recorded]
     outside_room = [path for path in changed if not production.matches(path, room_paths)]
     reasons = []
     if outside_writes:
-        reasons.append(f"outside the writes of {maker}: {', '.join(outside_writes)}")
+        reasons.append(f"outside the writes of {', '.join(makers)}: {', '.join(outside_writes)}")
     if outside_room:
         reasons.append(f"outside room {room}: {', '.join(outside_room)}")
     return "; ".join(reasons)
@@ -732,7 +747,8 @@ def evaluate(p, state, ticket, pull, root) -> list[Rule]:
         _selected(state, ticket, entry, pull),
         _amendment(entry, pull, root),
         (_lab_writes(p, ticket["room"], changed) if in_lab
-         else _writes(p, ticket["room"], maker, changed, operator_paths(p, state, ticket, pull, root),
+         else _writes(p, ticket["room"], writers(p, entry, pull, maker), changed,
+                      operator_paths(p, state, ticket, pull, root),
                       recorded_answers(ticket, pull, root)))
         if maker else _no_writes(entry, changed) if not stage_makers else no_maker,
         _repeat_notes(p, state, ticket, entry, pull),
