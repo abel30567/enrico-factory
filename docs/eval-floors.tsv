@@ -27,3 +27,12 @@ time	role	kit	harness	model	cases	runs	mean	floor	blocked
 2026-11-14T20:43:44Z	showrunner	d568bf4	real 2.1.290 (hbar)	opus	4	5	1.0	0.0	0
 2026-11-15T00:05:23Z	trend-scout	c21be9c	real 2.1.290 (hbar)	opus	3	5	0.9333	0.1491	0
 2026-11-15T00:30:06Z	researcher	c21be9c	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-16T23:41:50Z	retro-agent	3c5f57a	real 2.1.290 (hbar)	opus	3	5	0.6667	0.0	5
+2026-11-16T23:57:46Z	audience-analyst	3c5f57a	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-17T00:43:18Z	asset-builder	3c5f57a	real 2.1.290 (hbar)	opus	3	5	0.8	0.1826	3
+2026-11-17T01:26:38Z	rigger	3c5f57a	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-17T02:14:44Z	layout-artist	3c5f57a	real 2.1.290 (hbar)	opus	3	5	0.8667	0.2982	2
+2026-11-17T02:46:34Z	animator	3c5f57a	real 2.1.290 (hbar)	opus	3	5	0.3333	0.3334	10
+2026-11-17T03:39:23Z	sim-artist	3c5f57a	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-17T04:20:44Z	lighter	3c5f57a	real 2.1.290 (hbar)	opus	3	5	1.0	0.0	0
+2026-11-17T04:37:47Z	sound-mixer	3c5f57a	real 2.1.290 (hbar)	opus	3	5	0.0667	0.1491	14
