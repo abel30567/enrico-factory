@@ -78,3 +78,6 @@
   reference job until the row was reworded. Write no name from `research/not-ours.tsv` in any text a job
   reads. When you push to a production pull's branch by hand, also move the clone's local branch (it may
   be checked out in a finished worker's worktree): the tick and the gate read the local branch, not GitHub.
+- **A filed ticket's title starts with `[ISSUE-N]`.** The tick launches no builder for a `status:ready`
+  issue whose title has no `[KEY]` and only prints a NEED line (#581, #585 on 2026-11-17 lost a tick).
+  Retitle when you file or label, not after.
