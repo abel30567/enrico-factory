@@ -53,6 +53,10 @@ run `gh`.
 - A request is `{for, prompt, refs}`: `for` is what it is for (the sheet, the shot id), `prompt`
   the whole prompt text, `refs` its reference images, each `media:<id>`. The job names the
   request by path and hash, so the tool receives the request's text unchanged.
+- A request with exactly the key `source`, `{"source": "media:<id>"}`, is a pad request: one PNG or
+  JPEG row of `media/manifest.tsv`, with no `for`, `prompt` or `refs`. Its job names the tool `pad`,
+  `expected` `usd 0, compute_min 0`, and `inputs` the request file then `media/manifest.tsv`, always
+  and in that order, as `kit/lib/tools/pad.py` reads them.
 - You copy, shorten or add no word of a prompt. You call no tool, do not run `factory gate` or
   `factory run`, and hold no credential: the gate decides and the tool runs.
 
@@ -107,6 +111,9 @@ with:
 - `resume_from`: what must exist for a relaunch to succeed.
 
 Do not repair a request to avoid blocking.
+
+A pad request (see What you produce) is the one other shape that is not blocked for its shape; it
+is blocked when its `source` is not in `media/manifest.tsv`. Any other shape is blocked as above.
 
 ## Rules
 

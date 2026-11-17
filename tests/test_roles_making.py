@@ -553,6 +553,74 @@ class MakerRequestTest(unittest.TestCase):
         self.assertIn(f"body lacks {VOICE!r}", kit.own("editorial"))
 
 
+# The pad request of ISSUE-572: `{"source": "media:<id>"}`, made into a job for the tool `pad` (kit/lib/tools/pad.py).
+PAD_REQUEST = '`{"source": "media:<id>"}`'
+PAD = {
+    "art-director": (PAD_REQUEST, "exactly the key `source`", "one PNG or JPEG row of `media/manifest.tsv`",
+                     "has no `for`, `prompt` or `refs`", "a pad request, at the path of a picture request",
+                     "The media wrangler makes it a `pad` job."),
+    "media-wrangler": (PAD_REQUEST, "A request with exactly the key `source`", "is a pad request",
+                       "Its job names the tool `pad`", "`expected` `usd 0, compute_min 0`",
+                       "`inputs` the request file then `media/manifest.tsv`, always and in that order",
+                       "as `kit/lib/tools/pad.py` reads them", "Any other shape is blocked as above."),
+}
+PAD_WRANGLER = ("- A request with exactly the key `source`, `{\"source\": \"media:<id>\"}`, is a pad request: one "
+                "PNG or\n  JPEG row of `media/manifest.tsv`, with no `for`, `prompt` or `refs`. Its job names the "
+                "tool `pad`,\n  `expected` `usd 0, compute_min 0`, and `inputs` the request file then "
+                "`media/manifest.tsv`, always\n  and in that order, as `kit/lib/tools/pad.py` reads them.\n")
+
+
+def pad_problems(role_id, text):
+    """The pad request phrases one role file lacks. Empty is clean."""
+    whole = " ".join(text.split())
+    return [f"body lacks {phrase!r}" for phrase in PAD[role_id] if phrase not in whole]
+
+
+class PadRequestTest(unittest.TestCase):
+    """ISSUE-572: the art director writes the pad request and the media wrangler makes it a `pad` job."""
+
+    def test_both_files_describe_the_pad_request(self):
+        for role_id in PAD:
+            with self.subTest(role=role_id):
+                text = (KIT / "roles" / f"{role_id}.md").read_text(encoding="utf-8")
+                self.assertEqual(pad_problems(role_id, text), [])
+                self.assertEqual(own_problems(role_id, text), [])
+
+    def test_the_wrangler_job_matches_the_tool(self):
+        from kit.lib.tools import pad
+        whole = " ".join((KIT / "roles" / "media-wrangler.md").read_text(encoding="utf-8").split())
+        self.assertEqual(pad.KEYS, ["source"])
+        self.assertIn(f"`{pad.MANIFEST}`, always and in that order", whole)
+
+    def test_wrangler_without_the_pad_case(self):
+        kit = KitCopy(self)
+        kit.edit("media-wrangler", PAD_WRANGLER, "")
+        own = pad_problems("media-wrangler", kit.path("media-wrangler").read_text(encoding="utf-8"))
+        self.assertIn(f"body lacks {PAD_REQUEST!r}", own)
+        self.assertIn("body lacks 'Its job names the tool `pad`'", own)
+
+    def test_wrangler_with_the_manifest_first(self):
+        kit = KitCopy(self)
+        kit.edit("media-wrangler", "the request file then `media/manifest.tsv`",
+                 "`media/manifest.tsv` then the request file")
+        self.assertIn("body lacks '`inputs` the request file then `media/manifest.tsv`, always and in that order'",
+                      pad_problems("media-wrangler", kit.path("media-wrangler").read_text(encoding="utf-8")))
+
+    def test_art_director_without_the_pad_request(self):
+        kit = KitCopy(self)
+        kit.edit("art-director", PAD_REQUEST, "a request")
+        self.assertIn(f"body lacks {PAD_REQUEST!r}",
+                      pad_problems("art-director", kit.path("art-director").read_text(encoding="utf-8")))
+
+    def test_picture_request_rules_kept(self):
+        for role_id in PAD:
+            with self.subTest(role=role_id):
+                text = (KIT / "roles" / f"{role_id}.md").read_text(encoding="utf-8")
+                whole = " ".join(text.split())
+                for phrase in SPECIFIC[role_id]:
+                    self.assertIn(phrase, whole)
+
+
 MANIFEST = ("id\tsha256\tbytes\tsource\n"
             "fox-ref\t" + "a" * 64 + "\t2048\timported source art\n")
 REQUESTS = {"bible/style/requests/r1.json": "art-director",
