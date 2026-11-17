@@ -6,7 +6,8 @@ runs once: when the ledger on the base already holds its `run` row, that row is 
 installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open pull (with
 `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, puts each output
-that is a picture (`media.picture_type`) in the media store, then adds one manifest row per output on the pull's
+that is a picture (`media.picture_type`) in the media store, puts each output that is MP3 audio (`audioapi`) in
+the asset store under its sha256, then adds one manifest row per output on the pull's
 branch (for a tool with ``STAGE_FILES``: puts every other output in the
 asset store and commits those in the ticket's production directory instead) and, in the same commit, the post's
 answer the tool recorded at `distribution/<unit>/post.json`, and appends the `run` row with the real cost to the ledger
@@ -16,9 +17,9 @@ a DONE job's outputs are shown there once, and a preview that cannot be posted i
 A FAILED job's reason is posted once on the job's ticket, as `program:run`, before the `run` row; when that post
 fails the run is refused, nothing is recorded, and a later run posts it and records the kept call without calling
 the tool again.
-Without `--apply` it makes every check, calls no tool and writes nothing. A media store that is not usable or does
-not take a picture refuses the run after the call: nothing is recorded, and a later run records the kept call
-without calling the tool again.
+Without `--apply` it makes every check, calls no tool and writes nothing. A media store or asset store that is not
+usable or does not take an output refuses the run after the call: nothing is recorded, and a later run records the
+kept call without calling the tool again.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
@@ -48,7 +49,7 @@ from pathlib import Path
 if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from kit.lib import (assets, cmd_gate, down, gitstate, github, handoff, ledger, media, posts,  # noqa: E402
+from kit.lib import (assets, audioapi, cmd_gate, down, gitstate, github, handoff, ledger, media, posts,  # noqa: E402
                      production, registry, resources, tickets)
 from kit.lib.tools import Down, Failed  # noqa: E402
 from kit.lib import release  # noqa: E402
@@ -399,6 +400,26 @@ def _media(root, values, register, out, names):
             raise Refused(f"the media store did not take {name}: {error}") from None
 
 
+def _sounds(out, outputs):
+    """The names of the outputs in ``out`` that are MP3 audio (``audioapi._audio``), in name order."""
+    found = []
+    for name in sorted(o["name"] for o in outputs):
+        with open(out / name, "rb") as handle:
+            if audioapi._audio(handle.read(3)):
+                found.append(name)
+    return found
+
+
+def _assets(root, values, register, out, names):
+    """Put the outputs ``names`` of ``out`` in the asset store, in name order; ``Refused`` when the register
+    has no asset store, it is not usable or it does not take one."""
+    found = {r["id"]: r for r in register["resources"]}
+    if STORE not in found:
+        raise Refused(f"the register has no resource {STORE}")
+    _usable(found[STORE], values, register, root)
+    _store(values, register, out, names)
+
+
 def _input_text(p, ref, path):
     """The text a tool gets for the input ``path``: for `asset:<id>` the asset's state on the base, else the
     file at ``ref``; None when there is none."""
@@ -480,6 +501,9 @@ def _run(p, gh, state, rows, target, apply, number=None):
         pictures = _pictures(job_dir / "out", outputs)
         if pictures:
             _media(p.root, values, register, job_dir / "out", pictures)
+        sounds = _sounds(job_dir / "out", outputs)
+        if sounds:
+            _assets(p.root, values, register, job_dir / "out", sounds)
         if record:
             _manifest(p, gh, pull["head_ref"], digest, outputs, _answer_path(request["ticket"]),
                       job_dir / RECORD / record[0]["name"])
