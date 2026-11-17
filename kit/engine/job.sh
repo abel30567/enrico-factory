@@ -89,8 +89,10 @@ if [ -z "$FAILED" ]; then
 fi
 
 # At simulation, a second build of the same job: its raw scene is rerun-scene.json, scene.json stays the first.
+# The second build starts from a project without the first build's level, sequence and imported assets.
 if [ -z "$FAILED" ] && [ "$STAGE" = simulation ]; then
   mv "$O/scene.json" "$O/first-scene.json"
+  rm -rf "$WORK/Job/Content"
   ue rebuild 900 "$O/engine-build.log" -ExecutePythonScript=/work/job/build.py -RenderOffscreen
   [ "$(grep -c 'FACTORY build ok' "$O/engine-build.log")" = 2 ] && [ -f "$O/scene.json" ] || fail rebuild
   [ -f "$O/scene.json" ] && mv "$O/scene.json" "$O/rerun-scene.json"
