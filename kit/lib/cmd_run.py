@@ -24,6 +24,8 @@ Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
 amounts and a reason out of its own `REASONS` is repeated anywhere.
 
+Every tool call's settings also hold the production's `PERCEPTUAL_METRIC` when it is set and not empty.
+
 An input `asset:<id>` reaches the tool as the text of its locked state on the base,
 `production/assets/<id>/assets/state.json`, with or without `--pull`.
 """
@@ -58,6 +60,7 @@ UNIT_PART = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 STORE = "store.assets"
 MEDIA = "store.media"
 RESULT = "result.json"
+METRIC = "PERCEPTUAL_METRIC"
 RECORD = "record"
 DONE, FAILED = "DONE", "FAILED"
 CRASHED, BROKE, NO_RESULT, TOOL_FAILED = "tool crashed", "tool broke the interface", "no result", "tool failed"
@@ -449,7 +452,8 @@ def _run(p, gh, state, rows, target, apply, number=None):
             "inputs": [{**item, "text": _input_text(p, request["ref"], item["path"])} for item in job["inputs"]],
             "out": str(out),
             "record": str(kept),
-            "settings": {c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"},
+            "settings": {**{c["name"]: values[c["name"]] for c in resource["checks"] if c["kind"] == "setting"},
+                         **({METRIC: values[METRIC]} if values.get(METRIC) else {})},
             "secrets": {c["name"]: os.path.abspath(os.path.join(secrets_dir, c["name"]))
                         for c in resource["checks"] if c["kind"] == "secret"},
         }

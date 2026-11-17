@@ -37,6 +37,7 @@ ENTRY = next(e for e in json.loads((KIT / "pipeline.json").read_text(encoding="u
 ROLE = "sound-mixer"
 CONFORM = "production/ep01/conform"
 SCENE = f"{CONFORM}/scene.py"
+REQUEST = f"{CONFORM}/requests/mix.json"
 READY = {"marker": "READY", "summary": "Done.",
          "evidence": [{"criterion": "stage files", "result": "written", "command": "ls"}]}
 CUES = {"L1": (2, 10), "L2": (13, 22), "L3": (26, 44)}
@@ -127,6 +128,14 @@ def moves(rel):
     return change
 
 
+def writes_alone(rel, text):
+    """Writes ``rel`` and deletes the request, which would hold the episode back."""
+    def change(run_dir):
+        write(run_dir, rel, text)
+        (run_dir / REQUEST).unlink()
+    return change
+
+
 def removes(run_dir):
     (run_dir / SCENE).unlink()
 
@@ -142,16 +151,16 @@ def conforms(run_dir):
     write(run_dir, f"{CONFORM}/mix.json", json.dumps(
         {"loudness_lufs": -14.0, "true_peak_dbtp": -1.5,
          "lines": [{"line": e["id"], "start": CUES[e["id"]][0], "end": CUES[e["id"]][1]} for e in lines],
-         "stems": [], "master": "0" * 64}) + "\n")
+         "stems": [{"name": "dialogue", "sha256": "1" * 64}], "master": "0" * 64}) + "\n")
 
 
-STRAY = (("a mix", writes(f"{CONFORM}/mix.json", "{}"),
+STRAY = (("a mix", writes_alone(f"{CONFORM}/mix.json", "{}"),
           ["conform FAIL 2 findings", f"B1 conform {CONFORM}/mix.json:1 {CONFORM}/captions.json is missing",
            f"B2 conform {CONFORM}/mix.json:1 {CONFORM}/edit-list.json is missing"]),
-         ("captions", writes(f"{CONFORM}/captions.json", "[]"),
+         ("captions", writes_alone(f"{CONFORM}/captions.json", "[]"),
           ["conform FAIL 2 findings", f"B1 conform {CONFORM}/captions.json:1 {CONFORM}/edit-list.json is missing",
            f"B2 conform {CONFORM}/captions.json:1 {CONFORM}/mix.json is missing"]),
-         ("an edit list", writes(f"{CONFORM}/edit-list.json", "{}"),
+         ("an edit list", writes_alone(f"{CONFORM}/edit-list.json", "{}"),
           ["conform FAIL 2 findings", f"B1 conform {CONFORM}/edit-list.json:1 {CONFORM}/captions.json is missing",
            f"B2 conform {CONFORM}/edit-list.json:1 {CONFORM}/mix.json is missing"]))
 MISSING = (("removed", removes), ("another episode", moves("production/ep02/conform/scene.py")),
@@ -214,7 +223,7 @@ class SoundMixerEvalsTest(unittest.TestCase):
                 self.assertEqual(case.spec["lint"], ENTRY["lint"])
                 self.assertEqual(case.spec["lint"], ["conform"])
                 self.assertEqual(case.spec["expect_files"], [SCENE])
-                self.assertEqual(sorted(recorded(case)), [SCENE])
+                self.assertEqual(sorted(recorded(case)), [REQUEST, SCENE])
 
     def test_each_tree_passes_its_lints(self):
         cases = evals.load(KIT, ROLE)
@@ -264,7 +273,8 @@ class SoundMixerEvalsTest(unittest.TestCase):
                 with self.subTest(case=case.id, cut=name):
                     cut, _ = graded(case, change)
                     self.assertFalse(cut["pass"])
-                    self.assertEqual(cut["detail"], f"lint PASS; missing {SCENE}")
+                    lint_status = "FAIL" if name == "another episode" else "PASS"
+                    self.assertEqual(cut["detail"], f"lint {lint_status}; missing {SCENE}")
 
     def test_near_misses_pass(self):
         cases = evals.load(KIT, ROLE)

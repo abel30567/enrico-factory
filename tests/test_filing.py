@@ -869,6 +869,20 @@ RENDERS = [production_ticket(7, "render", "ep01/Q1-1"), production_ticket(9, "re
 CONFORM = [(7, 8, "production", "conform", "ep01")]
 
 
+def conform_block(shots, voice="0.02", compute_min="10"):
+    """The block of ruling 1 of ISSUE-582 for ``ep01`` and its empty line, with these shot units."""
+    manifests = "".join(f", production/{shot}/render/manifest.json" for shot in shots)
+    return ("Requests: production/ep01/conform/requests/, one job per request, by its name.\n"
+            f"voice-L<n>.json: Tool: voice. Expected cost: usd {voice}, compute_min 1. Inputs, in this order: "
+            "the request, bible/style/voices/<speaker>.json (the speaker of L<n> in episodes/ep01/lines.json).\n"
+            "music-<id>.json: Tool: music. Expected cost: usd 0.15, compute_min 1. Inputs, in this order: "
+            "the request.\n"
+            "sfx-<id>.json: Tool: sfx. Expected cost: usd 0.1, compute_min 1. Inputs, in this order: the request.\n"
+            f"mix.json: Tool: conform. Expected cost: usd 0, compute_min {compute_min}. Inputs, in this order: "
+            "the request, production/ep01/conform/mix-plan.json, media/manifest.tsv, "
+            f"episodes/ep01/reel/edit-list.json, production/ep01/shots.json{manifests}.\n\n")
+
+
 class EpisodeAfterShot(Case):
     """ISSUE-579: an episode stage after a shot stage is filed once every shot of the episode is locked."""
 
@@ -889,6 +903,7 @@ class EpisodeAfterShot(Case):
         self.assertEqual(found["title"], "[CONFORM-EP01] conform for ep01")
         self.assertEqual(found["labels"], ["tracked", "room:production", "stage:conform", "unit:ep01"])
         self.assertEqual(found["body"], "Do the stage conform for unit ep01.\n\n"
+                                        f"{conform_block(['ep01/Q2-1', 'ep01/Q1-1'])}"
                                         "Upstream: #9 render ep01/Q2-1, locked by PR #10.\n"
                                         "Upstream: #7 render ep01/Q1-1, locked by PR #8.\n"
                                         "Filed by factory tick.\n")
@@ -925,3 +940,48 @@ class EpisodeAfterShot(Case):
         self.assertFiledWhenBothLocked()
         state = make_state(RENDERS, [pull(8, 7), pull(10, 9)], ["ticket #3: title is not [KEY] summary"])
         self.assertEqual(self.conform(state), [])
+
+
+class ConformBody(Case):
+    """ISSUE-582: the body of the conform ticket names a tool, a cost and the inputs for each request name."""
+
+    def setUp(self):
+        super().setUp()
+        self.commit(SHOW)
+
+    def test_operator_block(self):
+        self.assertEqual(filing._tool(self.p(), self.root, "production", "conform", "ep01"),
+                         conform_block(["ep01/Q1-1", "ep01/Q1-2"]))
+        pipeline = [dict(entry) for entry in roles.load_pipeline(KIT / "pipeline.json")]
+        for entry in pipeline:
+            if entry["stage"] == "conform":
+                entry["maker"] = ["sound-mixer", "conform-editor"]
+        self.assertEqual(filing._tool(self.p(pipeline), self.root, "production", "conform", "ep01"), "")
+
+    def test_settings(self):
+        block = filing._tool(self.p(settings={"VOICE_USD": "0.05", "CONFORM_COMPUTE_MIN": "30"}), self.root,
+                             "production", "conform", "ep01")
+        self.assertIn("Tool: voice. Expected cost: usd 0.05, compute_min 1.", block)
+        self.assertIn("Tool: conform. Expected cost: usd 0, compute_min 30.", block)
+        self.assertIn("Tool: music. Expected cost: usd 0.15, compute_min 1.", block)
+        self.assertIn("Tool: sfx. Expected cost: usd 0.1, compute_min 1.", block)
+        self.assertEqual(block, conform_block(["ep01/Q1-1", "ep01/Q1-2"], voice="0.05", compute_min="30"))
+
+    def test_no_shots_file(self):
+        self.git("rm", "-q", "production/ep01/shots.json")
+        self.git("commit", "-q", "-m", "no shots")
+        block = filing._tool(self.p(), self.root, "production", "conform", "ep01")
+        [mix] = [line for line in block.splitlines() if line.startswith("mix.json: ")]
+        self.assertTrue(mix.endswith("production/ep01/shots.json."), mix)
+        self.assertNotIn("render/manifest.json", block)
+        self.assertEqual(block, conform_block([]))
+
+    def test_filed_body(self):
+        self.commit(CONFORM_SHOTS)
+        state = make_state(RENDERS, [pull(8, 7), pull(10, 9)])
+        [found] = [f for f in filing.due(self.p(), state, self.root) if f["stage"] == "conform"]
+        self.assertEqual(found["body"], "Do the stage conform for unit ep01.\n\n"
+                                        f"{conform_block(['ep01/Q2-1', 'ep01/Q1-1'])}"
+                                        "Upstream: #9 render ep01/Q2-1, locked by PR #10.\n"
+                                        "Upstream: #7 render ep01/Q1-1, locked by PR #8.\n"
+                                        "Filed by factory tick.\n")

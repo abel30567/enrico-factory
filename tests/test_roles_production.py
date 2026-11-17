@@ -43,7 +43,9 @@ MAKERS = {
                 "production/*/*/lighting/scene.py, production/*/*/lighting/requests/*.json, "
                 "production/*/*/render/requests/*.json",
                 "look-reviewer"),
-    "sound-mixer": ("re-recording mixer", "conform", "production/*/conform/scene.py",
+    "sound-mixer": ("re-recording mixer", "conform",
+                    "production/*/conform/scene.py, production/*/conform/requests/*.json, "
+                    "production/*/conform/mix-plan.json",
                     "mix-reviewer"),
     "conform-editor": ("online editor", "conform",
                        "production/*/conform/edit-list.json, production/*/conform/captions.json",
@@ -57,7 +59,7 @@ COMMON = {"room": "production", "kind": "maker", "reads": "bible/**, episodes/**
 NOT_THEIRS = ("production/ep01/shots.json", "production/ep01/s01/layout/state.json",
               "production/ep01/s01/layout/manifest.json", "production/ep01/s01/lighting/render.json",
               "production/ep01/s01/simulation/rerun.json", "production/ep01/conform/mix.json",
-              "production/assets/fox/assets/state.json", "production/ep01/conform/requests/a.json",
+              "production/assets/fox/assets/state.json", "production/ep01/requests/a.json",
               "episodes/ep01/reel/edit-list.json", "bible/style/characters/fox.md",
               "media/manifest.tsv", ".factory/roles/x.md")
 # One request per stage and the maker that writes it, ruling 6 of ISSUE-487.
@@ -69,6 +71,10 @@ REQUESTS = {
     "production/ep01/s01/simulation/requests/render.json": "sim-artist",
     "production/ep01/s01/lighting/requests/render.json": "lighter",
     "production/ep01/s01/render/requests/render.json": "lighter",
+    "production/ep01/conform/requests/voice-L1.json": "sound-mixer",
+    "production/ep01/conform/requests/music-theme.json": "sound-mixer",
+    "production/ep01/conform/requests/sfx-door.json": "sound-mixer",
+    "production/ep01/conform/requests/mix.json": "sound-mixer",
 }
 ENGINE = "You do not run the engine."
 LINT_BLOCKER = "`[LINT]` blocker"

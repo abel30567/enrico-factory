@@ -203,6 +203,12 @@ REQUEST = ("`prompt` the whole prompt text", "`refs` reference images, each `med
 VOICE = ("No tool makes voice or music yet: until the task names one, write no request and cut the "
          "reel from panels, timing and the line text.")
 
+# ISSUE-584: the art director writes a stored voice for every speaker, its id only from a listed premade voice.
+STORED_VOICE = ("`bible/style/voices/<character>.json`", '`{"voice_id": "<id>"}`',
+                "for each speaker of every `episodes/*/lines.json`",
+                "Its id comes only from a list of premade voices under `sources/`.",
+                "fix a `voices` FAIL even when the task names only keys", "or no file lists premade voices")
+
 # What one role's body must say besides the shared rules.
 SPECIFIC = {
     "story-writer": ("A premise names a format (`format:` front matter) from `.factory/formats/`",),
@@ -214,7 +220,8 @@ SPECIFIC = {
     "art-director": ("`bible/style/requests/<id>.json`", "`{for, prompt, refs}`", "`for` the sheet",
                      *REQUEST, "A model sheet or a design image of a new subject",
                      "cite its `media:<id>` in the sheet", "Until then, write no model sheet of that subject.",
-                     "`bible/style/keys/<ep>/<Q>.json`", "`{min_elevation_deg, max_elevation_deg}`"),
+                     "`bible/style/keys/<ep>/<Q>.json`", "`{min_elevation_deg, max_elevation_deg}`",
+                     *STORED_VOICE),
     "story-artist": ("`episodes/<ep>/sequences/<Q>/shots/requests/<id>.json`", "`{for, prompt, refs}`",
                      "`for` the shot id", *REQUEST,
                      "A panel is only an image already in `media/manifest.tsv`.",
@@ -546,6 +553,11 @@ class MakerRequestTest(unittest.TestCase):
         kit = KitCopy(self)
         kit.edit("art-director", "`bible/style/keys/<ep>/<Q>.json`", "a file")
         self.assertIn("body lacks '`bible/style/keys/<ep>/<Q>.json`'", kit.own("art-director"))
+
+    def test_art_director_without_the_stored_voice(self):
+        kit = KitCopy(self)
+        kit.edit("art-director", "`bible/style/voices/<character>.json`", "a file")
+        self.assertIn("body lacks '`bible/style/voices/<character>.json`'", kit.own("art-director"))
 
     def test_editorial_without_images_only(self):
         kit = KitCopy(self)
