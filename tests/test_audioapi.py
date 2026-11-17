@@ -170,14 +170,15 @@ class AudioTest(unittest.TestCase):
         self.assertEqual([r["path"] for r in self.assets.requests if r["method"] == "PUT"], [f"/b/{sha}"])
 
     def assert_refused(self, job, digest, err):
-        """The run of ``job`` is refused after the call with the line ``err``: nothing is recorded."""
+        """The run of ``job`` is refused after the call with the line ``err``: only its run row is recorded."""
         w = self.w
-        branch, trunk = w.head(BRANCH), w.head()
+        branch = w.head(BRANCH)
         self.assertEqual(self.factory_run(job), (2, "", err + "\n"))
         self.assertTrue((w.job_dir(digest) / "result.json").is_file())
-        self.assertEqual(w.rows("run"), [])
+        self.assertTrue((w.job_dir(digest) / "pending").is_file())
+        self.assertEqual([(r["hash"], r["verdict"]) for r in w.rows("run")], [(digest, "DONE")])
         self.assertIsNone(w.manifest())
-        self.assertEqual((w.head(BRANCH), w.head()), (branch, trunk))
+        self.assertEqual(w.head(BRANCH), branch)
         self.assertEqual(self.assets.objects, {})
         self.assertEqual(len(self.vendor.requests), 1)
 

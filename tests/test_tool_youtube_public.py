@@ -284,8 +284,8 @@ class PublicTest(unittest.TestCase):
         self.assertEqual(release_text, json.dumps(json.loads(release_text), indent=1, sort_keys=True) + "\n")
         self.assertEqual(w.released(), release_text)
         log = w.base_log()
-        self.assertEqual(log[:2], [f"factory\tledger: run {w.digest[:12]} DONE",
-                                   f"factory\trelease: ep01 job {w.digest[:12]}"])
+        self.assertEqual(log[:2], [f"factory\trelease: ep01 job {w.digest[:12]}",
+                                   f"factory\tledger: run {w.digest[:12]} DONE"])
         self.assertEqual(w.manifest(), MANIFEST_HEADER + row(w, "post.json", post_text)
                          + row(w, "release.json", release_text))
         self.assertEqual([r["verdict"] for r in w.runs()], ["DONE"])
@@ -395,7 +395,7 @@ class PublicTest(unittest.TestCase):
                                side_effect=[release.ReleaseError("boom"), mock.DEFAULT]) as patched:
             code, out, err = w.run()
             self.assertEqual((code, out, err), (2, "", "run: boom\n"))
-            self.assertEqual(w.runs(), [])
+            self.assertEqual([r["verdict"] for r in w.runs()], ["DONE"])
             self.assertIsNone(w.released())
             code, out, err = w.run()
         self.assertEqual(patched.call_count, 2)
@@ -403,8 +403,8 @@ class PublicTest(unittest.TestCase):
         self.assertEqual(w.sent(), [])
         self.assertEqual(w.released(), w.out_text("release.json"))
         self.assertEqual([r["verdict"] for r in w.runs()], ["DONE"])
-        self.assertEqual(w.base_log()[:2], [f"factory\tledger: run {w.digest[:12]} DONE",
-                                            f"factory\trelease: ep01 job {w.digest[:12]}"])
+        self.assertEqual(w.base_log()[:2], [f"factory\trelease: ep01 job {w.digest[:12]}",
+                                            f"factory\tledger: run {w.digest[:12]} DONE"])
 
     def test_10_nothing_secret(self):
         def edited(key, change):

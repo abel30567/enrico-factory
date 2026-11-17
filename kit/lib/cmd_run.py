@@ -1,25 +1,27 @@
 """factory run <job-file> [--pull N] [--root DIR] [--apply]: make the one call of a job the gate passed.
 
 The job file is checked as `factory gate` checks it, with `--pull N` at the head of pull request N. A job
-runs once: when the ledger on the base already holds its `run` row, that row is printed with
-` (already recorded)` and nothing else happens. Otherwise the job needs a counting `GATE PASS`, an
-installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open pull (with
-`--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
+runs once: when the ledger on the base already holds its `run` row and the job's directory holds no `pending`
+file, that row is printed with ` (already recorded)` and nothing else happens. Otherwise the job needs a counting
+`GATE PASS`, an installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open
+pull (with `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, puts each output
 that is a picture (`media.picture_type`) in the media store, puts each output that is MP3 audio (`audioapi`) in
 the asset store under its sha256, then adds one manifest row per output on the pull's
 branch (for a tool with ``STAGE_FILES``: puts every other output in the
 asset store and commits those in the ticket's production directory instead) and, in the same commit, the post's
-answer the tool recorded at `distribution/<unit>/post.json`, and appends the `run` row with the real cost to the ledger
-on the base. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's resource is down
-and one preview comment on the pull (`kit/lib/handoff.py`): after the outputs are stored and before the `run` row,
+answer the tool recorded at `distribution/<unit>/post.json`. The `run` row with the real cost is appended to the
+ledger on the base right after the call, before any output is stored; until every later step is done the job's
+directory holds an empty `pending` file, and a later run does those steps without calling the tool again and
+without a second row. It posts nothing on GitHub, except the down issue (`kit/lib/down.py`) when the tool's
+resource is down and one preview comment on the pull (`kit/lib/handoff.py`): after the outputs are stored,
 a DONE job's outputs are shown there once, and a preview that cannot be posted is only said on standard error.
 A FAILED job's reason is posted once on the job's ticket, as `program:run`, before the `run` row; when that post
 fails the run is refused, nothing is recorded, and a later run posts it and records the kept call without calling
 the tool again.
 Without `--apply` it makes every check, calls no tool and writes nothing. A media store or asset store that is not
-usable or does not take an output refuses the run after the call: nothing is recorded, and a later run records the
-kept call without calling the tool again.
+usable or does not take an output refuses the run after its `run` row: a later run stores the kept outputs without
+calling the tool again.
 
 Prints one line, `run job <hash>: <DONE|FAILED> usd <amount> compute_min <amount>`, or what it would do.
 Exit 0 DONE, 1 FAILED, 2 frozen or refused. Nothing a tool prints, raises or returns other than its two
@@ -63,6 +65,7 @@ MEDIA = "store.media"
 RESULT = "result.json"
 METRIC = "PERCEPTUAL_METRIC"
 RECORD = "record"
+PENDING = "pending"
 DONE, FAILED = "DONE", "FAILED"
 CRASHED, BROKE, NO_RESULT, TOOL_FAILED = "tool crashed", "tool broke the interface", "no result", "tool failed"
 ERRORS = cmd_gate.ERRORS + (OSError,)
@@ -279,6 +282,14 @@ def _call(tool, call, expected):
     return FAILED, expected["usd"], expected["compute_min"], BROKE, []
 
 
+def pending(p, digest):
+    """True when the job's directory holds the ``pending`` mark: its `run` row stands, a later step is not done."""
+    try:
+        return (production.state_dir(p) / "jobs" / digest / PENDING).is_file()
+    except production.ProductionError:
+        return False
+
+
 def _write_result(job_dir, verdict, usd, compute_min, reason, outputs, record=()):
     data = {"compute_min": _text(compute_min), "outputs": outputs, "reason": reason, "usd": _text(usd),
             "verdict": verdict}
@@ -433,7 +444,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
     digest, name = request["hash"], request["tool"]
     expected = {"usd": request["usd"], "compute_min": request["compute_min"]}
     ran = [r for r in rows if r["kind"] == "run" and r["hash"] == digest]
-    if ran:
+    if ran and not pending(p, digest):
         row = ran[-1]
         print(_printed(digest, row["verdict"], row["usd"], row["compute_min"]) + cmd_gate.ALREADY)
         return 0 if row["verdict"] == DONE else 1
@@ -454,7 +465,10 @@ def _run(p, gh, state, rows, target, apply, number=None):
     directory = _ticket_dir(p, request["ticket"]) if stage_files else None
     pull = request["on"] or _open_pull(state, request["ticket"]["number"])
     if not apply:
-        print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
+        if ran:
+            print(f"run job {digest}: would store the outputs of the recorded call")
+        else:
+            print(f"run job {digest}: " + ("would record the earlier call" if earlier else f"would call {name}"))
         return 0
     if earlier:
         verdict, usd, compute_min, reason, outputs, record = _read_result(job_dir, digest, expected)
@@ -492,6 +506,16 @@ def _run(p, gh, state, rows, target, apply, number=None):
         if not os.listdir(kept):
             kept.rmdir()
         _write_result(job_dir, verdict, usd, compute_min, reason, outputs, record)
+    if verdict == FAILED:
+        _post_failure(gh, request, _failure(digest, name, pull["number"], reason, usd, compute_min))
+    if not ran:
+        if verdict == DONE:
+            (job_dir / PENDING).touch()
+        ticket = request["ticket"]
+        ledger.append(p, gh, p.root, {
+            "time": production.now(), "kind": "run", "hash": digest, "ticket": ticket["number"],
+            "episode": tickets.episode(ticket["unit"]), "tool": name, "usd": usd, "compute_min": compute_min,
+            "caller": request["caller"], "verdict": verdict, "cap": "-"})
     if verdict == DONE and outputs and stage_files:
         names = [o["name"] for o in outputs]
         _store(values, register, job_dir / "out", [n for n in names if n not in stage_files])
@@ -515,13 +539,7 @@ def _run(p, gh, state, rows, target, apply, number=None):
         message = handoff.after_job(p, gh, pull["number"], digest, name, job_dir / "out", outputs)
         if message is not None:
             print(f"run: preview not posted: {message}", file=sys.stderr)
-    if verdict == FAILED:
-        _post_failure(gh, request, _failure(digest, name, pull["number"], reason, usd, compute_min))
-    ticket = request["ticket"]
-    ledger.append(p, gh, p.root, {
-        "time": production.now(), "kind": "run", "hash": digest, "ticket": ticket["number"],
-        "episode": tickets.episode(ticket["unit"]), "tool": name, "usd": usd, "compute_min": compute_min,
-        "caller": request["caller"], "verdict": verdict, "cap": "-"})
+    (job_dir / PENDING).unlink(missing_ok=True)
     if verdict == FAILED:
         print(f"run: tool {name} failed: {reason}", file=sys.stderr)
     elif usd > expected["usd"] or compute_min > expected["compute_min"]:

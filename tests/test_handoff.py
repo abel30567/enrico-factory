@@ -842,7 +842,7 @@ class RunHook(unittest.TestCase):
         trunk = [n for n, e in enumerate(log) if e["op"] == "push" and e.get("ref") == "trunk"]
         self.assertEqual(len(posted), 1)
         self.assertEqual(log[posted[0]]["attachments"], [{"name": "./panel.gif", "sha256": sha(panel)}])
-        self.assertLess(posted[0], trunk[-1])
+        self.assertLess(trunk[-1], posted[0])
         self.assertEqual(w.run(self.job), (0, self.done.rstrip("\n") + " (already recorded)\n", ""))
         self.assertEqual(len(self.previews()), 1)
 

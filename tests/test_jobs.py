@@ -278,6 +278,25 @@ class OfTest(unittest.TestCase):
         [found] = self.w.of()["jobs"]
         self.assertEqual((found["run"], found["run_row"]["verdict"]), ("DONE", "DONE"))
 
+    def test_a_pending_run_has_not_run(self):
+        job = job_for()
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job)})
+        self.w.verdicts()
+        self.assertEqual(self.w.gate()[0], 0)
+        self.w.ran(job, "DONE")
+        state = self.w.root.parent / "state"
+        (self.w.root / "production.local.env").write_text(f"STATE_DIR={state}\n")
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["run"], found["run_row"]["verdict"]), ("DONE", "DONE"))
+        mark = state / "jobs" / digest(job) / "pending"
+        mark.parent.mkdir(parents=True)
+        mark.write_text("")
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["run"], found["run_row"]), (None, None))
+        mark.unlink()
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+
     def test_stop(self):
         job = job_for(expected={"compute_min": 5, "usd": 1000})
         self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job)})

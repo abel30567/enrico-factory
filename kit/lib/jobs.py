@@ -75,8 +75,8 @@ def _rows(p, root):
         raise tickets.TicketError(str(error)) from None
 
 
-def _states(job, comments, rows):
-    """``job`` with its gate state and comment, and its run state and row."""
+def _states(job, comments, rows, pending=False):
+    """``job`` with its gate state and comment, and its run state and row; a ``pending`` job has not run."""
     recorded = cmd_gate._recorded(comments, "job", job["hash"])
     if cmd_run._counting_pass({"comments": comments, "hash": job["hash"]}, rows):
         gate = "PASS"
@@ -84,7 +84,7 @@ def _states(job, comments, rows):
         gate = "STOP"
     else:
         gate = None
-    ran = [r for r in rows if r["kind"] == "run" and r["hash"] == job["hash"]]
+    ran = [] if pending else [r for r in rows if r["kind"] == "run" and r["hash"] == job["hash"]]
     return {**job, "gate": gate, "gate_comment": recorded, "run": ran[-1]["verdict"] if ran else None,
             "run_row": ran[-1] if ran else None}
 
@@ -109,5 +109,5 @@ def of(p, root, state, ticket, pull, role=None) -> dict | None:
     if jobs:
         rows = _rows(p, root)
         comments = state.ticket_comments.get(ticket["number"], [])
-        jobs = [_states(job, comments, rows) for job in jobs]
+        jobs = [_states(job, comments, rows, cmd_run.pending(p, job["hash"])) for job in jobs]
     return {"operator": role, "requests": found, "uncovered": uncovered, "jobs": jobs}
