@@ -9,9 +9,12 @@ start script's first command a shutdown at ``RENDER_MAX_MIN``, the root disk del
 until it is running. ``user_data()`` is `kit/engine/start.sh` with that link, the engine image and its pull
 token filled in. ``run(job)`` puts `in.tar`, then `links.txt` (``LINKS``, each link signed for
 ``RENDER_MAX_MIN`` + 15 minutes), waits for `status.json`, gets `status.json`, `out.tar` and `log.txt` and
-writes the outputs (``renderjob``). ``stop()`` ends the instance (end, not stop: nothing is kept), waits
-until it is ``shutting-down`` or ``terminated`` and returns the minutes and dollars from its launch time to
-its end. The objects of ``jobs/<nonce>/`` stay in the store; its expiry rule removes them.
+writes the outputs (``renderjob``). When `status.json` names a step of ``renderjob.STEPS``, it gets `log.txt`
+only and fails. When ``run`` fails after the job is described, ``failure`` is ``{"log", "step", "tail"}``: the
+store key `jobs/<nonce>/log.txt`, that step or None, and ``renderjob.tail`` of the log (``[]`` when not read).
+``stop()`` ends the instance (end, not stop: nothing is kept), waits until it is ``shutting-down`` or
+``terminated`` and returns the minutes and dollars from its launch time to its end. The objects of
+``jobs/<nonce>/`` stay in the store; its expiry rule removes them.
 
 ``node.Unavailable`` is raised only before an instance id is known, or for an instance the cloud ended
 for want of capacity; any other refusal is ``Refused`` with the error code or a message as its text.
@@ -57,6 +60,7 @@ LINKS = (("GET", "in", "in.tar"), ("PUT", "out", "out.tar"), ("PUT", "log", "log
 LINK_MINUTES = 15
 WAIT_MINUTES = 5
 SMALL_BYTES = 1024 * 1024
+LOG_KEY = "jobs/{}/log.txt"
 
 BAD_TAG = "RENDER_TAG is not key=value"
 BAD_USD_HOUR = "RENDER_USD_HOUR is not a number of at least 0"
@@ -178,6 +182,7 @@ class Node:
         self.key_file, self.config, self.record = key_file, config, record
         self.instance_id = self.billed = self.key = self.url = self.rate = None
         self.nonce = self.store = self.store_key = self.token = self.links = self.log = None
+        self.failure = None
         self.recorded = 0
         self.scrub = _Scrub()
 
@@ -264,29 +269,40 @@ class Node:
         if self.nonce is None:
             raise Refused(NOT_STARTED)
         described = renderjob.describe(job, self.config["settings"])
-        self._put("in.tar", renderjob.in_tar(job, described))
-        self._put("links.txt", "".join(f"{method} {name} {self._link(method, path)}\n"
-                                       for method, name, path in LINKS).encode("utf-8"))
-        self._wait()
-        directory = tempfile.mkdtemp(prefix="renderjob-")
+        status = None
         try:
-            status = io.BytesIO()
-            self._get("status.json", status, SMALL_BYTES)
-            log = io.BytesIO()
-            with open(os.path.join(directory, "out.tar"), "wb") as handle:
-                self._get("out.tar", handle, assets.MAX_BYTES)
-            self._get("log.txt", log, assets.MAX_BYTES)
-            self.log = log.getvalue().decode("utf-8", "replace")
+            self._put("in.tar", renderjob.in_tar(job, described))
+            self._put("links.txt", "".join(f"{method} {name} {self._link(method, path)}\n"
+                                           for method, name, path in LINKS).encode("utf-8"))
+            self._wait()
+            directory = tempfile.mkdtemp(prefix="renderjob-")
             try:
-                status = json.loads(status.getvalue().decode("utf-8"))
-            except (UnicodeDecodeError, ValueError):
-                status = None
-            unpacked = os.path.join(directory, "out")
-            os.mkdir(unpacked)
-            renderjob.unpack(os.path.join(directory, "out.tar"), unpacked)
-            renderjob.finish(job, described, status, unpacked, self.config["settings"])
-        finally:
-            shutil.rmtree(directory, ignore_errors=True)
+                got = io.BytesIO()
+                self._get("status.json", got, SMALL_BYTES)
+                try:
+                    status = json.loads(got.getvalue().decode("utf-8"))
+                except (UnicodeDecodeError, ValueError):
+                    status = None
+                step = renderjob.failed_step(status)
+                if step is None:
+                    with open(os.path.join(directory, "out.tar"), "wb") as handle:
+                        self._get("out.tar", handle, assets.MAX_BYTES)
+                log = io.BytesIO()
+                self._get("log.txt", log, assets.MAX_BYTES)
+                self.log = log.getvalue().decode("utf-8", "replace")
+                if step is not None:
+                    raise renderjob.JobError(renderjob.JOB_FAILED)
+                unpacked = os.path.join(directory, "out")
+                os.mkdir(unpacked)
+                renderjob.unpack(os.path.join(directory, "out.tar"), unpacked)
+                renderjob.finish(job, described, status, unpacked, self.config["settings"])
+            finally:
+                shutil.rmtree(directory, ignore_errors=True)
+        except Exception:
+            hidden = [value for value in (*self.key[:2], *self.store_key[:2], self.token) if value]
+            self.failure = {"log": LOG_KEY.format(self.nonce), "step": renderjob.failed_step(status),
+                            "tail": renderjob.tail(self.log or "", hidden)}
+            raise
 
     def _settings(self):
         tag_key, equals, tag_value = self._setting("RENDER_TAG").partition("=")
