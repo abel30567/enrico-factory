@@ -1741,3 +1741,67 @@ class ManifestSync(Case):
         """Behaviour 4."""
         w = self.world(self.row("frame-ep02", "frame-ep02"), {"production/ep01/frames.md": "# Not the same\n"})
         self.tick(w, ["STEP #9 lock PR #10", "NEED #11 conflict with base"])
+
+
+class SeveralMakers(Case):
+    """ISSUE-580: `production/conform` with the makers `sound-mixer` and `conform-editor` on ticket #19, pull #20
+    holding the sound mixer's `scene.py` and its READY."""
+
+    SCENE = "production/ep04/conform/scene.py"
+    CAPTIONS = "production/ep04/conform/captions.json"
+    WRITES = {"sound-mixer": "production/*/conform/scene.py",
+              "conform-editor": "production/*/conform/edit-list.json, production/*/conform/captions.json"}
+
+    def world(self):
+        w = super().world((19, 20), {20: {self.SCENE: "# The scene of episode four.\n"}})
+        painter = (FIX / "production" / ".factory" / "roles" / "painter.md").read_text()
+        for role, writes in self.WRITES.items():
+            text = (painter.replace("role: painter", f"role: {role}").replace("stage: frames, render", "stage: conform")
+                    .replace("writes: production/**", f"writes: {writes}")
+                    .replace("You are the painter", f"You are the {role}"))
+            w.write(f".factory/roles/{role}.md", text)
+        lints = w.root / ".factory" / "lib" / "lints"
+        shutil.copy(lints / "media.py", lints / "conform.py")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        entries.append({"room": "production", "stage": "conform", "unit": "episode", "after": "",
+                        "maker": ["sound-mixer", "conform-editor"], "lint": ["conform"], "checker": "inspector",
+                        "judge": "", "blind": False, "pitches": 1, "paths": ["production/*/conform/**"]})
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("a conform stage with two makers")
+        w.set_record("issues", 19, labels=["room:production", "stage:conform", "tracked", "unit:ep04"])
+        path = w.github / "comments" / "20.json"
+        comments = json.loads(path.read_text())
+        for c in comments:
+            if c["role"] == "painter":
+                c["role"], c["body"] = "sound-mixer", c["body"].replace("[PAINTER] READY", "[SOUND-MIXER] READY")
+        path.write_text(json.dumps(comments, indent=1, sort_keys=True) + "\n")
+        return w
+
+    def test_the_second_maker_after_the_first_ready(self):
+        # Behaviour 7.
+        w = self.world()
+        w.steps(step("You are the conform-editor", {"marker": "READY", "summary": "Captions.", "evidence": EVIDENCE},
+                     {self.CAPTIONS: '{"captions": []}\n'}))
+        self.dry_then_apply(w, ["STEP #19 launch conform-editor on PR #20"])
+        self.assertEqual(gitstate.show(w.root, w.ref(20), self.CAPTIONS), '{"captions": []}\n')
+        self.assertEqual(lines(self.ticked(w)), ["STEP #19 lint PR #20"])
+
+    def lint_fail(self, path):
+        w = self.world()
+        w.add(20, "2026-11-10T10:00:00Z", "conform-editor", "[CONFORM-EDITOR] READY\n\nhead {head:20} manifest none\n")
+        w.add(20, "2026-11-10T11:00:00Z", "program:lint",
+              "[LINT] FAIL\n\n| Check | Result | Reason |\n|---|---|---|\n| conform | FAIL | 1 finding |\n\n"
+              f"Blockers:\n- B1 conform {path}:1 production/ep04/conform/mix.json is missing\n"
+              "reviewed head {head:20} manifest none\n")
+        return w
+
+    def test_notes_go_to_the_maker_of_the_cited_file(self):
+        # Behaviour 8.
+        w = self.lint_fail(self.SCENE)
+        self.assertEqual(lines(self.ticked(w)), ["STEP #19 launch sound-mixer on PR #20"])
+
+    def test_notes_on_the_captions_go_to_the_conform_editor_twin(self):
+        # Passes on main.
+        w = self.lint_fail(self.CAPTIONS)
+        self.assertEqual(lines(self.ticked(w)), ["STEP #19 launch conform-editor on PR #20"])

@@ -841,5 +841,69 @@ class CommentAuthorTest(OneRule):
         self.assertNamedLocks(21, (2104,), 2104)
 
 
+class SeveralMakersTest(OneRule):
+    """ISSUE-580 rulings 4 and 5: rule 7 reads the union of the writes of the makers that posted READY or
+    ADDRESSED, never an operator's, on pull #6 at a `production/conform` stage with two makers."""
+
+    SCENE = "production/ep01/conform/scene.py"
+    CAPTIONS = "production/ep01/conform/captions.json"
+    WRITES = {"sound-mixer": "production/*/conform/scene.py",
+              "conform-editor": "production/*/conform/edit-list.json, production/*/conform/captions.json"}
+
+    def world(self, edits=None, makers=("sound-mixer", "conform-editor"), editor=True):
+        files = {self.SCENE: "# The scene.\n", self.CAPTIONS: '{"captions": []}\n',
+                 "production/ep01/frames/frame-1.md": None, **(edits or {})}
+        w = World(self, pulls=(6,), edits={6: files})
+        roles = w.root / ".factory" / "roles"
+        painter = (roles / "painter.md").read_text()
+        for role, writes in self.WRITES.items():
+            text = painter.replace("role: painter", f"role: {role}")
+            text = re.sub(r"(?m)^stage: .*$", "stage: conform", text)
+            text = re.sub(r"(?m)^writes: .*$", f"writes: {writes}", text)
+            w.write(f".factory/roles/{role}.md", text.replace("You are the painter", f"You are the {role}"))
+        if "fetcher" in makers:
+            shutil.copy(ROOT / "tests" / "fixtures" / "jobs" / "fetcher.md", roles / "fetcher.md")
+        path = w.root / ".factory" / "pipeline.json"
+        entries = json.loads(path.read_text())
+        entries.insert(7, {"room": "production", "stage": "conform", "unit": "episode", "after": "",
+                           "maker": list(makers), "lint": [], "checker": "inspector", "judge": "", "blind": False,
+                           "pitches": 1, "paths": ["production/*/conform/**"]})
+        path.write_text(json.dumps(entries, indent=1) + "\n")
+        w.commit("a conform stage with two makers")
+        w.merge_base_into(6)
+        w.set_record("issues", 5, labels=["room:production", "stage:conform", "tracked", "unit:ep01"])
+        w.edit(6, 601, role="sound-mixer", body="[SOUND-MIXER] READY\nThe work is on the branch.\n")
+        if editor:
+            w.add(6, 603, at(10, 5), "conform-editor", "[CONFORM-EDITOR] READY\nThe captions are on the branch.\n")
+        w.edit(6, 602, created_at=at(10, 10))
+        return w
+
+    def test_the_union_of_the_writes(self):
+        # Behaviour 9.
+        self.assertEqual(self.world().failed(6), set())
+
+    def test_without_the_second_ready_one_maker_s_writes_twin(self):
+        # Passes on main.
+        self.assertOnly(self.world(editor=False), 6, {7},
+                        "outside the writes of sound-mixer: production/ep01/conform/captions.json")
+
+    def test_outside_every_maker_s_writes(self):
+        # Behaviour 10.
+        w = self.world({"production/ep01/conform/notes.md": "a note\n"})
+        rules = self.assertOnly(w, 6, {7})
+        self.assertEqual(rules[6].reason,
+                         "outside the writes of sound-mixer, conform-editor: production/ep01/conform/notes.md")
+
+    def test_an_operator_adds_no_writes(self):
+        # Behaviour 11.
+        job = "jobs/production/ep01/conform/requests/mix.json"
+        w = self.world({job: '{"tool": "mixer"}\n'}, makers=("sound-mixer", "conform-editor", "fetcher"))
+        w.add(6, 604, at(10, 6), "fetcher", "[FETCHER] READY\nThe job is on the branch.\n")
+        rule = w.rules(6)[6]
+        self.assertFalse(rule.ok)
+        self.assertEqual(rule.reason,
+                         f"outside the writes of sound-mixer, conform-editor: {job}; outside room production: {job}")
+
+
 if __name__ == "__main__":
     unittest.main()
