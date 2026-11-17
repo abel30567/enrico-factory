@@ -19,9 +19,11 @@ the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot fil
 in order. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
 ``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
 shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
-from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. Any other pair files
-nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again. While a tracked
-issue does not parse, nothing is filed.
+from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
+a ``shot`` stage is filed the same way once for the episode of the shot, from every shot of the episode in
+``production/<ep>/shots.json`` on the base, one ``Upstream:`` line per shot in the order of that file. Any other
+pair files nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again.
+While a tracked issue does not parse, nothing is filed.
 
 ``due`` also gives the two packets of brief section 3, as issues that are not tickets: the story intent packet
 when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
@@ -126,6 +128,10 @@ def _units(p, root, state: tickets.State, ticket: dict, pull: dict, upstream_uni
     if upstream_unit == "shot" and entry["unit"] == "sequence" and sequence is not None:
         upstreams = _lowest(state, ticket["room"], ticket["stage"], tickets.shots(p, root, sequence), ticket)
         return [(sequence, upstreams)] if upstreams else []
+    if upstream_unit == "shot" and entry["unit"] == "episode":
+        episode = tickets.episode(ticket["unit"])
+        upstreams = _lowest(state, ticket["room"], ticket["stage"], tickets.shots(p, root, episode), ticket)
+        return [(episode, upstreams)] if upstreams else []
     return []
 
 
