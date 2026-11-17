@@ -1,7 +1,9 @@
 """The pictures a checker's pull request cites, placed where the checker can open them before it starts.
 
 A role asks with the front-matter key ``media: cited``. The ids are every ``media:<id>`` in the text, at the
-pull's head, of the files the pull changes; each one's row is the first of ``media/manifest.tsv`` at the head.
+pull's head, of the files the pull changes, and every id of one path segment whose row in ``media/manifest.tsv``
+at the head is not in it at the merge base of the pull's base and head (a picture the pull adds); each one's
+row is the first of ``media/manifest.tsv`` at the head.
 A job's picture is copied from ``<STATE_DIR>/jobs/<digest>/out/<name>`` when it holds the row's bytes; any
 other comes from the media store's public link. The files go to a staged directory under ``<STATE_DIR>/runs``
 that the launcher renames to ``<run dir>/media`` once the run directory exists. A store that does not serve
@@ -63,13 +65,21 @@ def _cap(p, name):
 
 
 def cited(root, pull):
-    """The ids cited by the text at the pull's head of the paths it changes, sorted, each once."""
+    """The ids cited by the text at the pull's head of the paths it changes, and those whose manifest row the
+    pull adds against the merge base of its base and head, sorted, each once."""
     head, found = pull["git"]["head"], set()
     for path in pull["git"]["changed"]:
         text = gitstate.show(root, head, path)
         if text is not None:
             found.update(CITED.findall(text))
+    before = rows(root, gitstate.merge_base(root, pull["base_ref"], pull["head_ref"]))
+    found.update(name for name, row in rows(root, head).items() if before.get(name) != row and _segment(name))
     return sorted(found)
+
+
+def _segment(name):
+    """Whether a manifest id is one path segment, so ``place`` keeps it inside the staged directory."""
+    return name not in ("", ".", "..") and "/" not in name
 
 
 def rows(root, head):

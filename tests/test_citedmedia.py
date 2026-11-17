@@ -661,3 +661,124 @@ class B15RoleFile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class B8PullAddsRows(Cited):
+    """The rows the pull adds to the manifest against the merge base are cited; no other row is."""
+
+    PAD = sha(b"an invented pad job")
+    PID = f"{PAD[:16]}-a-pad.png"
+
+    def manifest(self, tree, rows):
+        (tree / "media").mkdir(exist_ok=True)
+        (tree / "media" / "manifest.tsv").write_text(HEADER + "".join("\t".join(map(str, r)) + "\n" for r in rows))
+
+    def trunk(self, rows, message):
+        """Commit on ``trunk`` a manifest of ``rows``."""
+        self.manifest(self.w.root, rows)
+        self.w.commit(message)
+
+    def branch_point(self, rows):
+        """A manifest of ``rows`` on ``trunk``, merged into pull #7's branch: the merge base holds them."""
+        self.trunk(rows, "the base manifest")
+        tree = self.w.tmp / "merge"
+        self.w.git("worktree", "add", "-q", str(tree), BRANCH)
+        gitstate.git(tree, "-c", "user.name=tester", "-c", "user.email=tester@example.invalid",
+                     "merge", "-q", "--no-edit", "trunk")
+        self.w.git("worktree", "remove", str(tree))
+
+    def pad(self, data):
+        out = self.w.state / "jobs" / self.PAD / "out"
+        out.mkdir(parents=True)
+        (out / "a-pad.png").write_bytes(data)
+        return (self.PID, sha(PNG), len(PNG), f"job {self.PAD}")
+
+    def lines(self, run, *names):
+        return [f"- media:{name}: {run.dir}/media/{name}" for name in sorted(names)]
+
+    def test_clean_the_added_row_and_the_cited_source_are_placed(self):
+        self.serve(OTHER)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.pad(PNG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", self.PID]))
+        self.assertEqual((run.dir / "media" / self.PID).read_bytes(), PNG)
+        self.assertEqual((run.dir / "media" / "a.png").read_bytes(), OTHER)
+        self.assertIn(self.task(run, "Pictures cited by the files of pull request #7, outside the worktree; "
+                                     "open each with Read:", *self.lines(run, "a.png", self.PID)), self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def test_seeded_a_row_at_the_merge_base_reordered_is_not_placed(self):
+        self.serve(OTHER, JPEG)
+        self.branch_point([self.row("old.png", PNG), self.row("a.png", OTHER), self.row("kept.jpeg", JPEG)])
+        self.cite('{"source": "media:a.png"} and media:kept.jpeg',
+                  [self.row("a.png", OTHER), self.row("kept.jpeg", JPEG), self.pad(PNG), self.row("old.png", PNG)])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", "kept.jpeg", self.PID]))
+        self.assertNotIn("media:old.png", self.prompt(run))
+        self.assertNotIn(f"/pub/{sha(PNG)}", [r["path"] for r in self.store.requests])
+
+    def test_seeded_a_row_the_base_added_after_the_branch_point_is_not_placed(self):
+        self.serve(OTHER, JPEG)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.pad(PNG)])
+        self.trunk([self.row("a.png", OTHER), self.row("b.png", JPEG)], "the base moves")
+        self.assertIn("b.png", gitstate.show(self.w.root, "trunk", gitstate.MANIFEST))
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), sorted(["a.png", self.PID]))
+        self.assertNotIn("media:b.png", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def test_seeded_a_row_the_base_tip_rewrote_after_the_branch_point_is_not_placed(self):
+        self.serve(OTHER, PNG, JPEG)
+        self.branch_point([self.row("a.png", OTHER), self.row("c.png", PNG)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER), self.row("c.png", PNG)])
+        self.trunk([self.row("a.png", OTHER), self.row("c.png", JPEG)], "the base rewrites c.png")
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["a.png"])
+        self.assertNotIn("media:c.png", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def test_seeded_an_added_id_that_is_not_one_path_segment_is_not_placed(self):
+        bad = ["./../../escaped.png", "./../escaped.png", "x/../../escaped.png", "..", "."]
+        self.serve(OTHER, PNG)
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite('{"source": "media:a.png"}', [self.row("a.png", OTHER)] + [self.row(b, PNG) for b in bad])
+        run = self.w.prepare("reviewer", 7)
+        self.assertEqual(self.placed(run), ["a.png"])
+        self.assertEqual(sorted(p.relative_to(self.w.state).as_posix() for p in self.w.state.rglob("*.png")),
+                         [f"runs/{run.dir.name}/media/a.png"])
+        self.assertNotIn("escaped", self.prompt(run))
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def refused(self, pattern):
+        """Seeded defect 1: the pull adds a job row whose job output holds other bytes and that the store
+        does not serve. ``cited`` returns the row's id, and the launch is refused with ``pattern``."""
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite("No picture is named here.", [self.row("a.png", OTHER), self.pad(OTHER)])
+        returned = []
+
+        def spy(root, pull):
+            returned.append(cited(root, pull))
+            return returned[-1]
+
+        cited = citedmedia.cited
+        before = self.w.snapshot()
+        with mock.patch.object(citedmedia, "cited", spy):
+            with self.assertRaisesRegex(LaunchError, pattern):
+                self.w.prepare("reviewer", 7)
+        self.assertEqual(returned, [[self.PID]])
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertEqual(self.runs(), [])
+
+    def test_seeded_a_new_job_row_of_other_bytes_the_store_does_not_serve_refuses_the_launch(self):
+        number = max(x["number"] for x in self.w.gh.issues("all") + self.w.gh.pulls("all")) + 1
+        self.refused(rf"^resource store\.media is down \(#{number}\)$")
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(PNG)}"])
+        self.assertEqual([i["number"] for i in self.downs()], [number])
+
+    def test_seeded_the_same_with_no_public_base_refuses_the_launch(self):
+        self.settings()
+        self.refused("^cited media: setting MEDIA_PUBLIC_BASE is not a public URL$")
+        self.assertEqual(self.store.requests, [])
+        self.assertEqual(self.downs(), [])
