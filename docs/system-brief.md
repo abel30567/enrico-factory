@@ -442,7 +442,8 @@ ledger. It never calls the engine, a render node or a media tool, so the same in
 result, and a test runs it on recorded or hand-written files.
 The run that writes those files is a gated job (section 11): the room's operator, `render-wrangler`,
 requests it at every stage from `assets` to `conform`, and `factory run` makes it on `render.node` with
-the pinned `engine.unreal`. The same job measures its
+the pinned `engine.unreal`, except at `conform`: no picture is rendered there, and the local tool
+`conform` cuts the stored frames by the edit list and mixes the stored audio on `local.ffmpeg`. The same job measures its
 frames and sound with `local.ffmpeg` and `local.ocr`, stores the bytes with `factory assets`, and
 commits the files on the pull request's branch.
 
@@ -703,12 +704,16 @@ writes or changes a prompt.
 | `style` | `bible/style/requests/<id>.json` | `art-director` |
 | `board` | `episodes/<ep>/sequences/<Q>/shots/requests/<id>.json` | `story-artist` |
 | `reel` | `episodes/<ep>/reel/requests/<id>.json` | `editorial` |
+| `conform` | `production/<ep>/conform/requests/<kind>-<id>.json`, `<kind>` one of `voice`, `music`, `sfx`, `mix` | `sound-mixer` |
 
 A request is a JSON object with exactly the keys `for` (what it is for: the sheet or the shot id),
 `prompt` (the whole prompt text) and `refs` (a list of reference images, each `media:<id>`). A request
 that shows a character or a place names at least one reference image of it: the imported source art
-or an approved model sheet. `refs` may be empty only when the request shows neither. Only images are
-requested until a voice or music tool exists. No lint checks the shape yet.
+or an approved model sheet. `refs` may be empty only when the request shows neither. Voice, music and
+effects are requested only at `conform`, and `render-wrangler` turns those requests into jobs: one
+`voice-L<n>` per line of `lines.json` (its `prompt` the line's text; the job reads the speaker's
+`bible/style/voices/<character>.json`, `{"voice_id"}`, which `art-director` writes at `style`), one
+`music-<id>` per cue and one `sfx-<id>` per effect. No lint checks the shape yet.
 
 ### Bible sheets
 
@@ -859,8 +864,10 @@ A production ticket's files are in its unit's directory (`production/<ep>/<shot>
 `production/assets/<asset>/` for an asset, `production/<ep>/` for an episode), in a subdirectory named
 after the stage. The paths below that start with a stage are in the unit's directory. The maker writes
 the files the table gives it (the scene script; at `conform`, the edit list and the captions) and
-nothing else. The stage's gated job writes the other files (section 10). The file `sound-mixer` writes
-for the mix job is not ruled here; no check reads it. In every shape below each key named is required.
+nothing else. The stage's gated job writes the other files (section 10). At `conform`, `sound-mixer`
+writes the requests for voice, music and effects (section 16), then `conform/mix-plan.json` and the
+request `conform/requests/mix.json` for the mix job: the plan places each stored line, music cue and
+effect (media id, start and end frame, gain); no check reads it. In every shape below each key named is required.
 A check reads only the keys its row names and ignores any other key (`simulation` also reads every key of the scene state but `caches` in both runs); a named key that is missing or of
 another type is a finding. A stage's state is the whole scene after the scene scripts of that stage and of
 every cheaper stage have run, so a check reads one file. Lengths are metres (the engine's centimetres
