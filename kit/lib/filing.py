@@ -29,8 +29,11 @@ While a tracked issue does not parse, nothing is filed.
 
 ``due`` also gives the two packets of brief section 3, as issues that are not tickets: the story intent packet
 when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
-when a ``distribution/window`` ticket locks, labelled ``room:story``. Each is filed once: an issue with its
-title, open or closed, in ``State.others`` is never filed again.
+when a ``distribution/window`` ticket locks, labelled ``room:story``. A locked ``production/conform`` ticket gives
+the master issue of its episode, labelled ``room:post``: the ``master`` and the ``stems`` of
+``production/<ep>/conform/mix.json`` on the base, sorted by name, and the path of
+``production/<ep>/conform/edit-list.json``. Each is filed once: an issue with its title, open or closed, in
+``State.others`` is never filed again.
 
 A locked ``story/sequences`` ticket also files one ``story/style`` ticket for its episode, as unit ``<ep>``, when some
 ``<Q>`` of the episode on the base has no ``bible/style/keys/<ep>/<Q>.json`` on the base: its body has one
@@ -75,7 +78,12 @@ CHARACTER = "bible/canon/characters/{}.md"
 PLACE = "bible/canon/places/{}.md"
 SHOT_FILE = re.compile(r"episodes/([^/]+)/sequences/([^/]+)/shots/([^/]+)\.json")
 
-PACKETS = {("story", "reel"): "intent-packet", ("distribution", "window"): "platform-notes"}
+PACKETS = {("story", "reel"): "intent-packet", ("production", "conform"): "master",
+           ("distribution", "window"): "platform-notes"}
+MIX = "production/{}/conform/mix.json"
+CONFORMED = "production/{}/conform/edit-list.json"
+SHA256 = re.compile(r"[0-9a-f]{64}")
+STEM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
 
 def key(stage: str, unit: str) -> str:
@@ -351,7 +359,56 @@ def _platform_notes(p, root, ticket: dict, pull: dict) -> dict:
     return {"unit": unit, "title": _notes_title(ticket), "body": body, "labels": ["room:story"]}
 
 
-_PACKET_MAKERS = {"intent-packet": (_intent_title, _intent_packet), "platform-notes": (_notes_title, _platform_notes)}
+def _master_title(ticket: dict) -> str:
+    ep = tickets.episode(ticket["unit"])
+    return f"[{key('master', ep)}] locked master for {ep}"
+
+
+def _stems(data):
+    """The stems of a ``mix.json`` value as ``(name, sha256)`` sorted by name, or None when it does not name the
+    master and a non-empty list of stems, each with its own name."""
+    if not isinstance(data, dict):
+        return None
+    master, stems = data.get("master"), data.get("stems")
+    if not (isinstance(master, str) and SHA256.fullmatch(master)) or not isinstance(stems, list) or not stems:
+        return None
+    found = {}
+    for stem in stems:
+        if not isinstance(stem, dict):
+            return None
+        name, sha = stem.get("name"), stem.get("sha256")
+        if not (isinstance(name, str) and STEM.fullmatch(name)) or not (isinstance(sha, str) and SHA256.fullmatch(sha)):
+            return None
+        if name in found:
+            return None
+        found[name] = sha
+    return sorted(found.items())
+
+
+def _master(p, root, ticket: dict, pull: dict) -> dict:
+    ep = tickets.episode(ticket["unit"])
+    mix, conformed = MIX.format(ep), CONFORMED.format(ep)
+    if not _on_base(p, root, mix):
+        lines = f"{mix} is not on the base.\n"
+    else:
+        data = _read(p, root, mix)
+        stems = _stems(data)
+        if stems is None:
+            lines = f"{mix} does not name the master and its stems.\n"
+        else:
+            lines = f"Master: sha256 {data['master']}, in {mix}.\n"
+            lines += "".join(f"Stem {name}: sha256 {sha}.\n" for name, sha in stems)
+    lines += f"Edit list: {conformed}.\n" if _on_base(p, root, conformed) else f"{conformed} is not on the base.\n"
+    body = (f"Locked master for episode {ep}, locked by PR #{pull['number']} (ticket #{ticket['number']}).\n\n"
+            f"{lines}\n"
+            "The production room owns the master, the stems and the edit list; "
+            "post reads them and does not edit them.\n"
+            "Filed by factory tick.\n")
+    return {"unit": ep, "title": _master_title(ticket), "body": body, "labels": ["room:post"]}
+
+
+_PACKET_MAKERS = {"intent-packet": (_intent_title, _intent_packet), "master": (_master_title, _master),
+                  "platform-notes": (_notes_title, _platform_notes)}
 
 
 def _packets(p, state: tickets.State, root) -> list:
