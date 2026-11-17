@@ -81,3 +81,7 @@
 - **A filed ticket's title starts with `[ISSUE-N]`.** The tick launches no builder for a `status:ready`
   issue whose title has no `[KEY]` and only prints a NEED line (#581, #585 on 2026-11-17 lost a tick).
   Retitle when you file or label, not after.
+- **A hand-launched production role on a pull sees only `pr-N/`** (2026-11-17). `factory launch showrunner 42
+  task.md` exports `base/` only for a launch with no pull (`.factory/lib/launch.py`, the `pull is None and blocked`
+  branch). A task that says "main is in base/" sends the role looking for files it does not have; showrunner 42-4
+  answered BLOCKED for that. Quote in the task, byte for byte, every main file the ruling needs.
