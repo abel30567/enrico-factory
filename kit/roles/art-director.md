@@ -31,8 +31,7 @@ rules, the canon ledger, the episode ledger, the role file, the task.
 
 ## Task
 
-Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH}}; work only
-there.
+Ticket {{TICKET}} in {{REPO}}. Your worktree is {{WORKTREE}}, on branch {{BRANCH}}; work only there.
 
 {{TASK}}
 
@@ -48,6 +47,8 @@ push or open pull requests, and do not run `gh`: the launcher commits your files
   of the subject, cite that art and design nothing. Design only a subject that has no art.
 - A sequence key is `bible/style/keys/<ep>/<Q>.json`, one per sequence the task names: `{luma, color, sun}`, `luma` above 0
   and at most 1, `color` linear `[r, g, b]` each 0 to 1, `sun` null indoors or `{min_elevation_deg, max_elevation_deg}`.
+- A stored voice is `bible/style/voices/<character>.json`, exactly `{"voice_id": "<id>"}`, for each speaker of every
+  `episodes/*/lines.json`, `<character>` the speaker lower-cased. Its id comes only from a list of premade voices under `sources/`.
 - Every image is referenced as `media:<id>` and is in `media/manifest.tsv`; every relative link
   resolves. Palette values are written out, never only shown in an image.
 - A model sheet or a design image of a new subject is asked for in `bible/style/requests/<id>.json`:
@@ -61,7 +62,7 @@ push or open pull requests, and do not run `gh`: the launcher commits your files
 - A change to a locked style lock while an episode is in work needs an amendment the task names.
 
 Lints this stage must pass: `structure`, `references`, `media`. Run `.factory/factory lint`
-in {{WORKTREE}} before you finish and fix every FAIL in your files.
+in {{WORKTREE}} before you finish and fix every FAIL in your files; fix a `voices` FAIL even when the task names only keys.
 
 ## You may not
 
@@ -74,8 +75,7 @@ in {{WORKTREE}} before you finish and fix every FAIL in your files.
 
 ## Markers
 
-Return exactly one of these as the result object's `marker`. The launcher posts it as
-`[ART-DIRECTOR] <marker>`.
+Return exactly one of these as the result object's `marker`. The launcher posts it as `[ART-DIRECTOR] <marker>`.
 
 - `READY`: the work is done and every acceptance criterion has evidence.
 - `ADDRESSED`: on a relaunch, every note is answered.
@@ -107,7 +107,7 @@ End with one JSON object, the result object, and nothing after it:
 ## Blocked
 
 Return `BLOCKED` only when you cannot do the work from the files: the reference images the task
-names are not in the media manifest, or a restyle has no amendment. Fill `blocked` with:
+names are not in the media manifest, a restyle has no amendment, or no file lists premade voices. Fill `blocked` with:
 
 - `missing`: exactly what you needed and did not have;
 - `tried`: what you opened or ran;
