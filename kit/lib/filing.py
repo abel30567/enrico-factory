@@ -22,8 +22,8 @@ shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked 
 from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
 a ``shot`` stage is filed the same way once for the episode of the shot, from every shot of the episode in
 ``production/<ep>/shots.json`` on the base, one ``Upstream:`` line per shot in the order of that file. Any other
-pair files nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again. While a tracked
-issue does not parse, nothing is filed.
+pair files nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again.
+While a tracked issue does not parse, nothing is filed.
 
 ``due`` also gives the two packets of brief section 3, as issues that are not tickets: the story intent packet
 when a ``story/reel`` ticket locks, labelled ``room:post`` and ``room:distribution``, and the platform notes
