@@ -137,7 +137,7 @@ class RenderTest(unittest.TestCase):
 
     # -- the checks
 
-    def assert_clean(self, puts=True):
+    def assert_clean(self, puts=True, resumed=False):
         w, digest = self.w, self.digest
         trunk, log = w.head(), w.log()
         self.assertEqual(self.render(), (0, line(digest, "DONE", "0.35", "12") + "\n", ""))
@@ -163,9 +163,13 @@ class RenderTest(unittest.TestCase):
         gitstate.export(w.root, BRANCH, tree)
         result = lint.run(tree, ["media"])["media"]
         self.assertEqual((result.status, result.findings), ("PASS", []))
-        self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [ledger.PATH])
-        self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": BRANCH},
-                                              {"op": "push", "number": None, "ref": "trunk"}])
+        if resumed:
+            self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [])
+            self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": BRANCH}])
+        else:
+            self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [ledger.PATH])
+            self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": "trunk"},
+                                                  {"op": "push", "number": None, "ref": BRANCH}])
 
     def assert_failed(self, reason, usd, compute_min):
         self.assertEqual(self.render(), (1, line(self.digest, "FAILED", usd, compute_min) + "\n",
@@ -353,12 +357,12 @@ class RenderTest(unittest.TestCase):
     def test_store_refuses_after_the_call(self):
         self.store.status["PUT"] = (500, b"")
         self.assertEqual(self.render(), (2, "", "run: the asset store did not take frame-0000.bin: store answered 500\n"))
-        self.assertEqual(self.rows(), [])
+        self.assertEqual(self.rows(), [("DONE", "0.35", "12", "render")])
         self.assertEqual(self.w.head(BRANCH), self.branch)
         self.assertEqual(FakeNode.calls, ["start", "run", "stop"])
         # Twin: the store fixed, the call is recorded from result.json with no call.
         del self.store.status["PUT"]
-        self.assert_clean(puts=False)
+        self.assert_clean(puts=False, resumed=True)
         self.assertEqual(FakeNode.calls, ["start", "run", "stop"])
 
     def test_frame_already_held_is_not_sent_again(self):

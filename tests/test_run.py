@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cmd_gate, cmd_media, cmd_run, gitstate, github, ledger, lint, resources  # noqa: E402
+from kit.lib import cmd_gate, cmd_media, cmd_run, gitstate, github, ledger, lint, production, resources  # noqa: E402
 from test_assets import AssetStore  # noqa: E402
 from test_media import KEY_ID, REGION, SECRET, FakeStore, free_port  # noqa: E402
 
@@ -317,9 +317,9 @@ class CleanRunTest(unittest.TestCase):
         self.assertEqual(ledger.line(row), "\t".join(
             [NOW, "run", digest, str(TICKET), "ep01", "fake", "1.5", "20", "renderer", "DONE", "-"]))
         self.assertEqual(ledger.spent(w.rows()), {"usd": Decimal("1.5"), "compute_min": Decimal("20")})
-        # Two pushes, the branch then the base, and no post.
-        self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": BRANCH},
-                                              {"op": "push", "number": None, "ref": "trunk"}])
+        # Two pushes, the base then the branch, and no post.
+        self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": "trunk"},
+                                              {"op": "push", "number": None, "ref": BRANCH}])
         # The root checkout is still on the base, with no change to a tracked file.
         self.assertEqual(w.git("symbolic-ref", "--short", "HEAD").strip(), "trunk")
         self.assertEqual(w.git("status", "--porcelain", "--untracked-files=no"), "")
@@ -353,9 +353,10 @@ class CleanRunTest(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertRegex(err, r"^run: git update-ref: exit \d+: .*cannot lock ref.*\n$")
         self.assertTrue((self.w.job_dir(self.digest) / "result.json").is_file())
-        self.assertEqual(self.w.rows("run"), [])
+        self.assertTrue((self.w.job_dir(self.digest) / "pending").is_file())
+        self.assertEqual(len(self.w.rows("run")), 1)
         self.assertEqual(self.w.head(BRANCH), self.moved)
-        self.assertEqual(self.w.log(), log)
+        self.assertEqual(self.w.log()[len(log):], [{"op": "push", "number": None, "ref": "trunk"}])
         self.assertEqual(self.w.worktrees(), [os.path.realpath(self.w.root)])
         # A second run records the call it already made, on the moved branch.
         code, out, err = self.w.run()
@@ -680,21 +681,23 @@ class NeverTwiceTest(unittest.TestCase):
         self.assertEqual(len(self.w.rows("run")), 1)
 
     def test_died_after_the_call(self):
-        code, out, err = self.w.run(gh=FlakyPush(self.w.dir, fails={1}))
-        self.assertEqual((code, out, err), (2, "", "run: push: exit 1\n"))
+        with mock.patch.object(ledger, "append", side_effect=OSError("disk full")):
+            code, out, err = self.w.run()
+        self.assertEqual((code, out, err), (2, "", "run: disk full\n"))
         self.assertTrue((self.w.job_dir(self.digest) / "result.json").is_file())
         self.assertEqual(self.w.rows("run"), [])
         self.assertEqual(self.w.run(apply=False), (0, f"run job {self.digest}: would record the earlier call\n", ""))
         log = self.w.log()
         self.assertEqual(self.w.run(), (0, self.done + "\n", ""))
         self.assert_recorded_once()
-        self.assertEqual(self.w.log()[len(log):], [{"op": "push", "number": None, "ref": BRANCH},
-                                                   {"op": "push", "number": None, "ref": "trunk"}])
+        self.assertEqual(self.w.log()[len(log):], [{"op": "push", "number": None, "ref": "trunk"},
+                                                   {"op": "push", "number": None, "ref": BRANCH}])
 
     def test_died_at_the_second_push(self):
-        # The ledger row is committed on the local base before its push fails: the base pushes it later.
+        # The ledger row is pushed with the base before the push of the branch fails.
         code, out, err = self.w.run(gh=FlakyPush(self.w.dir, fails={2}))
         self.assertEqual((code, out, err), (2, "", "run: push: exit 1\n"))
+        self.assertEqual(self.w.run(), (0, self.done + "\n", ""))
         self.assertEqual(self.w.run(), (0, self.done + " (already recorded)\n", ""))
         self.assert_recorded_once()
 
@@ -715,7 +718,7 @@ class NeverTwiceTest(unittest.TestCase):
         self.assertEqual(self.w.run(), (2, "", message))
         shot.unlink()
         self.assertEqual(self.w.run(), (2, "", message))
-        self.assertEqual(self.w.rows("run"), [])
+        self.assertEqual(len(self.w.rows("run")), 1)
 
 
 class OnePullTest(unittest.TestCase):
@@ -1228,7 +1231,7 @@ class MediaStoreTest(unittest.TestCase):
 
     # -- the checks
 
-    def assert_done(self, job, digest):
+    def assert_done(self, job, digest, resumed=False):
         """The run of ``job`` is DONE: the panel is in the store after one PUT, then its rows are committed."""
         w = self.w
         branch, trunk = w.head(BRANCH), w.head()
@@ -1240,7 +1243,7 @@ class MediaStoreTest(unittest.TestCase):
         self.assertEqual(w.git("diff", "--name-only", branch, BRANCH).split(), [gitstate.MANIFEST])
         outputs = self.outputs({"panel.gif": self.PANEL, "notes.txt": self.NOTES})
         self.assertEqual(w.manifest(), MANIFEST_HEADER + "".join(r + "\n" for r in manifest_rows(digest, outputs)))
-        self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [ledger.PATH])
+        self.assertEqual(w.git("diff", "--name-only", trunk, "trunk").split(), [] if resumed else [ledger.PATH])
         [row] = w.rows("run")
         self.assertEqual((row["hash"], row["verdict"], row["usd"]), (digest, "DONE", "1.5"))
         self.assertEqual(w.fake_calls(), [digest])
@@ -1252,15 +1255,16 @@ class MediaStoreTest(unittest.TestCase):
                          (1, f"media {digest[:16]}-notes.txt: FAILED public link answered 404\n", ""))
 
     def assert_refused(self, job, digest, message):
-        """The run of ``job`` is refused after the call with ``message``: nothing is recorded."""
+        """The run of ``job`` is refused after the call with ``message``: only its run row is recorded."""
         w = self.w
         branch, log = w.head(BRANCH), w.log()
         self.assertEqual(w.run(job), (2, "", f"run: {message}\n"))
         self.assertEqual(w.fake_calls(), [digest])
         self.assertTrue((w.job_dir(digest) / "result.json").is_file())
+        self.assertTrue((w.job_dir(digest) / "pending").is_file())
         self.assertEqual(w.head(BRANCH), branch)
-        self.assertEqual(w.rows("run"), [])
-        self.assertEqual(w.log(), log)
+        self.assertEqual([(r["hash"], r["verdict"], r["usd"]) for r in w.rows("run")], [(digest, "DONE", "1.5")])
+        self.assertEqual(w.log()[len(log):], [{"op": "push", "number": None, "ref": "trunk"}])
         self.assertEqual(self.store.objects, {})
 
     # -- Behaviour 1 to 7
@@ -1275,7 +1279,43 @@ class MediaStoreTest(unittest.TestCase):
         self.assert_refused(job, digest, "the media store did not take panel.gif: store answered 500")
         del self.store.status["PUT"]
         self.store.requests.clear()
-        self.assert_done(job, digest)
+        self.assert_done(job, digest, resumed=True)
+
+    def test_store_refuses_one_put_then_resume(self):
+        w = self.w
+        job, digest = self.panel_job()
+        self.store.status["PUT"] = (500, b"")
+        self.assertEqual(w.run(job), (2, "", "run: the media store did not take panel.gif: store answered 500\n"))
+        self.assertEqual([(r["hash"], r["verdict"], r["usd"], r["compute_min"]) for r in w.rows("run")],
+                         [(digest, "DONE", "1.5", "20")])
+        self.assertTrue((w.job_dir(digest) / "pending").is_file())
+        self.assertTrue(cmd_run.pending(production.load(w.root), digest))
+        self.assertIsNone(w.manifest())
+        self.assertEqual(w.run(job, apply=False),
+                         (0, f"run job {digest}: would store the outputs of the recorded call\n", ""))
+        del self.store.status["PUT"]
+        done = line(digest, "DONE", "1.5", "20")
+        self.assertEqual(w.run(job), (0, done + "\n", ""))
+        self.assertEqual(len(w.rows("run")), 1)
+        self.assertFalse((w.job_dir(digest) / "pending").exists())
+        self.assertEqual(w.fake_calls(), [digest])
+        self.assertEqual(w.run(job), (0, done + " (already recorded)\n", ""))
+
+    def test_ledger_push_fails_then_resume(self):
+        w = self.w
+        job, digest = self.panel_job()
+        self.assertEqual(w.run(job, gh=FlakyPush(w.dir, fails={1})), (2, "", "run: push: exit 1\n"))
+        self.assertEqual(len(w.rows("run")), 1)
+        self.assertEqual(self.store.objects, {})
+        self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        self.assertEqual(len(w.rows("run")), 1)
+
+    def test_twin_clean_one_row_no_pending(self):
+        w = self.w
+        job, digest = self.panel_job()
+        self.assertEqual(w.run(job), (0, line(digest, "DONE", "1.5", "20") + "\n", ""))
+        self.assertEqual(len(w.rows("run")), 1)
+        self.assertFalse((w.job_dir(digest) / "pending").exists())
 
     def test_store_unreachable_then_twin_rerun(self):
         job, digest = self.panel_job()
@@ -1283,7 +1323,7 @@ class MediaStoreTest(unittest.TestCase):
         self.assert_refused(job, digest, "the media store did not take panel.gif: store unreachable")
         self.assertEqual(self.store.requests, [])
         self.settings()
-        self.assert_done(job, digest)
+        self.assert_done(job, digest, resumed=True)
 
     def test_store_not_usable_then_twin_rerun(self):
         job, digest = self.panel_job()
@@ -1291,7 +1331,7 @@ class MediaStoreTest(unittest.TestCase):
         self.assert_refused(job, digest, "resource store.media is not usable: secret store.media: missing")
         self.assertEqual(self.store.requests, [])
         self.media_key()
-        self.assert_done(job, digest)
+        self.assert_done(job, digest, resumed=True)
 
     def test_register_without_the_media_store(self):
         job, digest = self.panel_job()
