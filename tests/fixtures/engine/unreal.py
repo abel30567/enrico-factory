@@ -4,7 +4,9 @@ Every call appends one line to `CALLS`. Objects of the kinds in `TRACKED` (subsy
 the level sequence) are recorded in `HANDED` as weak references, so a test can tell which are still alive.
 The fake holds no strong reference to them. Bounds: origin the actor's location, extent 50 times its scale
 (`z` 0 for the plane mesh), 0 for lights and cameras. Console variables start at 0; a local light's units
-start `UNITLESS`. The root of the saved files is `FACTORY_WORK`, as in `build.py`.
+start `UNITLESS`. The root of the saved files is `FACTORY_WORK`, as in `build.py`. `new_level` and `create_asset`
+make the asset's file under `<FACTORY_WORK>/Job/Content` and refuse a path whose file exists, as the unattended
+editor does.
 """
 
 import json
@@ -21,6 +23,16 @@ SAVED = []
 
 def _call(name, *args):
     CALLS.append(" ".join([name] + [str(a) for a in args]))
+
+
+def _disk(asset_path, suffix):
+    """The file of an asset of `/Game/...` under the project's content."""
+    return os.path.join(os.environ.get("FACTORY_WORK", "/work"), "Job", "Content", asset_path[len("/Game/"):] + suffix)
+
+
+def _make(path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "wb").close()
 
 
 def _hand(kind, obj):
@@ -338,6 +350,12 @@ class EditorActorSubsystem:
 class LevelEditorSubsystem:
     def new_level(self, asset_path):
         _call("LevelEditorSubsystem.new_level", asset_path)
+        path = _disk(asset_path, ".umap")
+        if os.path.isfile(path):
+            _call("engine", "LevelEditorSubsystem: Error: NewLevel. Failed to validate the destination. An asset already "
+                  "exists at this location.")
+            return False
+        _make(path)
         LEVELS.append(asset_path)
         WORLD.clear()
         return True
@@ -551,6 +569,13 @@ class LevelSequenceFactoryNew:
 class AssetTools:
     def create_asset(self, asset_name, package_path, asset_class, factory):
         _call("AssetTools.create_asset", asset_name, package_path, asset_class.__name__, type(factory).__name__)
+        path = _disk(f"{package_path}/{asset_name}", ".uasset")
+        if os.path.isfile(path):
+            _call("engine", f"LogAssetTools: Error: The asset '{asset_name}' already exists in package "
+                  f"'{package_path}/{asset_name}'. CanCreateAsset cannot ask the user as the application is running "
+                  "unattended and will return false")
+            return None
+        _make(path)
         return _hand("sequence", asset_class(asset_name, package_path))
 
     def import_asset_tasks(self, tasks):
