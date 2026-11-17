@@ -728,3 +728,35 @@ class B8PullAddsRows(Cited):
         self.assertEqual(self.placed(run), sorted(["a.png", self.PID]))
         self.assertNotIn("media:b.png", self.prompt(run))
         self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(OTHER)}"])
+
+    def refused(self, pattern):
+        """Seeded defect 1: the pull adds a job row whose job output holds other bytes and that the store
+        does not serve. ``cited`` returns the row's id, and the launch is refused with ``pattern``."""
+        self.branch_point([self.row("a.png", OTHER)])
+        self.cite("No picture is named here.", [self.row("a.png", OTHER), self.pad(OTHER)])
+        returned = []
+
+        def spy(root, pull):
+            returned.append(cited(root, pull))
+            return returned[-1]
+
+        cited = citedmedia.cited
+        before = self.w.snapshot()
+        with mock.patch.object(citedmedia, "cited", spy):
+            with self.assertRaisesRegex(LaunchError, pattern):
+                self.w.prepare("reviewer", 7)
+        self.assertEqual(returned, [[self.PID]])
+        self.assertEqual(self.w.snapshot(), before)
+        self.assertEqual(self.runs(), [])
+
+    def test_seeded_a_new_job_row_of_other_bytes_the_store_does_not_serve_refuses_the_launch(self):
+        number = max(x["number"] for x in self.w.gh.issues("all") + self.w.gh.pulls("all")) + 1
+        self.refused(rf"^resource store\.media is down \(#{number}\)$")
+        self.assertEqual([r["path"] for r in self.store.requests], [f"/pub/{sha(PNG)}"])
+        self.assertEqual([i["number"] for i in self.downs()], [number])
+
+    def test_seeded_the_same_with_no_public_base_refuses_the_launch(self):
+        self.settings()
+        self.refused("^cited media: setting MEDIA_PUBLIC_BASE is not a public URL$")
+        self.assertEqual(self.store.requests, [])
+        self.assertEqual(self.downs(), [])
