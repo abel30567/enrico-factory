@@ -759,6 +759,74 @@ class RightsRefusalTest(unittest.TestCase):
 
 
 
+class PadRequestTest(unittest.TestCase):
+    """ISSUE-576: after a pad request ``{"source": "media:<id>"}`` the manifest is read as after ``refs``."""
+
+    LIST = "name\tholder\tlink\nWickabel\tthe makers of Skarrowfen\thttps://example.invalid/1\n"
+    HEADER = "id\tsha256\tbytes\tsource\n"
+    A = f"a.png\t{'a' * 64}\t2048\tsources/a.png"
+    WICK = f"wick.png\t{'e' * 64}\t1\tsources/wickabel.png"
+    KITE = f"kite.png\t{'d' * 64}\t512\tsources/kite.png"
+    REQUEST = "bible/style/requests/pad-a.json"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def pad_job(self, request, manifest):
+        """The request, ``manifest`` and the not-ours list committed on `trunk`; a pad job naming both."""
+        text = json.dumps(request) + "\n"
+        self.w.write(self.REQUEST, text)
+        self.w.write(gitstate.MANIFEST, manifest)
+        self.w.write("research/not-ours.tsv", self.LIST)
+        self.w.commit("a pad request")
+        return self.w.job("pad-a.json", tool="pad", inputs=[
+            {"path": self.REQUEST, "sha256": hashlib.sha256(text.encode()).hexdigest()},
+            {"path": gitstate.MANIFEST, "sha256": hashlib.sha256(manifest.encode()).hexdigest()}])
+
+    def assert_stop(self, path, message):
+        self.assertEqual(self.w.gate(path), (2, "", f"gate: {message}\n"))
+        self.assertEqual(self.w.ledger_rows(), [])
+        self.assertEqual(self.w.gates(JOB_TICKET), [])
+
+    def test_clean_pad_request_reads_its_row_only(self):
+        path = self.pad_job({"source": "media:a.png"}, self.HEADER + self.A + "\n" + self.WICK + "\n")
+        code, out, err = self.w.gate(path)
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+        [row] = self.w.ledger_rows()
+        self.assertEqual((row["tool"], row["verdict"]), ("pad", "PASS"))
+
+    def test_named_row_names_a_listed_name(self):
+        row = self.A.replace("sources/a.png", "sources/wickabel-a.png")
+        path = self.pad_job({"source": "media:a.png"}, self.HEADER + row + "\n" + self.KITE + "\n")
+        self.assert_stop(path, f"input {gitstate.MANIFEST} names 'Wickabel' (research/not-ours.tsv:2)")
+
+    def test_another_key_reads_the_whole_manifest(self):
+        path = self.pad_job({"source": "media:a.png", "note": "x"}, self.HEADER + self.A + "\n" + self.WICK + "\n")
+        self.assert_stop(path, f"input {gitstate.MANIFEST} names 'Wickabel' (research/not-ours.tsv:2)")
+
+    def test_other_shapes_are_not_pad_requests(self):
+        for request in ({"source": "media:"}, {"source": "a.png"}, {"source": ["media:a.png"]}):
+            with self.subTest(request=request):
+                self.assertIsNone(cmd_gate._refs(json.dumps(request)))
+        self.assertEqual(cmd_gate._refs(json.dumps({"source": "media:a.png"})), ["a.png"])
+
+    def test_named_row_changed_after_the_job(self):
+        path = self.pad_job({"source": "media:a.png"}, self.HEADER + self.A + "\n")
+        self.w.write(gitstate.MANIFEST, self.HEADER + self.A.replace("\t2048\t", "\t2049\t") + "\n"
+                     + self.KITE + "\n")
+        self.w.commit("a.png changed, kite.png added")
+        self.assert_stop(path, f"input {gitstate.MANIFEST} changed the rows of media:a.png on the base")
+
+    def test_clean_twin_only_another_row_appended(self):
+        path = self.pad_job({"source": "media:a.png"}, self.HEADER + self.A + "\n")
+        self.w.write(gitstate.MANIFEST, self.HEADER + self.A + "\n" + self.KITE + "\n")
+        self.w.commit("kite.png added")
+        code, out, err = self.w.gate(path)
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+
+
 class ReviewAfterTheRunTest(unittest.TestCase):
     """ISSUE-490 behaviours 5 to 8: a job's checkers and judges count only once the ledger holds its run.
 

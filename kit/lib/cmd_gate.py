@@ -10,8 +10,9 @@ recorded for the same hash is not repeated. Exit 0 PASS, 1 STOP, 2 frozen or ref
 refused while a cheaper stage of its shot is not locked (`lockrules.cheaper_stages`, section 9 rule 4).
 
 Each input must have its hash where it is read, except `media/manifest.tsv` after a first input whose `refs` are all
-`media:<id>`: then one of the last 200 versions of the file there has that hash, with the same header and the same
-lines for each id; and the not-ours check reads of that file its header and those lines only. An input `asset:<id>` is not read as a
+`media:<id>` or which is a pad request, exactly `{"source": "media:<id>"}`: then one of the last 200 versions of the
+file there has that hash, with the same header and the same lines for each id; and the not-ours check reads of that
+file its header and those lines only. An input `asset:<id>` is not read as a
 file: it must carry the `sha256` of the asset's locked state on the base.
 
 A number that is an issue labelled harness-fork is checked by kit/lib/harnessfork.py against
@@ -39,6 +40,7 @@ EXPECTED_KEYS = ("compute_min", "usd")
 INPUT_KEYS = ("path", "sha256")
 ATTEMPT = "attempt"
 REF_PREFIX = "media:"
+SOURCE = "source"
 ASSET = "asset:"
 MANIFEST_VERSIONS = 200
 ERRORS = (ledger.LedgerError, production.ProductionError, github.GitHubError, gitstate.GitError,
@@ -106,11 +108,14 @@ def sha256(text):
 
 
 def _refs(text):
-    """The ids a request's ``refs`` name, each without ``media:``; None unless it is a non-empty list of them."""
+    """The ids a request's ``refs`` or a pad request's ``source`` name, each without ``media:``; None unless
+    ``refs`` is a non-empty list of them or the request is exactly ``{"source": "media:<id>"}``."""
     try:
         request = json.loads(text)
     except (TypeError, ValueError):
         return None
+    if isinstance(request, dict) and list(request) == [SOURCE]:
+        request = {"refs": [request[SOURCE]]}
     refs = request.get("refs") if isinstance(request, dict) else None
     if (not isinstance(refs, list) or not refs
             or not all(isinstance(r, str) and r.startswith(REF_PREFIX) and len(r) > len(REF_PREFIX) for r in refs)):
@@ -173,7 +178,7 @@ def _check_inputs(p, job, ref=None, where="the base"):
 
 def _read(p, job, ref):
     """``text_of(path)`` for the not-ours check: an input's text at ``ref``, or of the manifest after a request
-    with refs, its header and the lines of the ids it names."""
+    with refs or a pad request's source, its header and the lines of the ids it names."""
     def text_of(path):
         text = gitstate.show(p.root, ref, path)
         ids = None if text is None else _named(p, job, ref, path)
