@@ -4,7 +4,8 @@
 them. An object's key is the file's sha256 in lower-case hex. Requests are a signed `HEAD` and `PUT`
 (Signature Version 4, service `s3`, the payload signed in one piece) and a plain `GET` on the public link
 with no credential and the kit's own `User-Agent`, all through one opener that reads no proxy from the
-environment and follows no redirect. An object is never overwritten or deleted.
+environment and follows no redirect. An object is never overwritten or deleted. A request no answer came to
+(the connection failed or closed before a status) is sent again unchanged, up to `ATTEMPTS` sends in all.
 
 A reason never contains a value: not a setting, a key, a signature, a response body or header, or the
 text of an exception.
@@ -16,6 +17,7 @@ import http.client
 import os
 import re
 import stat
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +25,10 @@ import urllib.request
 from kit.lib import production
 
 TIMEOUT = 60
+# Sends of one request in all when no answer comes, and the seconds waited before the second and the third.
+# Every request is a HEAD, GET or PUT of fixed bytes; 10 s of waits fit well inside a signature's 15 minutes.
+ATTEMPTS = 3
+RETRY_WAIT = (2, 8)
 # A public address may refuse a client by its signature (Python's own user agent): the link check names the kit.
 USER_AGENT = "enrico-factory-media/1"
 CHUNK = 1024 * 1024
@@ -178,15 +184,34 @@ def _signed(method, url, payload_sha256, key):
 
 
 def _send(request, unreachable, read=None):
-    """``(status, headers, result of read(response))``; ``Failed(unreachable)`` when no answer came."""
-    try:
-        with _OPENER.open(request, timeout=TIMEOUT) as response:
-            return response.status, response.headers, read(response) if read else None
-    except urllib.error.HTTPError as error:
-        error.close()
-        return error.code, None, None
-    except (OSError, http.client.HTTPException, ValueError):
-        raise Failed(unreachable) from None
+    """``(status, headers, result of read(response))``; ``Failed(unreachable)`` when no answer came.
+
+    A send that fails before any answer is sent again, the same request with its body from the start, up to
+    ``ATTEMPTS`` sends. An answer (any status), a ``ValueError`` or a failure while ``read`` runs is not: a read
+    may already have written part of a body somewhere.
+    """
+    body = request.data if hasattr(request.data, "seek") else None
+    start = body.tell() if body is not None else None
+    for attempt in range(ATTEMPTS):
+        if attempt:
+            time.sleep(RETRY_WAIT[attempt - 1])
+            if body is not None:
+                body.seek(start)
+        try:
+            response = _OPENER.open(request, timeout=TIMEOUT)
+        except urllib.error.HTTPError as error:
+            error.close()
+            return error.code, None, None
+        except ValueError:
+            raise Failed(unreachable) from None
+        except (OSError, http.client.HTTPException):
+            continue
+        try:
+            with response:
+                return response.status, response.headers, read(response) if read else None
+        except (OSError, http.client.HTTPException, ValueError):
+            raise Failed(unreachable) from None
+    raise Failed(unreachable) from None
 
 
 def _store_status(status):
