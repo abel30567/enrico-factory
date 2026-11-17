@@ -55,6 +55,15 @@ def real(argv):
     return [os.path.realpath(arg) if os.path.isabs(arg) else arg for arg in argv]
 
 
+def started_with(env):
+    """``os.environ`` of the fake's interpreter when it is started with exactly ``env``: ``env`` plus what the
+    interpreter or the OS adds itself (PEP 538 sets `LC_CTYPE` where `LANG` is no locale; macOS sets
+    `__CF_USER_TEXT_ENCODING`), as in tests/test_analysis.py."""
+    done = subprocess.run([sys.executable, "-c", "import json, os; print(json.dumps(dict(os.environ)))"],
+                          env=env, capture_output=True, text=True, timeout=60, check=True)
+    return json.loads(done.stdout)
+
+
 def free_port():
     """A loopback port nothing listens on."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -215,8 +224,8 @@ class Fake(PadCase):
             "-vf", "format=rgb24,scale=4:5,pad=6:8:1:1:color=0xD3D3D3",
             "-frames:v", "1", os.path.join(call["out"], "pad.png")]))
         self.assertEqual(seen["input_sha256"], sha(PNG))
-        self.assertEqual(dict(seen["env"], HOME=os.path.realpath(seen["env"]["HOME"])),
-                         {"HOME": os.path.join(seen["cwd"], "home"), "LANG": "C.UTF-8", "PATH": self.path})
+        given = {"HOME": os.path.join(seen["cwd"], "home"), "LANG": "C.UTF-8", "PATH": self.path}
+        self.assertEqual(dict(seen["env"], HOME=os.path.realpath(seen["env"]["HOME"])), started_with(given))
         self.assertFalse(os.path.exists(seen["cwd"]))
 
     def test_jpeg_clean(self):
