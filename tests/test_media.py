@@ -64,10 +64,13 @@ def free_port():
 class FakeStore:
     """An S3 object store on 127.0.0.1. ``status[method] = (code, body)`` makes it answer that instead;
     ``public[sha256]`` is served on the public path instead of the object (None: a 404). With ``agent`` set,
-    the public path answers 403 to any other `User-Agent`, as a provider that refuses a client's signature."""
+    the public path answers 403 to any other `User-Agent`, as a provider that refuses a client's signature.
+    ``drop[method] = n`` closes the connection of the next ``n`` such requests with no answer; a method in ``cut``
+    is answered with one chunk of the whole body announced and half of it sent before the connection closes."""
 
     def __init__(self, test):
         self.objects, self.public, self.status, self.requests = {}, {}, {}, []
+        self.drop, self.cut = {}, set()
         self.location = self.agent = None
         store = self
 
@@ -99,6 +102,10 @@ class FakeStore:
         headers = {k.lower(): v for k, v in h.headers.items()}
         self.requests.append({"method": method, "path": h.path, "headers": headers, "body": body})
         name = h.path.rsplit("/", 1)[-1]
+        if self.drop.get(method, 0) > 0:
+            self.drop[method] -= 1
+            h.close_connection = True
+            return None
         if method in self.status:
             code, payload = self.status[method]
             extra = {"Location": self.location} if self.location and 300 <= code < 400 else {}
@@ -121,6 +128,12 @@ class FakeStore:
 
     def reply(self, h, method, code, payload, extra=None):
         h.send_response(code)
+        if method in self.cut:
+            h.send_header("Transfer-Encoding", "chunked")
+            h.end_headers()
+            h.wfile.write(b"%x\r\n" % len(payload) + payload[:len(payload) // 2])
+            h.close_connection = True
+            return
         h.send_header("Content-Length", str(len(payload)))
         for name, text in (extra or {}).items():
             h.send_header(name, text)
@@ -151,9 +164,9 @@ class MediaTest(unittest.TestCase):
         self.values = {"MEDIA_STORE": self.store.url("/b"), "MEDIA_PUBLIC_BASE": self.store.url("/pub"),
                        "SECRETS_DIR": str(self.secrets)}
         self.write_settings()
-        patcher = mock.patch.dict(os.environ, {"FACTORY_NOW": NOW})
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for patcher in (mock.patch.dict(os.environ, {"FACTORY_NOW": NOW}), mock.patch.object(media, "RETRY_WAIT", (0, 0))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
     def write_key(self, text, mode=0o600):
         self.key.write_text(text, encoding="utf-8")
@@ -477,6 +490,59 @@ class B8StoreAnswers(MediaTest):
         self.assertEqual(self.put(self.file())[0], 0)
         self.assertEqual(self.store.methods(), ["HEAD", "PUT", "GET"])
         self.assertEqual(self.rows(), HEADER + f"a\t{sha(PNG)}\t{len(PNG)}\ttest\n")
+
+
+class B14SendAgain(MediaTest):
+    """A request no answer came to is sent again, unchanged, up to three sends; an answer or a cut read is not."""
+
+    def test_defect_store_drops_the_first_put(self):
+        self.store.drop = {"PUT": 1}
+        result = media.put(self.values, self.key, self.file())
+        self.assertEqual(result["sha256"], sha(PNG))
+        self.assertEqual(self.store.objects, {sha(PNG): PNG})
+        self.assertEqual(self.store.methods(), ["HEAD", "PUT", "PUT", "GET"])
+        first, second = self.store.requests[1:3]
+        self.assertEqual(first, second)
+        self.assertEqual((second["headers"]["x-amz-date"], second["body"]), ("20261102T090000Z", PNG))
+
+    def test_defect_store_drops_every_connection(self):
+        self.store.drop = {"HEAD": 99}
+        with self.assertRaises(media.Failed) as raised:
+            media.put(self.values, self.key, self.file())
+        self.assertEqual(str(raised.exception), "store unreachable")
+        self.assertEqual(self.store.methods(), ["HEAD", "HEAD", "HEAD"])
+        self.assertEqual(self.store.objects, {})
+
+    def test_defect_waits_before_each_new_send(self):
+        self.store.drop = {"GET": 99}
+        self.store.objects[sha(PNG)] = PNG
+        with mock.patch.object(media, "RETRY_WAIT", (2, 8)), mock.patch.object(media.time, "sleep") as sleep:
+            with self.assertRaisesRegex(media.Failed, "^public link unreachable$"):
+                media.check(self.values, sha(PNG), len(PNG))
+        self.assertEqual(sleep.call_args_list, [mock.call(2), mock.call(8)])
+        self.assertEqual(self.store.methods(), ["GET", "GET", "GET"])
+
+    def test_twin_an_answer_is_not_sent_again(self):
+        self.store.status = {"PUT": (500, b"")}
+        self.assert_failed(self.put(self.file()), "store answered 500")
+        self.assertEqual(self.store.methods(), ["HEAD", "PUT"])
+
+    def test_twin_a_body_cut_mid_read_is_not_sent_again(self):
+        self.store.objects[sha(PNG)] = PNG
+        self.store.cut = {"GET"}
+        with self.assertRaises(media.Failed) as raised:
+            media.fetch(self.values, sha(PNG), len(PNG), self.files / "got")
+        self.assertEqual(str(raised.exception), media.LINK_UNREACHABLE)
+        self.assertEqual(self.store.methods(), ["GET"])
+        self.assertEqual(list(self.files.iterdir()), [])
+
+    def test_twin_a_clean_store_sees_each_request_once(self):
+        path = self.file()
+        self.assertEqual(self.put(path)[0], 0)
+        self.assertEqual(self.store.methods(), ["HEAD", "PUT", "GET"])
+        self.store.requests.clear()
+        self.assertEqual(self.put(path)[0], 0)
+        self.assertEqual(self.store.methods(), ["HEAD", "GET"])
 
 
 class B9DryRun(MediaTest):
