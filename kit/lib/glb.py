@@ -79,7 +79,7 @@ def scale(path, factor):
         data = handle.read()
     try:
         scaled = _scale(data, factor)
-    except (KeyError, IndexError, TypeError, struct.error) as error:
+    except (AttributeError, KeyError, IndexError, TypeError, struct.error) as error:
         raise ValueError("not scalable") from error
     with open(path, "wb") as handle:
         handle.write(scaled)
