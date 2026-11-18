@@ -54,7 +54,8 @@ your result.
   a picture of the asset alone, with no card frame, name plate or text: the job sends only that one).
 - The job writes `assets/state.json` (`triangles`, `materials`, `textures`, `height_m`, `skeleton`)
   and `assets/manifest.json`. Build the asset to the size of its canon sheet; a character has a
-  skeleton.
+  skeleton. The job scales the model to the asset's `height` row of `bible/canon/ledger.tsv`, and the
+  scene script places the model without scaling it again.
 - You do not run the engine. The stage's gated job runs the stage's scene script and commits the
   other files of the stage beside it; you never write them.
 - On a relaunch, read what the job committed and every `[LINT]` blocker before you change your

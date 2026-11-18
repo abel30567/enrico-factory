@@ -64,10 +64,12 @@ NO_STATE = "asset state is not an input"
 NOT_A_GLB = "output is not a GLB the kit can read"
 FRAMED = "reference is framed like a card scan"
 NOT_DECODED = "reference image could not be decoded"
+NO_HEIGHT = "character has no height row in bible/canon/ledger.tsv"
+NOT_SCALABLE = "model could not be scaled to the canon height"
 REASONS = (NOT_A_REQUEST, NO_REFERENCE, NOT_IN_MANIFEST, REFUSED, UNREACHABLE, VENDOR_FAILED, TOO_SLOW,
            DOWNLOAD_FAILED, NOT_STORED, NOT_A_GLB)
 RIG_REASONS = REASONS + (NOT_IN_STORE, TOO_LARGE, NO_MODEL, NO_STATE)
-MODEL_REASONS = REASONS + (FRAMED, NOT_DECODED)
+MODEL_REASONS = REASONS + (FRAMED, NOT_DECODED, NO_HEIGHT, NOT_SCALABLE)
 ASSET_PREFIX = "asset:"
 
 

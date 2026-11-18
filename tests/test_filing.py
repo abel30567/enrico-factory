@@ -733,13 +733,15 @@ class OperatorBodies(Case):
                          "Do the stage assets for unit wren.\n\n"
                          "Tool: model3d. Expected cost: usd 0.3, compute_min 1.\n"
                          "Kind: character. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
-                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/characters/wren.md.\n\n"
+                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/characters/wren.md, "
+                         "bible/canon/ledger.tsv.\n\n"
                          "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
         self.assertEqual(self.body(state, "assets", "saltmarsh"),
                          "Do the stage assets for unit saltmarsh.\n\n"
                          "Tool: model3d. Expected cost: usd 0.3, compute_min 1.\n"
                          "Kind: set. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
-                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/places/saltmarsh.md.\n\n"
+                         "Inputs, in this order: the request, media/manifest.tsv, bible/canon/places/saltmarsh.md, "
+                         "bible/canon/ledger.tsv.\n\n"
                          "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
         self.git("rm", "-q", "bible/canon/characters/wren.md")
         self.git("commit", "-q", "-m", "no sheet")
