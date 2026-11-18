@@ -601,5 +601,45 @@ class B9Interface(unittest.TestCase):
         self.assertIsNotNone(ec2.Node.now().tzinfo)
 
 
+
+class B10CheckFailure(unittest.TestCase):
+    """``failure["check"]`` (#606): the text of a check of the node's answer that failed on this machine. The job
+    runs on the harness ``Job`` of tests/test_renderjob.py, imported here when a test starts (it imports this file)."""
+
+    def setUp(self):
+        import test_renderjob
+        self.renderjob = test_renderjob
+        self.job = test_renderjob.Job()
+        self.job.addCleanup = self.addCleanup
+        self.job.setUp()
+
+    def test_a_scene_json_that_scenestate_refuses(self):
+        scene = json.loads(dict(self.job.members)["scene.json"].decode("utf-8"))
+        del scene["camera"]
+        self.job.members = [(n, d) if n != "scene.json" else (n, json.dumps(scene).encode())
+                            for n, d in self.job.members]
+        check = "the node's answer failed a check: no actor labelled camera"
+        _, driver = self.job.assert_failed(check)
+        self.assertEqual(driver.failure["check"], check)
+        self.assertEqual((driver.failure["step"], driver.failure["tail"]), (None, ["NODE 12:01:00 result ok"]))
+
+    def test_a_clean_answer_leaves_no_failure(self):
+        _, driver, error, billed, _ = self.job.session_run()
+        self.assertIsNone(error)
+        self.assertEqual(billed, BILLED)
+        self.assertIsNone(driver.failure)
+        self.assertTrue(os.path.isfile(os.path.join(self.job.out, "state.json")))
+
+    def test_a_failed_node_step_is_no_check(self):
+        self.job.members = None
+        self.job.status = b'{"result": "failed", "step": "rebuild"}\n'
+        self.job.log = b"NODE 12:01:00 step rebuild rc=139 seconds=12\nNODE 12:01:00 result failed step=rebuild\n"
+        _, driver = self.job.assert_failed(self.renderjob.renderjob.JOB_FAILED)
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "rebuild",
+                                          "tail": ["NODE 12:01:00 step rebuild rc=139 seconds=12",
+                                                   "NODE 12:01:00 result failed step=rebuild"],
+                                          "check": None})
+
+
 if __name__ == "__main__":
     unittest.main()
