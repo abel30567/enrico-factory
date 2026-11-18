@@ -27,7 +27,7 @@ import re
 from decimal import Decimal
 from pathlib import Path
 
-from ..lint import Finding, files, job_files, link_targets, markdown_lines, read_json, read_text, read_tsv
+from ..lint import Finding, LintError, files, job_files, link_targets, markdown_lines, read_json, read_text, read_tsv
 from .references import MEDIA
 from .structure import SHEET
 
@@ -173,7 +173,8 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
 
 def _superseded(root: Path, asset: str, present: set[str]) -> bool:
     """Whether the staged state of ``asset`` was made by a job other than its job file now; False when the
-    manifest is missing or has no string `job`, or the job file is missing or not a valid job."""
+    manifest is missing, unreadable or has no string `job`, or the job file is missing, unreadable or not a
+    valid job."""
     # Imported here: cmd_gate imports registry, which imports this module.
     from .. import cmd_gate
 
@@ -183,7 +184,7 @@ def _superseded(root: Path, asset: str, present: set[str]) -> bool:
     try:
         staged = json.loads(read_text(root, manifest))
         _, digest = cmd_gate._parsed(read_text(root, job_file), job_file)
-    except (ValueError, cmd_gate.Refused):
+    except (LintError, ValueError, cmd_gate.Refused):
         return False
     return isinstance(staged, dict) and isinstance(staged.get("job"), str) and staged["job"] != digest
 

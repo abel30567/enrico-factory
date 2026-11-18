@@ -367,6 +367,8 @@ class Assets(LintCase):
             "job file not a job": {"job_file": dict(JOB_BODY, ticket="7")},
             "job file missing a key": {"job_file": {k: v for k, v in JOB_BODY.items() if k != "caller"}},
             "job file bad attempt": {"job_file": dict(JOB_BODY, attempt=1)},
+            "manifest not UTF-8": {"job": (b"\xff\xfe",)},
+            "job file not UTF-8": {"job_file": b"\xff\xfe"},
         }
         for name, args in cases.items():
             with self.subTest(name):
