@@ -1,5 +1,6 @@
 """assets: rules 1 to 8."""
 
+import hashlib
 import json
 import sys
 import unittest
@@ -24,6 +25,17 @@ CLEAN = json.loads((FIX / "clean" / STATE).read_text(encoding="utf-8"))
 MEDIA = "media/manifest.tsv"
 AMA_SHEET = "bible/style/characters/ama.md"
 HARBOUR_SHEET = "bible/style/places/harbour.md"
+STAGED = "production/assets/ama/assets/manifest.json"
+JOB = "jobs/production/assets/ama/assets/requests/model3d.json"
+JOB_BODY = {"ticket": 7, "tool": "model3d", "caller": "asset-builder", "expected": {"usd": 0.4, "compute_min": 3},
+            "inputs": [{"path": "production/assets/ama/assets/requests/model3d.json", "sha256": "0" * 64},
+                       {"path": LEDGER, "sha256": "1" * 64}]}
+# The sha256 of the canonical JSON, as cmd_gate._parsed hashes a job file.
+JOB_HASH = hashlib.sha256(json.dumps(JOB_BODY, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+OLD_HASH = "a" * 64
+STALE = {"triangles": 245482, "height_m": 1.0}
+STALE_FOUND = [(STATE, 1, "budgets", "245482 triangles, over the character budget of 100000"),
+               (STATE, 1, "scale", "height_m 1 is not within 10% of 1.57 m (bible/canon/ledger.tsv:2)")]
 
 
 def request(asset, *refs, **changes):
@@ -326,6 +338,57 @@ class Assets(LintCase):
             "request for ama is not for asset harbour",
             "refs[0] media:ama-ref is cited by bible/style/characters/ama.md, not by bible/style/places/harbour.md"])
         self.assertEqual(self.requests(*files), found)
+
+    def staged(self, job=OLD_HASH, job_file=JOB_BODY, drop=(), files=(), **changes):
+        """`found` on a stale state of ama (canon height 1.57 m) with ``changes`` over it, its manifest naming
+        ``job`` (or the manifest's text when ``job`` is ``(text,)``), the job file ``job_file`` (a dict, else
+        its text) and ``files`` over them, less ``drop``."""
+        tree = {LEDGER: HEADER + "ama\theight\t1.57 m\tinvented\t\n", STATE: state(**dict(STALE, **changes)),
+                STAGED: job[0] if isinstance(job, tuple) else json.dumps({"job": job}) + "\n",
+                JOB: json.dumps(job_file, indent=1) + "\n" if isinstance(job_file, dict) else job_file}
+        return self.found(dict(tree, **dict(files)), drop=drop)
+
+    def test_superseded_1_other_job(self):
+        self.assertEqual(self.staged(), [])
+        self.assertEqual(self.staged(job=JOB_HASH), STALE_FOUND)
+        self.assertEqual(self.staged(job_file=dict(JOB_BODY, attempt=2)), [])
+
+    def test_superseded_2_no_job_file(self):
+        self.assertEqual(self.staged(drop=[JOB]), STALE_FOUND)
+        self.assertEqual(self.staged(drop=[STAGED]), STALE_FOUND)
+
+    def test_superseded_3_malformed(self):
+        cases = {
+            "manifest not JSON": {"job": ("{\n",)},
+            "manifest without job": {"job": ("{}\n",)},
+            "manifest job not a string": {"job": 7},
+            "manifest not an object": {"job": (json.dumps([OLD_HASH]) + "\n",)},
+            "job file not JSON": {"job_file": "{\n"},
+            "job file not a job": {"job_file": dict(JOB_BODY, ticket="7")},
+            "job file missing a key": {"job_file": {k: v for k, v in JOB_BODY.items() if k != "caller"}},
+            "job file bad attempt": {"job_file": dict(JOB_BODY, attempt=1)},
+            "manifest not UTF-8": {"job": (b"\xff\xfe",)},
+            "job file not UTF-8": {"job_file": b"\xff\xfe"},
+        }
+        for name, args in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.staged(**args), STALE_FOUND)
+
+    def test_superseded_4_shape(self):
+        self.assertEqual(self.staged(triangles=...), [])
+        self.assertEqual(self.staged(job=JOB_HASH, triangles=...), [(STATE, 1, "shape", "triangles is missing")])
+
+    def test_superseded_5_rules_7_and_8_run(self):
+        rel, body = request("ama", "media:ama-sketch")
+        finding = (rel, 1, "requests", "refs[0] media:ama-sketch has no row in media/manifest.tsv")
+        files = dict(SUBJECTS, **{rel: body})
+        self.assertEqual(self.staged(files=files), [finding])
+        self.assertEqual(self.staged(job=JOB_HASH, files=files), [finding] + STALE_FOUND)
+        self.assertEqual(self.staged(files=dict(files, **{SCENE: SCRIPT})), [finding])
+
+    def test_superseded_6_hash_is_cmd_gates(self):
+        from kit.lib import cmd_gate
+        self.assertEqual(cmd_gate._parsed(json.dumps(JOB_BODY, indent=1), JOB)[1], JOB_HASH)
 
 
 if __name__ == "__main__":
