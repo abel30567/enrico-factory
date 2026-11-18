@@ -35,6 +35,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import cardscan, cmd_doctor, cmd_gate, cmd_run, glb, gitstate, resources, vendor  # noqa: E402
+from kit.lib.lints.assets import TRIANGLE_BUDGETS  # noqa: E402
+from kit.lib.tools import model3d  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_cardscan import card, figure  # noqa: E402
 from test_glb import Builder, make_glb, png  # noqa: E402
@@ -315,7 +317,7 @@ class Tools3dTest(unittest.TestCase):
         [post] = self.vendor.made("POST")
         self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
         self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}",
-                                                    "face_limit": 100000})
+                                                    "face_limit": 90000})
         self.assertEqual(post["headers"]["authorization"], f"Key {MODEL_KEY}")
         self.assertEqual([r["path"] for r in self.vendor.made()], [
             "/" + vendor.MODEL_PATH, REQUEST + "/status", REQUEST + "/status", REQUEST, "/files/model.glb"])
@@ -348,8 +350,8 @@ class Tools3dTest(unittest.TestCase):
                                  self.model_state(kind, model, height_m))
 
     def test_face_limit(self):
-        for kind, paths, limit in (("character", (vendor.MANIFEST, SHEET, LEDGER), 100000),
-                                   ("prop", (vendor.MANIFEST,), 20000)):
+        for kind, paths, limit in (("character", (vendor.MANIFEST, SHEET, LEDGER), 90000),
+                                   ("prop", (vendor.MANIFEST,), 18000)):
             with self.subTest(kind):
                 self.vendor.requests.clear()
                 job, digest = self.model_job(f"the lamp keeper as a {kind}", paths)
@@ -358,6 +360,13 @@ class Tools3dTest(unittest.TestCase):
                 self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
                 self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}",
                                                             "face_limit": limit})
+
+    def test_face_limit_below_every_budget(self):
+        self.assertEqual(model3d.FACE_LIMIT.keys(), TRIANGLE_BUDGETS.keys())
+        for kind, budget in TRIANGLE_BUDGETS.items():
+            with self.subTest(kind):
+                self.assertEqual(model3d.FACE_LIMIT[kind], budget * 9 // 10)
+                self.assertLess(model3d.FACE_LIMIT[kind], budget)
 
     def test_model_scaled_to_the_canon_height(self):
         self.assertEqual(glb.summary(RAW)["height_m"], 1.7)
