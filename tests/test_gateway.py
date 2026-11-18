@@ -305,7 +305,7 @@ class Behaviour1LaunchServer(unittest.TestCase):
     def test_defect_exactly_one_knowledge_server(self):
         w = gateway_world(self, self.fake)
         code, out, err = w.launch("writer", "3")
-        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual((code, err), (0, ""), out + err)
         self.assertEqual(markers.parse(w.posted("writer")[-1]["body"]).verb, "READY")
         servers = answers(w)["servers"]
         self.assertEqual(list(servers), ["knowledge"])
@@ -319,7 +319,7 @@ class Behaviour1LaunchServer(unittest.TestCase):
         with mock.patch.object(gateway, "start", wraps=gateway.start) as started, \
                 mock.patch.object(gateway, "_Server", side_effect=AssertionError("a port was opened")):
             code, out, err = w.launch("writer", "3")
-        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual((code, err), (0, ""), out + err)
         started.assert_not_called()
         self.assertEqual(json.loads((w.run_dir("writer-3-1") / "mcp.json").read_text()), {"mcpServers": {}})
         self.assertEqual(answers(w)["servers"], {})
@@ -581,7 +581,7 @@ class Behaviour10FermiDown(Base):
         self.fake.mode = "503"
         w = gateway_world(self, self.fake)
         code, out, err = w.launch("writer", "3")
-        self.assertEqual((code, err), (0, ""), out)
+        self.assertEqual((code, err), (0, ""), out + err)
         self.assertEqual(markers.parse(w.posted("writer")[-1]["body"]).verb, "READY")
         answer = answers(w)["answers"]["knowledge"][-1]["body"]["result"]
         self.assertEqual(answer, {"content": [{"type": "text", "text": gateway.UNREACHABLE}], "isError": True})
@@ -594,13 +594,15 @@ class Behaviour12Stop(unittest.TestCase):
 
     def test_twin_stopped_after_supervise(self):
         w = gateway_world(self, self.fake)
-        self.assertEqual(w.launch("writer", "3")[0], 0)
+        code, out, err = w.launch("writer", "3")
+        self.assertEqual(code, 0, out + err)
         refused(self, mcp_port(w))
 
     def test_defect_harness_exits_non_zero(self):
         w = gateway_world(self, self.fake)
         w.steps(ready(exit=1))
-        self.assertEqual(w.launch("writer", "3")[0], 3)
+        code, out, err = w.launch("writer", "3")
+        self.assertEqual(code, 3, out + err)
         refused(self, mcp_port(w))
 
     def test_defect_timed_out(self):

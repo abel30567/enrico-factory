@@ -31,6 +31,7 @@ SLOTS = ("MAKER", "CHECKER", "OTHER")
 ENV_COPIED = ("PATH", "LANG", "LC_ALL", "TMPDIR", "TERM", "HOME")
 # Never move a shell command to the background: a later turn would replace the result envelope.
 NO_BACKGROUND_TASKS = "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"
+VERSION_TIMEOUT_S = 60
 
 _STRING = {"type": "string"}
 _STRINGS = {"type": "array", "items": _STRING}
@@ -167,7 +168,7 @@ def version(settings, run=subprocess.run):
     """The first line the harness prints for ``--version``, trimmed."""
     try:
         done = run([settings.get("HARNESS", ""), "--version"], capture_output=True, text=True,
-                   timeout=20)
+                   timeout=VERSION_TIMEOUT_S)
     except (OSError, ValueError, subprocess.TimeoutExpired):
         raise HarnessError("harness version: could not run") from None
     if done.returncode != 0:
