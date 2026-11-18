@@ -16,7 +16,8 @@ A driver class has:
 - ``start()``: start a node. It raises ``Unavailable`` only when no node could be had and nothing is billed;
 - ``run(job)``: run the job on it, ``job`` being ``{"hash", "inputs", "out"}`` of the call, writing every
   output directly in ``out``;
-- ``failure`` (optional): after ``run`` raised, None or ``{"log", "step", "tail"}`` (`kit/lib/ec2.py`). The tool
+- ``failure`` (optional): after ``run`` raised, None or ``{"log", "step", "tail", "check"}`` (`kit/lib/ec2.py`),
+  ``check`` the text of a check of the node's answer that failed on this machine, else None. The tool
   `render` writes it to `record/node-failure.json` of the job and names the step in its reason;
 - ``stop()``: stop the node and return ``{"usd", "compute_min"}``, what was billed since ``start``.
 """
