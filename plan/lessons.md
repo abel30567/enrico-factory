@@ -91,3 +91,7 @@
   x86_64, and the venv's arm64-only PIL failed to import. Before retrying a failure that does not reproduce,
   log the failing call's stderr in the same process chain, and compare `arch` and the environment. A machine
   wrapper around a native venv pins `arch -arm64`.
+- **Never wrap a hand tick in a timeout shorter than a train** (2026-11-18). A wake ran
+  `timeout 900 orch tick --apply`; the tick entered the merge gate's train for #610 and #611, whose
+  GATES take 30+ minutes under load, and the timeout killed gates.sh mid-run. Nothing merged and the
+  heartbeat had to start the train again. Run the hand tick without `timeout`, or in the background.
