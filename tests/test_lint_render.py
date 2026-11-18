@@ -14,6 +14,8 @@ FIX = ROOT / "tests" / "fixtures" / "lint_render"
 CLEAN = FIX / "clean"
 SHOTS = "production/ep01/shots.json"
 R1, R2 = "production/ep01/Q1-1/render/render.json", "production/ep01/Q1-2/render/render.json"
+ENV = "production.env"
+EMPTY, NOT_A_NUMBER = "setting RERENDER_MIN is empty", "setting RERENDER_MIN is not a number"
 NO_ROW = f"shot Q1-1 has no row {{shot, first, last}} in {SHOTS}"
 DEFECTS = {
     "short_count": ("count", "count 11, the shot has 12 frames (0 to 11)"),
@@ -153,6 +155,56 @@ class Render(LintCase):
         self.assertPasses({R1: render(rerender=rerender(scores=[9.97, 9.9, 9.96]))})
         self.assertEqual(self.findings({R1: render(rerender=rerender(scores=[9.97, 9.89, 9.96]))}),
                          [(R1, 1, "rerender", "re-render of frame 6 scores 9.89, under 9.9")])
+
+    # Behaviour 9: the tolerance is the production's setting RERENDER_MIN, not a constant
+    def test_clean_fixtures_hold_the_tolerance(self):
+        for case in ("clean", *DEFECTS):
+            with self.subTest(case=case):
+                self.assertEqual((FIX / case / ENV).read_text(encoding="utf-8"), "RERENDER_MIN=9.9\n")
+
+    def test_tolerance_read_from_the_setting(self):
+        files = {ENV: "RERENDER_MIN=0.998\n", R1: render(rerender=rerender(scores=[0.9993, 0.997, 0.9999]))}
+        self.assertEqual(self.findings(files),
+                         [(R1, 1, "rerender", "re-render of frame 6 scores 0.997, under 0.998")])
+
+    def test_clean_on_the_zero_to_one_scale_passes(self):
+        self.assertPasses({ENV: "RERENDER_MIN=0.998\n",
+                           R1: render(rerender=rerender(scores=[0.999301, 0.999327, 1]))})
+
+    def test_tolerance_shown_as_written(self):
+        files = {ENV: "RERENDER_MIN = 9.90  # JOD\n", R1: render(rerender=rerender(scores=[9.97, 9.89, 9.96]))}
+        self.assertEqual(self.findings(files),
+                         [(R1, 1, "rerender", "re-render of frame 6 scores 9.89, under 9.90")])
+
+    def test_local_settings_file_wins(self):
+        files = {"production.local.env": "RERENDER_MIN=0.998\n",
+                 R1: render(rerender=rerender(scores=[0.9993, 0.997, 0.9999]))}
+        self.assertEqual(self.findings(files),
+                         [(R1, 1, "rerender", "re-render of frame 6 scores 0.997, under 0.998")])
+
+    def test_tolerance_empty_gives_one_finding_per_render_file(self):
+        low = rerender(scores=[0.9993, 0.997, 0.9999])
+        both = {R1: render(rerender=low), R2: render(count=24, rerender=low)}
+        expected = [(R1, 1, "rerender", EMPTY), (R2, 1, "rerender", EMPTY)]
+        for name, env in (("no line", "PERCEPTUAL_METRIC=dreamsim\n"), ("empty", "RERENDER_MIN=\n"),
+                          ("blank", "RERENDER_MIN=  # unset\n")):
+            with self.subTest(name):
+                self.assertEqual(self.findings({ENV: env, **both}), expected)
+        with self.subTest("no settings file"):
+            self.assertEqual(self.findings(both, drop=[ENV]), expected)
+
+    def test_tolerance_not_a_number(self):
+        scores = render(rerender=rerender(scores=[0.9993, 0.997, 0.9999]))
+        for value in ("high", "nan", "NaN", "9.9.9", "0,998"):
+            with self.subTest(value):
+                self.assertEqual(self.findings({ENV: f"RERENDER_MIN={value}\n", R1: scores}),
+                                 [(R1, 1, "rerender", NOT_A_NUMBER)])
+
+    def test_unusable_tolerance_not_reported_without_a_valid_rerender(self):
+        for env in ("RERENDER_MIN=\n", "RERENDER_MIN=high\n"):
+            with self.subTest(env):
+                self.assertEqual(self.findings({ENV: env, R1: render(rerender=None)}),
+                                 [(R1, 1, "render", "rerender is missing or not {frames, metric, scores}")])
 
     # Behaviour 6
     def test_lighting_and_asset_renders_are_not_read(self):
