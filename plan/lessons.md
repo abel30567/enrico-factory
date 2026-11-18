@@ -95,3 +95,9 @@
   `timeout 900 orch tick --apply`; the tick entered the merge gate's train for #610 and #611, whose
   GATES take 30+ minutes under load, and the timeout killed gates.sh mid-run. Nothing merged and the
   heartbeat had to start the train again. Run the hand tick without `timeout`, or in the background.
+- **A hand fix on a production pull also moves the local branch** (2026-11-18). The factory tick
+  resolves a pull's `headRefName` in the production checkout, where a local branch held by the
+  run worktree wins over `origin/`. A wake pushed a fix to two sample pulls from a scratch worktree.
+  The lint then reviewed the stale local head and posted FAIL again. After pushing, fast-forward the
+  run worktree that holds the branch (`git merge --ff-only origin/<branch>`), or commit from that
+  worktree.
