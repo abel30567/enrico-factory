@@ -123,10 +123,10 @@ class World:
             code = cmd_gate.main([path, "--pull", str(PULL), "--root", str(self.root), "--apply"])
         return code, out.getvalue(), err.getvalue()
 
-    def ran(self, job, verdict):
+    def ran(self, job, verdict, ticket=TICKET):
         """A ``run`` row of ``job`` appended on `trunk`, as ``factory run`` writes it."""
         text = gitstate.show(self.root, "trunk", ledger.PATH) or ledger.HEADER + "\n"
-        row = {"time": NOW, "kind": "run", "hash": digest(job), "ticket": TICKET, "episode": "ep01",
+        row = {"time": NOW, "kind": "run", "hash": digest(job), "ticket": ticket, "episode": "ep01",
                "tool": "renderbox", "usd": "1", "compute_min": "5", "caller": "fetcher", "verdict": verdict,
                "cap": "-"}
         self.on_trunk(ledger.PATH, text + ledger.line(row) + "\n")
@@ -441,6 +441,40 @@ class PlatformTest(unittest.TestCase):
         w.on_branch({stray: "{}\n"})
         self.assertEqual(self.rule7(w, "telemetry-puller"),
                          f"outside the writes of telemetry-puller: {stray}; outside room production: {stray}")
+
+    def retried(self, *runs):
+        """The world with the upload request on pull #4, its job file naming job A and an earlier job B of the
+        same request, a ``DONE`` run row of A, the run rows ``runs`` (verdict, ticket) of B on `trunk`, and a
+        branch manifest that adds a row of A and a row of B."""
+        w = self.world()
+        request = "distribution/ep01/tiktok/requests/upload.json"
+        earlier = job_for(request=request, text=self.UPLOAD, caller="channel-tiktok", expected={"compute_min": 4, "usd": 1})
+        made = job_for(request=request, text=self.UPLOAD, caller="channel-tiktok")
+        for verdict, ticket in runs:
+            w.ran(earlier, verdict, ticket)
+        w.ran(made, "DONE")
+        base = gitstate.show(w.root, "trunk", gitstate.MANIFEST)
+        manifest = (base or lockrules.MANIFEST_HEADER + "\n") + "".join(
+            f"media:{name}\t{sha(name)}\t{len(name)}\tjob {digest(job)}\n" for name, job in (("b1", earlier), ("a1", made)))
+        w.on_branch({request: self.UPLOAD, "jobs/" + request: json.dumps(made), gitstate.MANIFEST: manifest})
+        return w
+
+    def test_rule_7_takes_the_manifest_rows_of_a_retried_request(self):
+        self.assertEqual(self.rule7(self.retried(("DONE", TICKET)), "channel-tiktok"), "")
+
+    def assert_manifest_refused(self, *runs):
+        manifest = gitstate.MANIFEST
+        self.assertEqual(self.rule7(self.retried(*runs), "channel-tiktok"),
+                         f"outside the writes of channel-tiktok: {manifest}; outside room production: {manifest}")
+
+    def test_rule_7_retried_seeded_other_ticket(self):
+        self.assert_manifest_refused(("DONE", TICKET + 1))
+
+    def test_rule_7_retried_seeded_last_verdict_not_done(self):
+        self.assert_manifest_refused(("DONE", TICKET), ("FAILED", TICKET))
+
+    def test_rule_7_retried_seeded_no_run(self):
+        self.assert_manifest_refused()
 
     def test_the_tick_launches_the_pulls_operator(self):
         for platform in ("tiktok", "youtube"):

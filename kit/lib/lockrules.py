@@ -325,7 +325,8 @@ def _amendment(entry, pull, root):
 
 def operator_paths(p, state, ticket, pull, root) -> set:
     """The paths rule 7 takes from the operator and from ``factory run``: the job file of each ``DONE`` job,
-    its request when it is inside the stage's ``paths``, the manifest when it keeps every row of the merge base and adds only rows of those jobs,
+    its request when it is inside the stage's ``paths``, the manifest when it keeps every row of the merge base and adds only rows of those jobs
+    or of earlier jobs of the ticket that ran ``DONE`` (``_done_runs``),
     and each file of the tool's ``STAGE_FILES`` in the ticket's production directory, as ``factory run``
     commits it."""
     found = jobs.of(p, root, state, ticket, pull)
@@ -353,11 +354,24 @@ def operator_paths(p, state, ticket, pull, root) -> set:
     base_rows = set(base.splitlines()[1:]) if base is not None else set()
     head_rows = text.splitlines()[1:]
     added = [row for row in head_rows if row not in base_rows]
-    sources = {f"job {job['hash']}" for job in done}
+    sources = {f"job {job['hash']}" for job in done} | _done_runs(ticket, pull, root)
     if (base_rows <= set(head_rows) and added
             and all(len(row.split("\t")) == 4 and row.split("\t")[3] in sources for row in added)):
         accepted.add(gitstate.MANIFEST)
     return accepted
+
+
+def _done_runs(ticket, pull, root) -> set:
+    """The sources ``job <hash>`` of each job whose last ``run`` row in the base's ledger is ``DONE`` and for
+    the ticket: an earlier job of a retried request whose manifest row ``factory run`` added."""
+    text = gitstate.show(root, pull["base_ref"], ledger.PATH)
+    try:
+        rows = ledger.read(text) if text is not None else []
+    except ledger.LedgerError:
+        return set()
+    last = {row["hash"]: row for row in rows if row["kind"] == "run"}
+    return {f"job {digest}" for digest, row in last.items()
+            if row["verdict"] == "DONE" and row["ticket"] == str(ticket["number"])}
 
 
 def recorded_answers(ticket, pull, root) -> set:
