@@ -91,13 +91,25 @@ class ShippedLevelsTest(GoldenTest):
         self.assertNotIn("unreal", sys.modules)
         self.assertEqual(sorted(golden.UNITS), list(UNITS))
         for unit in UNITS:
-            self.assertFalse(golden.recorded(GOLDEN / unit), unit)
+            self.assertTrue(golden.recorded(GOLDEN / unit), unit)
         root = self.shipped()
         (root / "prop-drop" / "notes.txt").write_text("x\n", encoding="utf-8")
         self.assertEqual(golden.check(root), ["prop-drop/notes.txt is not a file of a golden level"])
         root = self.shipped()
         (root / "lit-render" / "scene.py").unlink()
         self.assertEqual(golden.check(root), ["lit-render/scene.py missing"])
+
+    def test_shipped_recordings(self):
+        root = self.shipped()
+        for unit in UNITS:
+            for path in (GOLDEN / unit).iterdir():
+                shutil.copy(path, root / unit / path.name)
+        self.assertEqual(golden.check(root), [])
+        for unit in UNITS:
+            with (root / unit / "state.json").open("a", encoding="utf-8") as state:
+                state.write("\n")
+        self.assertEqual(golden.check(root), [
+            f"{unit}/manifest.json does not record state.json at its sha256 and size" for unit in UNITS])
 
 
 class ScriptRulesTest(GoldenTest):

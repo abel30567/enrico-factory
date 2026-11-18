@@ -1,0 +1,85 @@
+{
+  "black": [],
+  "count": 24,
+  "fps": 24,
+  "frames": {
+    "first": 0,
+    "last": 23
+  },
+  "frames_sha256": [
+    "9881f7d78e8cdba868e884838adc533cb14842a24daf898b7b0a614da283fa4f",
+    "4cd8d1a2f10d413b4e297dc243d8362b640e71e5fe021470de78369aef199303",
+    "2d40834c65ccd58a1819f78e38829f3d0a56888304ea5e691a0d05f90e3b6553",
+    "5b55ff984c7ca5cf2d04d9305ed537c66fc697dbd2c7a59a6d9e70e99430f109",
+    "afdac4272bfb061cbc0a9f148c4efdc876efe291f27e991fa4e44bbba8a17d30",
+    "8745ba0196f8b22d081c6a99895e35af4a2ad805fcfe9a39a552cdf36ab12e65",
+    "9a7a87014aa3c8eda15fa5fef6b7573c161ab84a6243755d30968fcfb60dd0f1",
+    "3e16848c405a96125aa9aa490ef57eb51b9cdae3ffb80b61945242dc5fd61a57",
+    "d91d928898d8196661eb92f9ef2b7478ba6ed3562266654ef479c9ec197a867f",
+    "8a84e72c665b622bdbeedecb5bbe41267b9866e5f4985557201844bc54c3b701",
+    "5e91f8cf9a2c9f338f794494370f6a2a9a01befe55b20e30c113004f4a69c060",
+    "8294c83113f1060fda506013a1c6ba7552c6bbbd5ad81df41bcf1d74bbbcac07",
+    "fc8e33a25548a91097364634bd8bb2e6048b5ac3017304a6eb7dee01a30509cd",
+    "b4a501edf4921a8de50a5f8ac4e0376f53d1cf89a73e5fb13b9bae1523e6001d",
+    "1eab9297971437caa901535db2419e36da6361d6a0152b70836838a26b532c3e",
+    "2fc9de9989381ca5ac3390b7f423521732c8630a90179f4779546c71238b43c4",
+    "67cec67c78b43cee3ba8ee43b350bab2a64bacb303a63d3d21cb8a0fec89e8b2",
+    "0efa23c3e8f24802dd1f4bd049e719bc691d646270effbdb9956f269c354472b",
+    "9671ddc3e73c3136c81c17e14d23582d01b2a739a4d0a185e909f0b127a2e066",
+    "c0261887f4f52695dbf238dfb081fcf26411583199663f793bbdd6bd4804d2a9",
+    "f5d13a31faa44c6488748766bb8eb2d2872ac0725f73c85af6368070ebcb39c6",
+    "cfe8a2de96bb2f6a0f860962231e8f3b311fe16370b10802c7f973c9e4d23344",
+    "54d58fe17bf92d74738dfc30dd3708d01a2cd0ee85accf204e971fc856c00576",
+    "6b8c0f4932606d6c7183ba5a77fd3a93b9c6badda112450ad0f1c4b189924e0a"
+  ],
+  "height": 360,
+  "nan": [],
+  "rerender": {
+    "frames": [
+      0,
+      11,
+      23
+    ],
+    "metric": "metric-perceptual-logged",
+    "scores": [
+      0.999999,
+      0.999489,
+      0.999301
+    ]
+  },
+  "samples": [
+    {
+      "clipped": 0.0,
+      "color": [
+        0.216236,
+        0.191823,
+        0.180041
+      ],
+      "frame": 0,
+      "luma": 0.196163
+    },
+    {
+      "clipped": 0.0,
+      "color": [
+        0.216414,
+        0.192013,
+        0.180231
+      ],
+      "frame": 11,
+      "luma": 0.19635
+    },
+    {
+      "clipped": 0.0,
+      "color": [
+        0.21629,
+        0.191892,
+        0.180116
+      ],
+      "frame": 23,
+      "luma": 0.196229
+    }
+  ],
+  "sequence_sha256": "3c23cc328c537f9b58b001f7a25b8c3105759edaf601ac78ab877810b099e6cc",
+  "text": [],
+  "width": 640
+}
