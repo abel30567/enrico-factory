@@ -227,4 +227,4 @@ def rerender(pairs, command: list[str], run=subprocess.run) -> dict:
             raise FramesError(f"the metric printed no number on its last line on {what}")
         frames.append(frame)
         scores.append(float(printed[-1]))
-    return {"frames": frames, "metric": command[0], "scores": scores}
+    return {"frames": frames, "metric": os.path.basename(command[0]), "scores": scores}
