@@ -7,7 +7,8 @@
   ``jobs/`` followed by the request path, is.
 - A request is covered when its job file, read at the head, has the shape ``factory gate`` asks, names
   the pull's ticket and the operator as ``caller``, and its first input is the request with its hash at
-  the head.
+  the head. At a stage ``filing.operator_inputs`` lists for the ticket's unit, the paths of its inputs are
+  also that list, in that order; the hashes of the inputs after the request are not compared.
 - A job's gate state is None, ``PASS`` (counting, as ``factory run`` counts it) or ``STOP`` (the newest
   gate comment that covers it); its run state is None, ``DONE`` or ``FAILED`` (its last ``run`` row on the
   base).
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 import re
 
-from kit.lib import cmd_gate, cmd_run, frontmatter, gitstate, ledger, production, tickets
+from kit.lib import cmd_gate, cmd_run, filing, frontmatter, gitstate, ledger, production, tickets
 
 REQUEST = re.compile(r"(?:.+/)?requests/[^/]+\.json")
 JOBS_DIR = "jobs/"
@@ -49,7 +50,7 @@ def operator_of(p, root, entry, pull) -> str | None:
                  if p.kinds.get(r) == "operator" and requests(p, root, pull, r)), None)
 
 
-def covering(root, pull, ticket, role, request) -> dict | None:
+def covering(p, root, pull, ticket, role, request) -> dict | None:
     """The job that covers ``request`` at the pull's head, ``{"path", "request", "job", "hash"}``, or None."""
     head = pull["git"]["head"]
     path = job_path(request)
@@ -63,6 +64,9 @@ def covering(root, pull, ticket, role, request) -> dict | None:
     first = job["inputs"][0] if job["inputs"] else None
     wanted = {"path": request, "sha256": cmd_gate.sha256(gitstate.show(root, head, request))}
     if job["ticket"] != ticket["number"] or job["caller"] != role or first != wanted:
+        return None
+    expected = filing.operator_inputs(p, root, ticket["stage"], ticket["unit"], request)
+    if expected is not None and [i["path"] for i in job["inputs"]] != expected:
         return None
     return {"path": path, "request": request, "job": job, "hash": digest}
 
@@ -101,7 +105,7 @@ def of(p, root, state, ticket, pull, role=None) -> dict | None:
         return None
     jobs, uncovered = [], []
     for request in found:
-        job = covering(root, pull, ticket, role, request)
+        job = covering(p, root, pull, ticket, role, request)
         if job is None:
             uncovered.append(request)
         else:
