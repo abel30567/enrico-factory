@@ -290,6 +290,28 @@ class Rerender(Base):
         argv = [c["argv"] for c in self.calls()]
         self.assertEqual(argv[1], ["--quiet", str(self.dir / "frame-000003.png"), str(self.dir / "frame-000002.png")])
 
+    def installed_at(self, command):
+        """`rerender` with `command`; the fake metric answers whatever path the command names."""
+        self.control["metric"] = {"stdout": "computing\n9.95\n"}
+        called = []
+
+        def run(argv, **kwargs):
+            called.append(argv[0])
+            return self.run_fake(["cvvdp", *argv[1:]], **kwargs)
+        result = frames.rerender(self.pairs(), command, run=run)
+        self.assertEqual(called, [command[0], command[0]])
+        return result
+
+    def test_metric_is_the_file_name(self):
+        """ISSUE-609: the record names the metric, not where one machine installed it."""
+        result = self.installed_at(["/opt/x/bin/metric-perceptual", "--fast"])
+        self.assertEqual(result, {"frames": [0, 3], "metric": "metric-perceptual", "scores": [9.95, 9.95]})
+        self.assertTrue(render_lint._rerender(result))
+
+    def test_metric_on_path(self):
+        result = self.installed_at(["metric-perceptual"])
+        self.assertEqual(result, {"frames": [0, 3], "metric": "metric-perceptual", "scores": [9.95, 9.95]})
+
     def test_exit_1(self):
         self.control["metric"] = {"stdout": "9.95\n", "exit": 1}
         with self.assertRaises(frames.FramesError) as caught:
