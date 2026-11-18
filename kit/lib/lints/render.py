@@ -1,5 +1,7 @@
 """Render: each shot's `render/render.json` has the shot's frame count, no black, NaN or text frame, and
-re-renders inside tolerance (brief sections 6 and 16).
+re-renders inside tolerance (brief sections 6 and 16). The tolerance is the production's setting `RERENDER_MIN`,
+on the scale of its `PERCEPTUAL_METRIC`; a render file with a valid `rerender` and no usable tolerance gets one
+`rerender` finding and no score is compared.
 
 Rule ids: shots (1), render (2), count (3), black (4), nan (5), text (6), rerender (7). Findings are on
 line 1 of the render file. A render file is `production/<ep>/<shot>/render/render.json` (not under
@@ -13,11 +15,12 @@ import math
 import re
 from pathlib import Path
 
+from .. import resources
 from ..lint import Finding, files, read_json
 
 RENDER = re.compile(r"^production/([^/]+)/([^/]+)/render/render\.json$")
-# ColorVideoVDP, JOD; brief section 16 values table, until #130 measures the spread
-RERENDER_MIN = 9.9
+# the tolerance is the production's setting RERENDER_MIN, on the scale of its PERCEPTUAL_METRIC
+TOLERANCE = "RERENDER_MIN"
 
 
 def _int(value) -> bool:
@@ -44,6 +47,17 @@ def _rerender(value) -> bool:
             and len(value["scores"]) == len(value["frames"]))
 
 
+def _tolerance(value: str):
+    """The tolerance as a float, or the finding's text when the setting is empty or not a number."""
+    if not value:
+        return f"setting {TOLERANCE} is empty"
+    try:
+        number = float(value)
+    except ValueError:
+        number = math.nan
+    return f"setting {TOLERANCE} is not a number" if math.isnan(number) else number
+
+
 def _row(shots, shot):
     """The shot's (first, last), or None when shots.json has no usable row for it."""
     if not isinstance(shots, list):
@@ -55,7 +69,7 @@ def _row(shots, shot):
     return None
 
 
-def _check(root: Path, rel: str, ep: str, shot: str, present: set[str]) -> list[Finding]:
+def _check(root: Path, rel: str, ep: str, shot: str, present: set[str], tolerance: str) -> list[Finding]:
     out = []
 
     def add(rule, message):
@@ -97,19 +111,22 @@ def _check(root: Path, rel: str, ep: str, shot: str, present: set[str]) -> list[
     rerender = data.get("rerender")
     if not _rerender(rerender):
         add("render", "rerender is missing or not {frames, metric, scores}")
+    elif isinstance(minimum := _tolerance(tolerance), str):
+        add("rerender", minimum)
     else:
         for frame, score in zip(rerender["frames"], rerender["scores"]):
-            if score < RERENDER_MIN:
-                add("rerender", f"re-render of frame {frame} scores {score}, under {RERENDER_MIN}")
+            if score < minimum:
+                add("rerender", f"re-render of frame {frame} scores {score}, under {tolerance}")
     return out
 
 
 def check(root: Path) -> list[Finding]:
     rels = [p.as_posix() for p in files(root)]
     present = set(rels)
+    tolerance = resources.settings(root).get(TOLERANCE, "").strip()
     findings = []
     for rel in rels:
         m = RENDER.match(rel)
         if m and m.group(1) != "assets":
-            findings += _check(root, rel, m.group(1), m.group(2), present)
+            findings += _check(root, rel, m.group(1), m.group(2), present, tolerance)
     return findings
