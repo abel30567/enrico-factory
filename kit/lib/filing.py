@@ -76,6 +76,7 @@ SHOT_STAGES = ("layout", "animation", "simulation", "lighting", "render")
 SCENES = ("layout", "animation", "simulation", "lighting")
 CHARACTER = "bible/canon/characters/{}.md"
 PLACE = "bible/canon/places/{}.md"
+LEDGER = "bible/canon/ledger.tsv"
 SHOT_FILE = re.compile(r"episodes/([^/]+)/sequences/([^/]+)/shots/([^/]+)\.json")
 
 PACKETS = {("story", "reel"): "intent-packet", ("production", "conform"): "master",
@@ -186,7 +187,7 @@ def _operator(p, root, stage: str, unit: str) -> list:
         if stage == "rigging":
             inputs = [f'the request (refs ["asset:{unit}"])', f"production/assets/{unit}/assets/state.json"]
         else:
-            inputs = ["the request", "media/manifest.tsv", *([sheet] if sheet else [])]
+            inputs = ["the request", "media/manifest.tsv", *([sheet, LEDGER] if sheet else [])]
         return [f"Kind: {kind}. {shot_line}", f"Inputs, in this order: {', '.join(inputs)}."]
     index = SHOT_STAGES.index(stage)
     inputs = ["the request", *(f"production/{unit}/{s}/scene.py" for s in SCENES[:index + 1])]

@@ -1,11 +1,14 @@
 """Tests for kit/lib/glb.py: a GLB read with the standard library, and its summary.
 
-Every GLB is built here by `make_glb`; no binary file is committed.
+Every GLB is built here by `make_glb`; no binary file is committed. `glb.scale` is tested on a file in a
+temporary directory.
 """
 
 import json
+import os
 import struct
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -262,6 +265,104 @@ class SummaryTest(unittest.TestCase):
                 with self.assertRaises(glb.Broken):
                     glb.summary(change(edit))
         glb.summary(change(lambda b: None))
+
+
+def interleaved():
+    """One triangle 1.0 m high whose `POSITION` and `NORMAL` share a buffer view of `byteStride` 24, a second
+    triangle on its own view, a node with a translation, one material and one PNG."""
+    b = Builder()
+    vertices = [(0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.5, 1.0, 0.25)]
+    data = b"".join(struct.pack("<6f", *v, 0.0, 0.0, 1.0) for v in vertices)
+    view = b.view(data, byteStride=24)
+    position = b.accessor(bufferView=view, componentType=glb.FLOAT, count=3, type="VEC3",
+                          min=[0.0, 0.0, 0.0], max=[1.0, 1.0, 0.25])
+    normal = b.accessor(bufferView=view, byteOffset=12, componentType=glb.FLOAT, count=3, type="VEC3")
+    b.mesh({"attributes": {"POSITION": position, "NORMAL": normal}, "material": 0},
+           {"attributes": {"POSITION": b.position(3, 0.0, 0.5)}})
+    b.doc["nodes"] = [{"mesh": 0, "translation": [0.5, 2.0, -1.0]}]
+    b.doc["materials"] = [{"name": "body"}]
+    b.image(png(256, 128), "body")
+    return b
+
+
+class ScaleTest(unittest.TestCase):
+    def write(self, data):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = os.path.join(directory.name, "model.glb")
+        with open(path, "wb") as handle:
+            handle.write(data)
+        return path
+
+    def read(self, path):
+        with open(path, "rb") as handle:
+            return handle.read()
+
+    def test_scale(self):
+        b = interleaved()
+        before = glb.summary(b.glb())
+        self.assertEqual(before["height_m"], 1.0)
+        path = self.write(b.glb())
+        glb.scale(path, 1.57)
+        data = self.read(path)
+        after = glb.summary(data)
+        self.assertEqual(after["height_m"], 1.57)
+        self.assertEqual({k: v for k, v in after.items() if k != "height_m"},
+                         {k: v for k, v in before.items() if k != "height_m"})
+        self.assertAlmostEqual(glb.height(data), 1.57, places=6)
+        self.assertEqual(len(data) % 4, 0)
+        self.assertEqual(struct.unpack_from("<I", data, 8)[0], len(data))
+        json_size = struct.unpack_from("<I", data, 12)[0]
+        self.assertEqual(json_size % 4, 0)
+        bin_size, kind = struct.unpack_from("<II", data, 20 + json_size)
+        self.assertEqual((kind, 28 + json_size + bin_size), (glb.BIN_CHUNK, len(data)))
+        document, binary = glb.read(data)
+        self.assertEqual(document["nodes"][0]["translation"], [0.5 * 1.57, 2.0 * 1.57, -1.0 * 1.57])
+        f = lambda v: struct.unpack("<f", struct.pack("<f", v))[0]  # noqa: E731
+        self.assertEqual(document["accessors"][0]["max"], [f(1.57), f(1.57), f(0.25 * 1.57)])
+        rows = [struct.unpack_from("<6f", binary, 24 * n) for n in range(3)]
+        self.assertEqual([r[:3] for r in rows], [(0.0, 0.0, 0.0), (f(1.57), 0.0, 0.0),
+                                                  (f(0.5 * 1.57), f(1.57), f(0.25 * 1.57))])
+        self.assertEqual([r[3:] for r in rows], [(0.0, 0.0, 1.0)] * 3)
+        original = glb.read(b.glb())[1]
+        self.assertEqual((len(binary), binary[72:]), (len(original), original[72:]))
+
+    def assert_not_scalable(self, edit):
+        b = interleaved()
+        edit(b)
+        data = b.glb()
+        path = self.write(data)
+        with self.assertRaises(ValueError):
+            glb.scale(path, 1.57)
+        self.assertEqual(self.read(path), data)
+
+    def test_sparse_position(self):
+        self.assert_not_scalable(lambda b: b.doc["accessors"][0].__setitem__("sparse", {
+            "count": 1, "indices": {"bufferView": 0, "componentType": 5121},
+            "values": {"bufferView": 0}}))
+
+    def test_unsigned_short_position(self):
+        def edit(b):
+            b.doc["accessors"][2].update(bufferView=b.view(struct.pack("<9H", *range(9))), componentType=5123)
+        self.assert_not_scalable(edit)
+
+    def test_draco_primitive(self):
+        def edit(b):
+            b.doc["meshes"][0]["primitives"][0]["extensions"] = {
+                "KHR_draco_mesh_compression": {"bufferView": 0, "attributes": {"POSITION": 0}}}
+        self.assert_not_scalable(edit)
+
+    def test_meshopt_view(self):
+        self.assert_not_scalable(lambda b: b.doc["bufferViews"][0].__setitem__(
+            "extensions", {"EXT_meshopt_compression": {"buffer": 0, "byteLength": 72}}))
+
+    def test_skinned_mesh(self):
+        self.assert_not_scalable(lambda b: b.skin("root", "head"))
+
+    def test_not_a_glb(self):
+        path = self.write(b"glTF but not one")
+        with self.assertRaises(ValueError):
+            glb.scale(path, 1.57)
 
 
 if __name__ == "__main__":

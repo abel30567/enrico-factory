@@ -4,8 +4,9 @@ The production, the recorded GitHub and the gate PASS are `World` of tests/test_
 tools and register. The asset store is `AssetStore` of tests/test_assets.py. The vendors are one fake on
 127.0.0.1 that answers by method and path from tests/fixtures/tools_3d, each fixture an answer written by
 hand from the vendor's public API reference (`model/`) or recorded from a real session (`rig/`), its
-`{base}` replaced by the fake's URL. The asset is the
-invented `lamp-keeper` and its image `media:lamp-keeper-ref`. The World's pipeline gains the asset stages
+`{base}` replaced by the fake's URL. The asset is the invented `lamp-keeper` and its image
+`media:lamp-keeper-ref`; its canon height, a row of `bible/canon/ledger.tsv`, is 1.57 m, and the model vendor
+serves `RAW`, 1.7 m high, which the model job stores scaled as `MODEL`. The World's pipeline gains the asset stages
 `assets` and `rigging`, and its ticket 3 is at `stage:assets` of `unit:lamp-keeper`. The GLBs the vendors
 serve are built by `make_glb` of tests/test_glb.py. A second fake serves the image's public link, and
 `vendor.RUN` is a stand-in for `ffmpeg` that answers the pixels of a picture of tests/test_cardscan.py.
@@ -33,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cardscan, cmd_doctor, cmd_gate, cmd_run, gitstate, resources, vendor  # noqa: E402
+from kit.lib import cardscan, cmd_doctor, cmd_gate, cmd_run, glb, gitstate, resources, vendor  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_cardscan import card, figure  # noqa: E402
 from test_glb import Builder, make_glb, png  # noqa: E402
@@ -63,13 +64,27 @@ def lamp_keeper(skin):
     return b
 
 
-MODEL = lamp_keeper(skin=False).glb()
+def scaled(data, height):
+    """``data`` scaled by `glb.scale` to ``height`` metres."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "model.glb")
+        Path(path).write_bytes(data)
+        glb.scale(path, height / glb.height(data))
+        return Path(path).read_bytes()
+
+
+RAW = lamp_keeper(skin=False).glb()
+MODEL = scaled(RAW, 1.57)
+SPARSE = lamp_keeper(skin=False)
+SPARSE.doc["accessors"][0]["sparse"] = {"count": 1, "indices": {"bufferView": 0, "componentType": 5121},
+                                        "values": {"bufferView": 0}}
+SPARSE = SPARSE.glb()
 RIG = lamp_keeper(skin=True).glb()
 UNSKINNED = lamp_keeper(skin=True)
 UNSKINNED.doc.pop("skins")
 UNSKINNED = UNSKINNED.glb()
 OLD_MODEL = b"glTF invented lamp keeper model\x00\x01\x02"
-BROKEN = {"a JSON byte changed": MODEL[:20] + b"x" + MODEL[21:],
+BROKEN = {"a JSON byte changed": RAW[:20] + b"x" + RAW[21:],
           "no meshes": make_glb({"asset": {"version": "2.0"}}),
           "not a GLB": OLD_MODEL}
 ASSET_DIR = "production/assets/lamp-keeper"
@@ -78,6 +93,8 @@ MODEL_MANIFEST = f"{ASSET_DIR}/assets/manifest.json"
 RIG_MANIFEST = f"{ASSET_DIR}/rigging/manifest.json"
 SHEET = "bible/canon/characters/lamp-keeper.md"
 PLACE = "bible/canon/places/lamp-keeper.md"
+LEDGER = "bible/canon/ledger.tsv"
+LEDGER_HEADER = "subject\tattribute\tvalue\n"
 LABELS = ["room:production", "stage:assets", "tracked", "unit:lamp-keeper"]
 STAGES = [{"room": "production", "stage": stage, "unit": "asset", "after": "", "maker": "renderer",
            "lint": ["structure"], "checker": "inspector", "judge": "", "blind": False, "pitches": 1,
@@ -147,7 +164,7 @@ class Vendor:
         self.answer("GET", REQUEST + "/status", self.fixture("model/status-in-progress"),
                     self.fixture("model/status-completed"))
         self.answer("GET", REQUEST, self.fixture("model/result"))
-        self.answer("GET", "/files/model.glb", (200, MODEL))
+        self.answer("GET", "/files/model.glb", (200, RAW))
         self.answer("POST", "/" + vendor.RIG_PATH, self.fixture("rig/submit"))
         self.answer("GET", RIG_REQUEST + "/status", self.fixture("rig/status-in-progress"),
                     self.fixture("rig/status-completed"))
@@ -211,6 +228,7 @@ class Tools3dTest(unittest.TestCase):
         self.w.commit(pipeline, json.dumps(stages, indent=1) + "\n")
         self.w.edit("issues", 3, labels=LABELS)
         self.w.commit(SHEET, "# The lamp keeper\n\nAn invented keeper of an invented lamp.\n")
+        self.w.commit(LEDGER, LEDGER_HEADER + "lamp-keeper\tlamp\toil\nlamp-keeper\theight\t1.57 m\n")
         self.printed = []
 
     # -- jobs
@@ -232,7 +250,7 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual(digest, digest_of(path))
         return path, digest
 
-    def model_job(self, prompt="the lamp keeper, as drawn", paths=(vendor.MANIFEST, SHEET), **changes):
+    def model_job(self, prompt="the lamp keeper, as drawn", paths=(vendor.MANIFEST, SHEET, LEDGER), **changes):
         return self.job("model3d", "media:lamp-keeper-ref", MODEL_EXPECTED, prompt, paths, **changes)
 
     def rig_job(self, prompt="the lamp keeper, rigged", paths=(STATE,), **changes):
@@ -282,9 +300,9 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
         return digest
 
-    def model_state(self, kind="character"):
-        return {"asset": "lamp-keeper", "kind": kind, "sha256": sha(MODEL), "triangles": 1, "materials": 1,
-                "textures": [{"height": 1024, "name": "lamp_keeper_body", "width": 2048}], "height_m": 1.7,
+    def model_state(self, kind="character", model=MODEL, height_m=1.57):
+        return {"asset": "lamp-keeper", "kind": kind, "sha256": sha(model), "triangles": 1, "materials": 1,
+                "textures": [{"height": 1024, "name": "lamp_keeper_body", "width": 2048}], "height_m": height_m,
                 "skeleton": None}
 
     def test_model_job_clean(self):
@@ -296,7 +314,8 @@ class Tools3dTest(unittest.TestCase):
         self.assertEqual([r["tool"] for r in self.w.rows("run")], ["model3d"])
         [post] = self.vendor.made("POST")
         self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
-        self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}"})
+        self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}",
+                                                    "face_limit": 100000})
         self.assertEqual(post["headers"]["authorization"], f"Key {MODEL_KEY}")
         self.assertEqual([r["path"] for r in self.vendor.made()], [
             "/" + vendor.MODEL_PATH, REQUEST + "/status", REQUEST + "/status", REQUEST, "/files/model.glb"])
@@ -311,19 +330,75 @@ class Tools3dTest(unittest.TestCase):
         manifest = json.loads(files[MODEL_MANIFEST])
         self.assertEqual(files[MODEL_MANIFEST], stage_json(manifest))
         inputs = json.loads(Path(job).read_text())["inputs"]
-        self.assertEqual([i["path"] for i in inputs][1:], [vendor.MANIFEST, SHEET])
+        self.assertEqual([i["path"] for i in inputs][1:], [vendor.MANIFEST, SHEET, LEDGER])
         self.assertEqual(manifest, {
             "job": digest, "engine": vendor.MODEL_PATH, "flags": [], "inputs": inputs, "seeds": {},
             "outputs": [output("model.glb", MODEL), output("state.json", files[STATE].encode())]})
 
     def test_model_kind(self):
         self.w.commit(PLACE, "# The lamp keeper's lamp\n")
-        for kind, paths in (("prop", (vendor.MANIFEST,)), ("set", (vendor.MANIFEST, PLACE)),
-                            ("character", (vendor.MANIFEST, PLACE, SHEET))):
+        for kind, paths, model, height_m in (("prop", (vendor.MANIFEST, LEDGER), RAW, 1.7),
+                                             ("set", (vendor.MANIFEST, PLACE), RAW, 1.7),
+                                             ("set", (vendor.MANIFEST, PLACE, LEDGER), MODEL, 1.57),
+                                             ("character", (vendor.MANIFEST, PLACE, SHEET, LEDGER), MODEL, 1.57)):
+            with self.subTest(kind=kind, paths=paths):
+                job, digest = self.model_job(f"the lamp keeper as a {kind} of {paths}", paths)
+                self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
+                self.assertEqual(json.loads(gitstate.show(self.w.root, BRANCH, STATE)),
+                                 self.model_state(kind, model, height_m))
+
+    def test_face_limit(self):
+        for kind, paths, limit in (("character", (vendor.MANIFEST, SHEET, LEDGER), 100000),
+                                   ("prop", (vendor.MANIFEST,), 20000)):
             with self.subTest(kind):
+                self.vendor.requests.clear()
                 job, digest = self.model_job(f"the lamp keeper as a {kind}", paths)
                 self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
-                self.assertEqual(json.loads(gitstate.show(self.w.root, BRANCH, STATE)), self.model_state(kind))
+                [post] = self.vendor.made("POST")
+                self.assertEqual(post["path"], "/" + vendor.MODEL_PATH)
+                self.assertEqual(json.loads(post["body"]), {"image_url": f"{self.public.base}/pub/{sha(IMAGE)}",
+                                                            "face_limit": limit})
+
+    def test_model_scaled_to_the_canon_height(self):
+        self.assertEqual(glb.summary(RAW)["height_m"], 1.7)
+        self.clean_model()
+        state = json.loads(gitstate.show(self.w.root, BRANCH, STATE))
+        self.assertEqual(state["height_m"], 1.57)
+        [stored] = self.store.objects.values()
+        self.assertEqual(sha(stored), state["sha256"])
+        self.assertEqual(glb.summary(stored), {k: state[k] for k in
+                                               ("triangles", "materials", "textures", "height_m", "skeleton")})
+
+    def test_no_height_no_spend(self):
+        cases = (("no ledger", (vendor.MANIFEST, SHEET), None),
+                 ("no height row", (vendor.MANIFEST, SHEET, LEDGER), "lamp-keeper\tlamp\toil\nlamp\theight\t2 m\n"),
+                 ("not <number> m", (vendor.MANIFEST, SHEET, LEDGER), "lamp-keeper\theight\ttall\n"))
+        for name, paths, rows in cases:
+            with self.subTest(name):
+                if rows is not None:
+                    self.w.commit(LEDGER, LEDGER_HEADER + rows)
+                head = self.w.head(BRANCH)
+                job, digest = self.model_job(f"the lamp keeper with {name}", paths)
+                self.assert_failed(job, digest, "model3d", vendor.NO_HEIGHT, "0", "0")
+                self.assertEqual(self.vendor.made(), [])
+                self.assertEqual(self.public.made(), [])
+                self.assertEqual(self.store.objects, {})
+                self.assertEqual(self.w.head(BRANCH), head)
+        self.w.commit(PLACE, "# The lamp keeper's lamp\n")
+        job, digest = self.model_job("the lamp keeper as a set", (vendor.MANIFEST, PLACE, LEDGER))
+        self.assertEqual(self.factory_run(job), (0, line(digest, "DONE", "0.3", "5"), ""))
+        self.assertEqual(json.loads(gitstate.show(self.w.root, BRANCH, STATE)), self.model_state("set", RAW, 1.7))
+        self.assertEqual(self.store.objects, {sha(RAW): RAW})
+
+    def test_not_scalable(self):
+        self.assertEqual(glb.summary(SPARSE)["height_m"], 1.7)
+        self.vendor.answer("GET", "/files/model.glb", (200, SPARSE))
+        head = self.w.head(BRANCH)
+        job, digest = self.model_job("a sparse model")
+        self.assert_failed(job, digest, "model3d", vendor.NOT_SCALABLE, "0.3")
+        self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
+        self.assertEqual(self.store.objects, {})
+        self.assertEqual(self.w.head(BRANCH), head)
 
     def test_model_state_is_deterministic(self):
         first = self.clean_model()
@@ -343,7 +418,7 @@ class Tools3dTest(unittest.TestCase):
                 self.assertEqual(os.listdir(self.w.job_dir(digest) / "out"), [])
                 self.assertEqual(self.store.objects, {})
                 self.assertEqual(self.w.head(BRANCH), head)
-        self.vendor.answer("GET", "/files/model.glb", (200, MODEL))
+        self.vendor.answer("GET", "/files/model.glb", (200, RAW))
         self.clean_model()
         self.assertEqual(list(self.store.objects), [sha(MODEL)])
 
