@@ -85,3 +85,9 @@
   task.md` exports `base/` only for a launch with no pull (`.factory/lib/launch.py`, the `pull is None and blocked`
   branch). A task that says "main is in base/" sends the role looking for files it does not have; showrunner 42-4
   answered BLOCKED for that. Quote in the task, byte for byte, every main file the ruling needs.
+- **A replay that passes does not make a failure transient** (2026-11-18). #447 run 7 failed twice in the runner.
+  Its finish check replayed clean in an interactive session, so the first failure was called transient. The real
+  cause was the process architecture: the runner's chain ran under Rosetta, the universal venv python started as
+  x86_64, and the venv's arm64-only PIL failed to import. Before retrying a failure that does not reproduce,
+  log the failing call's stderr in the same process chain, and compare `arch` and the environment. A machine
+  wrapper around a native venv pins `arch -arm64`.
