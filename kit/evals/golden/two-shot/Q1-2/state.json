@@ -1,0 +1,906 @@
+{
+  "actors": [
+    {
+      "asset": null,
+      "end": {
+        "location": [
+          0,
+          -0.4,
+          0.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "height_m": 1.8,
+      "id": "actor-a",
+      "kind": "character",
+      "scale": [
+        0.4,
+        0.4,
+        1.8
+      ],
+      "sha256": null,
+      "start": {
+        "location": [
+          0,
+          -0.4,
+          0.9
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "asset": null,
+      "end": {
+        "location": [
+          0,
+          0.4,
+          0.8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "height_m": 1.6,
+      "id": "actor-b",
+      "kind": "character",
+      "scale": [
+        0.4,
+        0.4,
+        1.6
+      ],
+      "sha256": null,
+      "start": {
+        "location": [
+          0,
+          0.4,
+          0.8
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "asset": null,
+      "end": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "height_m": 0,
+      "id": "floor",
+      "kind": "set",
+      "scale": [
+        10,
+        10,
+        1
+      ],
+      "sha256": null,
+      "start": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "caches": [],
+  "camera": {
+    "end": {
+      "location": [
+        -6,
+        0,
+        1.2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    },
+    "focal_mm": {
+      "max": 50,
+      "min": 50
+    },
+    "sensor_mm": [
+      36,
+      20.25
+    ],
+    "start": {
+      "location": [
+        -6,
+        0,
+        1.2
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "fps": 24,
+  "frames": {
+    "first": 24,
+    "last": 47
+  },
+  "framing": [
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 24
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 24
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 24
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 25
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 25
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 25
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 26
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 26
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 26
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 27
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 27
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 27
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 28
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 28
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 28
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 29
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 29
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 29
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 30
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 30
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 30
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 31
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 31
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 31
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 32
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 32
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 32
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 33
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 33
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 33
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 34
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 34
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 34
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 35
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 35
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 35
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 36
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 36
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 36
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 37
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 37
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 37
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 38
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 38
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 38
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 39
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 39
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 39
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 40
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 40
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 40
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 41
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 41
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 41
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 42
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 42
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 42
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 43
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 43
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 43
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 44
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 44
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 44
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 45
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 45
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 45
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 46
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 46
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 46
+    },
+    {
+      "actor": "actor-a",
+      "box": [
+        0.3563,
+        0.2446,
+        0.4552,
+        1
+      ],
+      "frame": 47
+    },
+    {
+      "actor": "actor-b",
+      "box": [
+        0.5448,
+        0.3297,
+        0.6437,
+        1
+      ],
+      "frame": 47
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.7694,
+        1,
+        1
+      ],
+      "frame": 47
+    }
+  ],
+  "lights": [
+    {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "id": "key",
+      "intensity": 10,
+      "kind": "directional",
+      "temperature_k": 6500,
+      "unit": "lux"
+    }
+  ],
+  "line_flips": [],
+  "lipsync": [],
+  "motion": [],
+  "render": {
+    "height": 360,
+    "lumen": false,
+    "spatial_samples": 1,
+    "temporal_samples": 1,
+    "tsr": false,
+    "warmup_frames": 0,
+    "width": 640
+  },
+  "shot": "Q1-2",
+  "stage": "layout",
+  "sun": {
+    "azimuth_deg": 210,
+    "elevation_deg": 45
+  }
+}

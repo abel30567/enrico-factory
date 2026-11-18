@@ -1,0 +1,630 @@
+{
+  "actors": [
+    {
+      "asset": null,
+      "end": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "height_m": 0,
+      "id": "floor",
+      "kind": "set",
+      "scale": [
+        10,
+        10,
+        1
+      ],
+      "sha256": null,
+      "start": {
+        "location": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "asset": null,
+      "end": {
+        "location": [
+          0,
+          0,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      },
+      "height_m": 0.5,
+      "id": "prop",
+      "kind": "prop",
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "sha256": null,
+      "start": {
+        "location": [
+          0,
+          0,
+          3
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "caches": [],
+  "camera": {
+    "end": {
+      "location": [
+        -6,
+        0,
+        1.5
+      ],
+      "rotation": [
+        0,
+        -10,
+        0
+      ]
+    },
+    "focal_mm": {
+      "max": 35,
+      "min": 35
+    },
+    "sensor_mm": [
+      36,
+      20.25
+    ],
+    "start": {
+      "location": [
+        -6,
+        0,
+        1.5
+      ],
+      "rotation": [
+        0,
+        -10,
+        0
+      ]
+    }
+  },
+  "fps": 24,
+  "frames": {
+    "first": 0,
+    "last": 47
+  },
+  "framing": [
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 0
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 1
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 2
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 3
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 4
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 5
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 6
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 7
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 8
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 9
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 10
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 11
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 12
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 13
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 14
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 15
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 16
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 17
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 18
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 19
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 20
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 21
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 22
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 23
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 24
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 25
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 26
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 27
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 28
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 29
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 30
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 31
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 32
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 33
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 34
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 35
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 36
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 37
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 38
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 39
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 40
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 41
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 42
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 43
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 44
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 45
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 46
+    },
+    {
+      "actor": "floor",
+      "box": [
+        0,
+        0.4325,
+        1,
+        1
+      ],
+      "frame": 47
+    }
+  ],
+  "lights": [
+    {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "id": "key",
+      "intensity": 10,
+      "kind": "directional",
+      "temperature_k": 6500,
+      "unit": "lux"
+    }
+  ],
+  "line_flips": [],
+  "lipsync": [],
+  "motion": [],
+  "render": {
+    "height": 360,
+    "lumen": false,
+    "spatial_samples": 1,
+    "temporal_samples": 1,
+    "tsr": false,
+    "warmup_frames": 0,
+    "width": 640
+  },
+  "shot": "Q1-1",
+  "stage": "simulation",
+  "sun": {
+    "azimuth_deg": 210,
+    "elevation_deg": 45
+  }
+}
