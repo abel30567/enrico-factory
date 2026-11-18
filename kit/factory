@@ -39,12 +39,13 @@ def main(argv):
         print(f"factory: unknown command {name!r}", file=sys.stderr)
         usage(sys.stderr)
         return 2
-    register_kit()
     spec = importlib.util.spec_from_file_location(f"cmd_{name}", LIB / f"cmd_{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.main(argv[1:]) or 0
 
+
+register_kit()
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
