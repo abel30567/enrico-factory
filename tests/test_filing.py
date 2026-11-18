@@ -752,6 +752,18 @@ class OperatorBodies(Case):
                          "Inputs, in this order: the request, media/manifest.tsv.\n\n"
                          "Upstream: #1 reel ep01, locked by PR #2.\nFiled by factory tick.\n")
 
+    def test_operator_inputs_are_the_inputs_line(self):
+        """ISSUE-620: the inputs a job of an ``assets`` ticket must name are the filed Inputs line."""
+        p = self.p()
+        self.assertEqual(filing.operator_inputs(p, self.root, "assets", "wren", "frames/requests/r1.json"),
+                         ["frames/requests/r1.json", "media/manifest.tsv", "bible/canon/characters/wren.md",
+                          "bible/canon/ledger.tsv"])
+        self.assertIn("\nInputs, in this order: the request, media/manifest.tsv, bible/canon/characters/wren.md, "
+                      "bible/canon/ledger.tsv.\n", self.body(make_state(*SHOW_REEL), "assets", "wren"))
+        self.assertEqual(filing.operator_inputs(p, self.root, "rigging", "wren", "r.json"),
+                         ["r.json", "production/assets/wren/assets/state.json"])
+        self.assertIsNone(filing.operator_inputs(p, self.root, "layout", "ep01/Q1-1", "r.json"))
+
     def test_rigging_body(self):
         self.assertEqual(self.body(self.after("assets", "wren"), "rigging", "wren"),
                          "Do the stage rigging for unit wren.\n\n"
