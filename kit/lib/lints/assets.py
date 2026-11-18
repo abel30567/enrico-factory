@@ -9,7 +9,9 @@ finding none of rules 3 to 6. A character needs its canon sheet under `bible/can
 its sheet under `bible/canon/places/`. A character's height is the ledger row `height` of its id, written
 `<number> m`; a set's is checked where it has such a row, a prop's never. A character's skeleton is
 checked when it is not null; rigging requires one. Rule 7 holds each `assets/scene.py` to `JOB_FILES`
-(`lint.job_files`), on line 1 of the script.
+(`lint.job_files`), on line 1 of the script. A state is superseded, and gets no finding of rules 1 to 6,
+when its `manifest.json` names a `job` hash other than that of the job file now at
+`jobs/production/assets/<asset>/assets/requests/model3d.json`: the gated run of that job replaces it.
 
 Rule 8 reads every `production/assets/<asset>/assets/requests/model3d.json`, whether or not a state
 exists, with the model sheets under `bible/style/` and `media/manifest.tsv`, on line 1 of the request: it
@@ -36,6 +38,8 @@ REQUEST_KEYS = ["for", "prompt", "refs"]
 MEDIA_MANIFEST = "media/manifest.tsv"
 MODEL_SHEETS = {"character": "bible/style/characters", "set": "bible/style/places"}
 JOB_FILES = ("manifest.json", "state.json")
+STAGED_MANIFEST = "production/assets/{}/assets/manifest.json"
+JOB_FILE = "jobs/production/assets/{}/assets/requests/model3d.json"
 CANON_LEDGER = "bible/canon/ledger.tsv"
 KEY_COLUMNS = ("subject", "attribute", "value")
 KEYS = ("asset", "kind", "sha256", "triangles", "materials", "textures", "height_m", "skeleton")
@@ -167,6 +171,23 @@ def _state(rel: str, directory: str, data, present: set[str], heights) -> list[s
     return found
 
 
+def _superseded(root: Path, asset: str, present: set[str]) -> bool:
+    """Whether the staged state of ``asset`` was made by a job other than its job file now; False when the
+    manifest is missing or has no string `job`, or the job file is missing or not a valid job."""
+    # Imported here: cmd_gate imports registry, which imports this module.
+    from .. import cmd_gate
+
+    manifest, job_file = STAGED_MANIFEST.format(asset), JOB_FILE.format(asset)
+    if manifest not in present or job_file not in present:
+        return False
+    try:
+        staged = json.loads(read_text(root, manifest))
+        _, digest = cmd_gate._parsed(read_text(root, job_file), job_file)
+    except (ValueError, cmd_gate.Refused):
+        return False
+    return isinstance(staged, dict) and isinstance(staged.get("job"), str) and staged["job"] != digest
+
+
 def _cited(root: Path, rel: str) -> set[str]:
     """The media ids a sheet cites as a link to `media:<id>`."""
     return {m.group(1) for _, line in markdown_lines(read_text(root, rel)) for target in link_targets(line)
@@ -230,6 +251,8 @@ def check(root: Path) -> list[Finding]:
     if states:
         heights = _heights(root, present)
         for rel, directory in states:
+            if _superseded(root, directory, present):
+                continue
             _, data = read_json(root, rel)
             found += [Finding(rel, 1, rule, message)
                       for rule, message in _state(rel, directory, data, present, heights)]
