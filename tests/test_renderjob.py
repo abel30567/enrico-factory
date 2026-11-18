@@ -636,6 +636,26 @@ class Check(Job):
                 for secret in (KEY_ID, SECRET, KEY[1], TOKEN, "X-Amz-"):
                     self.assertNotIn(secret, json.dumps(driver.failure))
 
+    def test_a_secret_cut_by_the_message_is_withheld(self):
+        """The secret test reads the whole message, as ``tail`` reads the whole line: a hidden value or a signed
+        link that the cut to ``LINE_CHARS`` would split or drop still withholds the check text."""
+        original = self.members
+        long_token = "pulled-token-" + "Z" * 400
+        for label, token in ((long_token, long_token), ("x" * 220 + TOKEN, TOKEN), ("y" * 300 + TOKEN, TOKEN),
+                             ("A" * 250 + "?X-Amz-Signature=" + "e" * 64, TOKEN)):
+            with self.subTest(label=label[:12], cut_at=label.find(token[:6])):
+                (self.secrets / "engine.unreal").write_text(token + "\n", encoding="utf-8")
+                self.members = original
+                self.seed_actor(label)
+                self.store.requests.clear()
+                message = f"actor {label} has no kind: no level names it"
+                _, driver = self.assert_failed(renderjob.CHECK_FAILED.format(
+                    message[:renderjob.LINE_CHARS - 1] + "…"))
+                self.assertEqual(renderjob.tail(message, [token]), [renderjob.WITHHELD])
+                self.assertEqual(driver.failure["check"], renderjob.WITHHELD)
+                for secret in (token[:13], "X-Amz-"):
+                    self.assertNotIn(secret, json.dumps(driver.failure))
+
 
 class Simulation(Job):
     """The job at `simulation` (#500): the node builds twice and `finish` writes `rerun.json` beside `state.json`."""

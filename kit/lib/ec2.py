@@ -13,7 +13,8 @@ writes the outputs (``renderjob``). When `status.json` names a step of ``renderj
 only and fails. When ``run`` fails after the job is described, ``failure`` is
 ``{"log", "step", "tail", "check"}``: the store key `jobs/<nonce>/log.txt`, that step or None, ``renderjob.tail``
 of the log (``[]`` when not read), and the text of ``renderjob.CheckFailed`` when a check of the node's answer
-failed on this machine (``renderjob.WITHHELD`` when ``renderjob.may_hold_secret``), else None.
+failed on this machine (``renderjob.WITHHELD`` when ``renderjob.may_hold_secret`` of its uncut message),
+else None.
 ``stop()`` ends the instance (end, not stop: nothing is kept), waits until it is ``shutting-down`` or
 ``terminated`` and returns the minutes and dollars from its launch time to its end. The objects of
 ``jobs/<nonce>/`` stay in the store; its expiry rule removes them.
@@ -306,8 +307,8 @@ class Node:
                             "tail": renderjob.tail(self.log or "", hidden),
                             "check": None}
             if isinstance(error, renderjob.CheckFailed):
-                check = str(error)
-                self.failure["check"] = renderjob.WITHHELD if renderjob.may_hold_secret(check, hidden) else check
+                self.failure["check"] = (renderjob.WITHHELD if renderjob.may_hold_secret(error.uncut, hidden)
+                                         else str(error))
             raise
 
     def _settings(self):

@@ -71,17 +71,16 @@ class JobError(Exception):
 
 class CheckFailed(JobError):
     """The node answered ok and a check of its answer failed on this machine; ``str(error)`` is ``CHECK_FAILED``
-    with the error's message."""
+    with the error's message cut to ``LINE_CHARS``, ``uncut`` the whole message (to test for a secret before the
+    cut, as ``tail`` does)."""
 
-
-def _check(error) -> str:
-    """``CHECK_FAILED`` with the message of ``error``: its text for ``SceneError`` and ``FramesError``, else its
-    class name, `: ` and its text; the message cut to ``LINE_CHARS``."""
-    message = str(error) if isinstance(error, (scenestate.SceneError, frames.FramesError)) else (
-        f"{type(error).__name__}: {error}")
-    if len(message) > LINE_CHARS:
-        message = message[:LINE_CHARS - 1] + "…"
-    return CHECK_FAILED.format(message)
+    def __init__(self, error):
+        self.uncut = str(error) if isinstance(error, (scenestate.SceneError, frames.FramesError)) else (
+            f"{type(error).__name__}: {error}")
+        message = self.uncut
+        if len(message) > LINE_CHARS:
+            message = message[:LINE_CHARS - 1] + "…"
+        super().__init__(CHECK_FAILED.format(message))
 
 
 def _int(value) -> bool:
@@ -362,7 +361,7 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
                 [(f, os.path.join(out, f"frame-{f:06d}.png"), os.path.join(out, f"rerender-{f:06d}.png"))
                  for f in described["sampled"]], shlex.split(metric), run=run)
     except (scenestate.SceneError, frames.FramesError, KeyError, TypeError, ValueError) as error:
-        raise CheckFailed(_check(error)) from None
+        raise CheckFailed(error) from None
     Path(out, "state.json").write_text(scenestate.dumps(state), encoding="utf-8")
     if rerun_state is not None:
         Path(out, "rerun.json").write_text(scenestate.dumps(rerun_state), encoding="utf-8")
