@@ -227,7 +227,26 @@ class VersionTest(unittest.TestCase):
             return subprocess.CompletedProcess(argv, 0, "  2.1.0 (build)  \nmore\n", "")
 
         self.assertEqual(harness.version({"HARNESS": "h"}, run=run), "2.1.0 (build)")
-        self.assertEqual(seen, {"argv": ["h", "--version"], "timeout": 20})
+        self.assertEqual(seen, {"argv": ["h", "--version"], "timeout": harness.VERSION_TIMEOUT_S})
+
+    def test_probe_uses_version_timeout(self):
+        seen = {}
+
+        def run(argv, **kwargs):
+            seen.update(kwargs)
+            return subprocess.CompletedProcess(argv, 0, "1.2.3 (x)\nmore\n", "")
+
+        self.assertEqual(harness.version({"HARNESS": "h"}, run=run), "1.2.3 (x)")
+        self.assertEqual(harness.VERSION_TIMEOUT_S, 60)
+        self.assertEqual(seen["timeout"], harness.VERSION_TIMEOUT_S)
+
+    def test_probe_timeout_raises_harness_error(self):
+        def run(argv, **kwargs):
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+        with self.assertRaises(harness.HarnessError) as caught:
+            harness.version({"HARNESS": "h"}, run=run)
+        self.assertEqual(str(caught.exception), "harness version: could not run")
 
 
 class ModelTest(unittest.TestCase):
