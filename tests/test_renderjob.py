@@ -20,6 +20,7 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -505,13 +506,14 @@ class Seeded(Job):
         self.members.append(("../x", b"outside"))
         _, driver = self.assert_failed()
         self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None,
-                                          "tail": ["NODE 12:01:00 result ok"]})
+                                          "tail": ["NODE 12:01:00 result ok"], "check": None})
 
     def test_no_status_leaves_no_step_and_no_tail(self):
         self.status = None
         exchanges = session("start-stop")
         _, driver = self.assert_failed(exchanges=exchanges[:4] + [exchanges[5]] + exchanges[4:])
-        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None, "tail": []})
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None, "tail": [],
+                                          "check": None})
 
     def test_a_refusal_of_describe_leaves_no_failure(self):
         self.inputs = [i for i in self.inputs if not i["path"].endswith("scene.py")]
@@ -551,9 +553,88 @@ class Seeded(Job):
         self.log = b"NODE 12:00:01 pull rc=1\nNODE 12:00:02 result failed step=pull\n"
         _, driver = self.assert_failed()
         self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "pull",
-                                          "tail": ["NODE 12:00:01 pull rc=1", "NODE 12:00:02 result failed step=pull"]})
+                                          "tail": ["NODE 12:00:01 pull rc=1", "NODE 12:00:02 result failed step=pull"],
+                                          "check": None})
         self.assertEqual(self.gets(), ["status.json", "log.txt"])
         self.assertEqual(os.listdir(self.out), [])
+
+
+class Check(Job):
+    """A check of the node's answer that fails on this machine (#606): ``CheckFailed`` with the error's message,
+    kept by the driver in ``failure["check"]``."""
+
+    def setUp(self):
+        super().setUp()
+        self.control["metric"] = {"stdout": "9.95\n"}
+        self.write_control()
+        self.settings = {"RENDER_RESOLUTION": f"{WIDTH}x{HEIGHT}", "UNREAL_IMAGE": IMAGE, "PERCEPTUAL_METRIC": "cvvdp"}
+
+    def finish(self, run=subprocess.run, out="out"):
+        """``renderjob.finish`` of the answer ``self.members`` into ``self.tmp / out``."""
+        unpacked = self.tmp / f"{out}-answer"
+        unpacked.mkdir()
+        for name, data in self.members:
+            (unpacked / name).write_bytes(data)
+        job = dict(self.job(), out=str(self.tmp / out))
+        (self.tmp / out).mkdir(exist_ok=True)
+        described = renderjob.describe(job, self.settings)
+        return renderjob.finish(job, described, {"result": "ok"}, str(unpacked), self.settings, run=run)
+
+    def test_a_metric_that_exits_1_names_itself(self):
+        self.finish(out="clean")
+        self.assertEqual(sha((self.tmp / "clean" / "state.json").read_bytes()), CLEAN_STATE)
+        self.assertTrue((self.tmp / "clean" / "manifest.json").is_file())
+
+        def run(argv, *args, **kwargs):
+            if argv[0] == "cvvdp":
+                return subprocess.CompletedProcess(argv, 1, b"", b"")
+            return subprocess.run(argv, *args, **kwargs)
+
+        with self.assertRaises(renderjob.JobError) as raised:
+            self.finish(run=run, out="seeded")
+        self.assertIsInstance(raised.exception, renderjob.CheckFailed)
+        self.assertEqual(str(raised.exception), "the node's answer failed a check: the metric exited 1 on frame 0")
+        self.assertFalse((self.tmp / "seeded" / "state.json").exists())
+        self.assertFalse((self.tmp / "seeded" / "manifest.json").exists())
+
+    def test_other_errors_name_their_class_and_a_long_message_is_cut(self):
+        cases = ((KeyError("frame"), "KeyError: 'frame'"), (TypeError("bad"), "TypeError: bad"),
+                 (ValueError("odd"), "ValueError: odd"), (renderjob.frames.FramesError("f" * 241), "f" * 239 + "…"),
+                 (renderjob.frames.FramesError("f" * 240), "f" * 240))
+        for n, (error, message) in enumerate(cases):
+            with self.subTest(error=type(error).__name__, message=message[:12]), \
+                    mock.patch.object(renderjob.frames, "measure", side_effect=error):
+                with self.assertRaises(renderjob.CheckFailed) as raised:
+                    self.finish(out=f"out-{n}")
+                self.assertEqual(str(raised.exception), renderjob.CHECK_FAILED.format(message))
+
+    def seed_actor(self, label):
+        """The answer's `scene.json` with an actor labelled ``label`` that no level names."""
+        scene = json.loads(dict(self.members)["scene.json"].decode("utf-8"))
+        scene["actors"].append(dict(copy.deepcopy(scene["actors"][0]), label=label))
+        self.members = [(n, d) if n != "scene.json" else (n, (json.dumps(scene, indent=2) + "\n").encode())
+                        for n, d in self.members]
+
+    def test_the_driver_keeps_the_check_text(self):
+        self.seed_actor("stray")
+        _, driver = self.assert_failed("the node's answer failed a check: actor stray has no kind: no level names it")
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": None,
+                                          "tail": ["NODE 12:01:00 result ok"],
+                                          "check": "the node's answer failed a check: actor stray has no kind: "
+                                                   "no level names it"})
+
+    def test_a_secret_or_a_signed_link_in_a_check_message_is_withheld(self):
+        original = self.members
+        for label in (f"stray-{TOKEN}", f"stray-{SECRET}", f"stray-{KEY[1]}", "stray?X-Amz-Signature=" + "e" * 64):
+            with self.subTest(label=label[:12]):
+                self.members = original
+                self.seed_actor(label)
+                self.store.requests.clear()
+                _, driver = self.assert_failed(renderjob.CHECK_FAILED.format(
+                    f"actor {label} has no kind: no level names it"))
+                self.assertEqual(driver.failure["check"], renderjob.WITHHELD)
+                for secret in (KEY_ID, SECRET, KEY[1], TOKEN, "X-Amz-"):
+                    self.assertNotIn(secret, json.dumps(driver.failure))
 
 
 class Simulation(Job):
@@ -644,7 +725,8 @@ class Simulation(Job):
         self.log = ("\n".join(lines) + "\n").encode()
         _, driver = self.assert_failed()
         tail = lines[5:41] + [renderjob.WITHHELD, renderjob.WITHHELD, "x" * 239 + "…", lines[44]]
-        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "rebuild", "tail": tail})
+        self.assertEqual(driver.failure, {"log": f"jobs/{driver.nonce}/log.txt", "step": "rebuild", "tail": tail,
+                                          "check": None})
         self.assertEqual(len(tail), 40)
         self.assertEqual([r["path"].rsplit("/", 1)[1] for r in self.store.requests if r["method"] == "GET"],
                          ["status.json", "log.txt"])

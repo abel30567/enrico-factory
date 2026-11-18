@@ -9,8 +9,9 @@ with that `sha256` (``asset_states``). ``in_tar`` packs `job.json`, the scripts 
 `build.py` of `kit/engine/`. ``unpack`` writes the members of `out.tar` into a directory, refusing any member that is
 not a regular file or a directory, whose path is absolute or holds `..`, or whose name is not one `job.sh` writes.
 ``finish`` checks the node's answer and writes the outputs into `out`, with `manifest.json` last. At `simulation` it
-also writes `rerun.json`, the state of the second build. ``failed_step`` reads the step of a failed node's
-`status.json`; ``tail`` keeps the end of its log without a line that may hold a secret.
+also writes `rerun.json`, the state of the second build. A check of the answer that fails on this machine is
+``CheckFailed``, whose text is ``CHECK_FAILED`` with the error's message. ``failed_step`` reads the step of a failed
+node's `status.json`; ``tail`` keeps the end of its log without a line that may hold a secret (``may_hold_secret``).
 
 A refusal or a failed job is ``JobError``; its text never holds a value of a setting or a secret.
 """
@@ -38,6 +39,7 @@ ENGINE_FILES = ("job.sh", "build.py")
 SCRIPT = "scene.py"
 SHOTS = "shots.json"
 JOB_FAILED = "job failed on the node"
+CHECK_FAILED = "the node's answer failed a check: {}"
 BUILD_OK = "FACTORY build ok"
 RERUN_STAGE = "simulation"
 RERUN_SCENE = "rerun-scene.json"
@@ -65,6 +67,21 @@ _RESOLUTION = re.compile(r"([1-9][0-9]*)x([1-9][0-9]*)")
 
 class JobError(Exception):
     """The job cannot be sent, or failed on the node; ``str(error)`` says which."""
+
+
+class CheckFailed(JobError):
+    """The node answered ok and a check of its answer failed on this machine; ``str(error)`` is ``CHECK_FAILED``
+    with the error's message."""
+
+
+def _check(error) -> str:
+    """``CHECK_FAILED`` with the message of ``error``: its text for ``SceneError`` and ``FramesError``, else its
+    class name, `: ` and its text; the message cut to ``LINE_CHARS``."""
+    message = str(error) if isinstance(error, (scenestate.SceneError, frames.FramesError)) else (
+        f"{type(error).__name__}: {error}")
+    if len(message) > LINE_CHARS:
+        message = message[:LINE_CHARS - 1] + "…"
+    return CHECK_FAILED.format(message)
 
 
 def _int(value) -> bool:
@@ -244,12 +261,17 @@ def tail(text: str, hidden) -> list:
     any other longer than ``LINE_CHARS`` cut."""
     found = []
     for line in text.splitlines()[-TAIL_LINES:]:
-        if SIGNED in line or any(value in line for value in hidden):
+        if may_hold_secret(line, hidden):
             line = WITHHELD
         elif len(line) > LINE_CHARS:
             line = line[:LINE_CHARS - 1] + "…"
         found.append(line)
     return found
+
+
+def may_hold_secret(text: str, hidden) -> bool:
+    """True when ``text`` holds ``SIGNED`` or a value of ``hidden``."""
+    return SIGNED in text or any(value in text for value in hidden)
 
 
 def _json(path):
@@ -339,8 +361,8 @@ def finish(job, described, status, unpacked, settings, run=subprocess.run):
             measured["rerender"] = frames.rerender(
                 [(f, os.path.join(out, f"frame-{f:06d}.png"), os.path.join(out, f"rerender-{f:06d}.png"))
                  for f in described["sampled"]], shlex.split(metric), run=run)
-    except (scenestate.SceneError, frames.FramesError, KeyError, TypeError, ValueError):
-        raise JobError(JOB_FAILED) from None
+    except (scenestate.SceneError, frames.FramesError, KeyError, TypeError, ValueError) as error:
+        raise CheckFailed(_check(error)) from None
     Path(out, "state.json").write_text(scenestate.dumps(state), encoding="utf-8")
     if rerun_state is not None:
         Path(out, "rerun.json").write_text(scenestate.dumps(rerun_state), encoding="utf-8")

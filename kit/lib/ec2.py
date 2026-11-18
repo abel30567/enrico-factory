@@ -10,8 +10,10 @@ until it is running. ``user_data()`` is `kit/engine/start.sh` with that link, th
 token filled in. ``run(job)`` puts `in.tar`, then `links.txt` (``LINKS``, each link signed for
 ``RENDER_MAX_MIN`` + 15 minutes), waits for `status.json`, gets `status.json`, `out.tar` and `log.txt` and
 writes the outputs (``renderjob``). When `status.json` names a step of ``renderjob.STEPS``, it gets `log.txt`
-only and fails. When ``run`` fails after the job is described, ``failure`` is ``{"log", "step", "tail"}``: the
-store key `jobs/<nonce>/log.txt`, that step or None, and ``renderjob.tail`` of the log (``[]`` when not read).
+only and fails. When ``run`` fails after the job is described, ``failure`` is
+``{"log", "step", "tail", "check"}``: the store key `jobs/<nonce>/log.txt`, that step or None, ``renderjob.tail``
+of the log (``[]`` when not read), and the text of ``renderjob.CheckFailed`` when a check of the node's answer
+failed on this machine (``renderjob.WITHHELD`` when ``renderjob.may_hold_secret``), else None.
 ``stop()`` ends the instance (end, not stop: nothing is kept), waits until it is ``shutting-down`` or
 ``terminated`` and returns the minutes and dollars from its launch time to its end. The objects of
 ``jobs/<nonce>/`` stay in the store; its expiry rule removes them.
@@ -298,10 +300,14 @@ class Node:
                 renderjob.finish(job, described, status, unpacked, self.config["settings"])
             finally:
                 shutil.rmtree(directory, ignore_errors=True)
-        except Exception:
+        except Exception as error:
             hidden = [value for value in (*self.key[:2], *self.store_key[:2], self.token) if value]
             self.failure = {"log": LOG_KEY.format(self.nonce), "step": renderjob.failed_step(status),
-                            "tail": renderjob.tail(self.log or "", hidden)}
+                            "tail": renderjob.tail(self.log or "", hidden),
+                            "check": None}
+            if isinstance(error, renderjob.CheckFailed):
+                check = str(error)
+                self.failure["check"] = renderjob.WITHHELD if renderjob.may_hold_secret(check, hidden) else check
             raise
 
     def _settings(self):
