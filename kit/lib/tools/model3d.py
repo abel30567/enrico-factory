@@ -1,9 +1,10 @@
 """The model tool: a 3D model of the job's reference image, from the model vendor's queue API.
 
-`POST <MODEL_API>/<MODEL_PATH>` with the image's public link and `face_limit`, the triangle budget of the
-asset's kind (`TRIANGLE_BUDGETS` of `kit/lib/lints/assets.py`), poll the answer's `status_url` until the
-request is `COMPLETED`, get its `response_url` and download `model_mesh.url` to `model.glb`, which goes to
-the asset store. The model is read (`kit/lib/glb.py`); one that does not read fails the job and is not
+`POST <MODEL_API>/<MODEL_PATH>` with the image's public link and `face_limit`, nine tenths of the triangle
+budget of the asset's kind (`TRIANGLE_BUDGETS` of `kit/lib/lints/assets.py`), because the vendor's model can
+come back slightly over the number it is sent, poll the answer's `status_url` until the request is
+`COMPLETED`, get its `response_url` and download `model_mesh.url` to `model.glb`, which goes to the asset
+store. The model is read (`kit/lib/glb.py`); one that does not read fails the job and is not
 stored. The stage files are the asset's `state.json`, `{asset, kind, sha256, triangles, materials, textures,
 height_m, skeleton}`, and `manifest.json`. `asset` is the request's `for`; `kind` is `character` when an
 input is `bible/canon/characters/<asset>.md`, else `set` when one is `bible/canon/places/<asset>.md`, else
@@ -30,6 +31,7 @@ OUTPUT = "model.glb"
 STATE, MANIFEST = "state.json", "manifest.json"
 STAGE_FILES = ("manifest.json", "state.json")
 SHEETS = (("character", "bible/canon/characters"), ("set", "bible/canon/places"))
+FACE_LIMIT = {kind: budget * 9 // 10 for kind, budget in TRIANGLE_BUDGETS.items()}
 
 
 def asset_kind(call, asset):
@@ -75,7 +77,7 @@ def run(call):
     authorization = "Key " + vendor.read_key(call["secrets"]["gen.model3d"])
     image_url = vendor.link(call["settings"], sha256)
     vendor.check_reference(call, sha256, size)
-    body = {"image_url": image_url, "face_limit": TRIANGLE_BUDGETS[kind]}
+    body = {"image_url": image_url, "face_limit": FACE_LIMIT[kind]}
     answer = vendor.submit(f"{vendor.MODEL_API}/{vendor.MODEL_PATH}", authorization, body)
     status_url = vendor.under(answer.get("status_url"), vendor.MODEL_API)
     response_url = vendor.under(answer.get("response_url"), vendor.MODEL_API)
