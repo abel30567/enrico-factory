@@ -176,18 +176,32 @@ def _shot_file(p, root, unit: str, shot_unit: bool):
     return None
 
 
+def _sheet(p, root, unit: str) -> str | None:
+    """The path of the canon sheet of the asset ``unit`` on the base, a character's before a place's, or None."""
+    return next((path.format(unit) for path in (CHARACTER, PLACE) if _on_base(p, root, path.format(unit))), None)
+
+
+def operator_inputs(p, root, stage: str, unit: str, request: str) -> list | None:
+    """The input paths, in order, of the job of an ``assets`` or ``rigging`` ticket for ``unit``, with ``request`` as
+    the first; None at any other stage."""
+    if stage == "rigging":
+        return [request, f"production/assets/{unit}/assets/state.json"]
+    if stage == "assets":
+        sheet = _sheet(p, root, unit)
+        return [request, "media/manifest.tsv", *([sheet, LEDGER] if sheet else [])]
+    return None
+
+
 def _operator(p, root, stage: str, unit: str) -> list:
     """The lines of the block of a stage ``render-wrangler`` operates after its tool line, without the empty line."""
     shot_unit = stage in SHOT_STAGES
     found = _shot_file(p, root, unit, shot_unit)
     shot_line = f"Shot file: {found[0]}." if found else "Shot file: none on the base."
     if not shot_unit:
-        sheet = next((path.format(unit) for path in (CHARACTER, PLACE) if _on_base(p, root, path.format(unit))), None)
+        sheet = _sheet(p, root, unit)
         kind = {CHARACTER.format(unit): "character", PLACE.format(unit): "set"}.get(sheet, "prop")
-        if stage == "rigging":
-            inputs = [f'the request (refs ["asset:{unit}"])', f"production/assets/{unit}/assets/state.json"]
-        else:
-            inputs = ["the request", "media/manifest.tsv", *([sheet, LEDGER] if sheet else [])]
+        request = f'the request (refs ["asset:{unit}"])' if stage == "rigging" else "the request"
+        inputs = operator_inputs(p, root, stage, unit, request)
         return [f"Kind: {kind}. {shot_line}", f"Inputs, in this order: {', '.join(inputs)}."]
     index = SHOT_STAGES.index(stage)
     inputs = ["the request", *(f"production/{unit}/{s}/scene.py" for s in SCENES[:index + 1])]

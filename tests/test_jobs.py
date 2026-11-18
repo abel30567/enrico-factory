@@ -201,7 +201,7 @@ class CoveringTest(unittest.TestCase):
             files[JOB] = job_text
         self.w.on_branch(files)
         p, _, ticket, pull = self.w.load()
-        return jobs.covering(self.w.root, pull, ticket, "fetcher", REQUEST)
+        return jobs.covering(p, self.w.root, pull, ticket, "fetcher", REQUEST)
 
     def test_covered(self):
         job = job_for()
@@ -233,7 +233,80 @@ class CoveringTest(unittest.TestCase):
         self.assertIsNotNone(self.covering(json.dumps(job_for())))
         self.w.on_branch({REQUEST: REQUEST_TEXT + " "})
         p, _, ticket, pull = self.w.load()
-        self.assertIsNone(jobs.covering(self.w.root, pull, ticket, "fetcher", REQUEST))
+        self.assertIsNone(jobs.covering(p, self.w.root, pull, ticket, "fetcher", REQUEST))
+
+
+class OperatorInputsTest(unittest.TestCase):
+    """ISSUE-620: at a stage the filing lists the inputs of (``assets``, ``rigging``), a job covers its request only
+    when the paths of its inputs are that list, in order. Ticket #3 is read as a ticket of that stage for an asset;
+    the canon sheet and the ledger are committed on `trunk`."""
+
+    UNIT = "wren"
+    SHEET = "bible/canon/characters/wren.md"
+    LEDGER = "bible/canon/ledger.tsv"
+    MANIFEST = "media/manifest.tsv"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def with_sheet(self):
+        self.w.on_trunk(self.SHEET, "Wren.\n")
+        self.w.on_trunk(self.LEDGER, "id\tfact\n")
+
+    def job(self, paths):
+        return job_for(inputs=[{"path": REQUEST, "sha256": sha(REQUEST_TEXT)},
+                               *({"path": path, "sha256": "0" * 64} for path in paths)])
+
+    def covering(self, paths, stage="assets", unit=UNIT):
+        job = self.job(paths)
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job)})
+        p, _, ticket, pull = self.w.load()
+        return jobs.covering(p, self.w.root, pull, {**ticket, "stage": stage, "unit": unit}, "fetcher", REQUEST)
+
+    def test_a_stale_assets_job_does_not_cover(self):
+        self.with_sheet()
+        self.assertIsNone(self.covering([self.MANIFEST, self.SHEET]))
+
+    def test_the_assets_job_with_the_ledger_covers(self):
+        self.with_sheet()
+        job = self.job([self.MANIFEST, self.SHEET, self.LEDGER])
+        self.assertEqual(self.covering([self.MANIFEST, self.SHEET, self.LEDGER]),
+                         {"path": JOB, "request": REQUEST, "job": job, "hash": digest(job)})
+
+    def test_the_right_paths_in_another_order_do_not_cover(self):
+        self.with_sheet()
+        self.assertIsNone(self.covering([self.SHEET, self.MANIFEST, self.LEDGER]))
+
+    def test_the_request_not_first_does_not_cover(self):
+        self.with_sheet()
+        job = job_for(inputs=[{"path": self.MANIFEST, "sha256": "0" * 64},
+                              {"path": REQUEST, "sha256": sha(REQUEST_TEXT)},
+                              {"path": self.SHEET, "sha256": "0" * 64}, {"path": self.LEDGER, "sha256": "0" * 64}])
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job)})
+        p, _, ticket, pull = self.w.load()
+        self.assertIsNone(jobs.covering(p, self.w.root, pull, {**ticket, "stage": "assets", "unit": self.UNIT},
+                                        "fetcher", REQUEST))
+
+    def test_a_prop(self):
+        self.assertIsNotNone(self.covering([self.MANIFEST]))
+        self.w = World(self)
+        self.assertIsNone(self.covering([self.MANIFEST, self.SHEET, self.LEDGER]))
+
+    def test_rigging(self):
+        state = f"production/assets/{self.UNIT}/assets/state.json"
+        self.with_sheet()
+        self.assertIsNotNone(self.covering([state], stage="rigging"))
+        self.w = World(self)
+        self.with_sheet()
+        self.assertIsNone(self.covering([], stage="rigging"))
+
+    def test_of_reports_a_stale_job_uncovered(self):
+        self.with_sheet()
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(self.job([self.MANIFEST, self.SHEET]))})
+        p, state, ticket, pull = self.w.load()
+        found = jobs.of(p, self.w.root, state, {**ticket, "stage": "assets", "unit": self.UNIT}, pull, role="fetcher")
+        self.assertIn(REQUEST, found["uncovered"])
+        self.assertEqual(found["jobs"], [])
 
 
 class OfTest(unittest.TestCase):
