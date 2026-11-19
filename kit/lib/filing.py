@@ -18,10 +18,14 @@ tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MED
 the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot file on the base and the job's inputs
 in order. The body of the ``conform`` stage, when its makers name ``render-wrangler``, names a tool, its expected cost
 and its inputs for each request name of ``CONFORM_TOOLS`` under ``production/<ep>/conform/requests/``, with the same
-settings. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
-``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
-shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
-from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
+settings. The body of the ``rigging`` stage, when its makers name ``render-wrangler``, names the kind and the shot
+file, then one job per request name under ``production/assets/<unit>/rigging/requests/``: ``rig.json`` with tool
+``rig``, and ``scene.json``, once the rig job ran, with tool ``render``, each with its cost (the settings ``RIG_*``
+and ``RENDER_*``) and its inputs. A ``rigging`` ticket is filed only for a unit with
+``bible/canon/characters/<unit>.md`` on the base. A ``sequence`` stage after a ``shot`` stage is filed once for the
+sequence ``<ep>/<Q>`` of the shot, only when every shot of the sequence in ``production/<ep>/shots.json`` on the
+base has a locked ticket of the shot stage, and only from the lowest numbered of those tickets; its body has one
+``Upstream:`` line per shot. An ``episode`` stage after
 a ``shot`` stage is filed the same way once for the episode of the shot, from every shot of the episode in
 ``production/<ep>/shots.json`` on the base, one ``Upstream:`` line per shot in the order of that file. Any other
 pair files nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again.
@@ -49,6 +53,7 @@ base, as unit ``<id>``. No ``intake`` ticket is filed and no file is written.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 
 from kit.lib import gitstate, production, tickets
@@ -58,6 +63,8 @@ _KEY = re.compile(r"[^A-Za-z0-9]+")
 PACKAGE = ("story", "reel")
 INTAKE = ("production", "intake")
 RIGGING = ("production", "rigging")
+RIG_REQUEST = "rig.json"
+RIG_SCENE = "scene.json"
 EDIT_LIST = "episodes/{}/reel/edit-list.json"
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 
@@ -183,7 +190,10 @@ def _sheet(p, root, unit: str) -> str | None:
 
 def operator_inputs(p, root, stage: str, unit: str, request: str) -> list | None:
     """The input paths, in order, of the job of an ``assets`` or ``rigging`` ticket for ``unit``, with ``request`` as
-    the first; None at any other stage."""
+    the first (at ``rigging``, a request named ``scene.json`` renders the rig); None at any other stage."""
+    if stage == "rigging" and posixpath.basename(request) == RIG_SCENE:
+        return [request, f"production/assets/{unit}/rigging/scene.py",
+                f"production/assets/{unit}/rigging/manifest.json", f"production/assets/{unit}/assets/state.json"]
     if stage == "rigging":
         return [request, f"production/assets/{unit}/assets/state.json"]
     if stage == "assets":
@@ -200,8 +210,7 @@ def _operator(p, root, stage: str, unit: str) -> list:
     if not shot_unit:
         sheet = _sheet(p, root, unit)
         kind = {CHARACTER.format(unit): "character", PLACE.format(unit): "set"}.get(sheet, "prop")
-        request = f'the request (refs ["asset:{unit}"])' if stage == "rigging" else "the request"
-        inputs = operator_inputs(p, root, stage, unit, request)
+        inputs = operator_inputs(p, root, stage, unit, "the request")
         return [f"Kind: {kind}. {shot_line}", f"Inputs, in this order: {', '.join(inputs)}."]
     index = SHOT_STAGES.index(stage)
     inputs = ["the request", *(f"production/{unit}/{s}/scene.py" for s in SCENES[:index + 1])]
@@ -239,15 +248,34 @@ def _conform(p, root, unit: str) -> list:
     return lines
 
 
+def _rigging(p, root, unit: str) -> list:
+    """The lines of the block of the ``rigging`` stage ``render-wrangler`` operates, without the empty line."""
+    found = _shot_file(p, root, unit, False)
+    shot_line = f"Shot file: {found[0]}." if found else "Shot file: none on the base."
+    sheet = _sheet(p, root, unit)
+    kind = {CHARACTER.format(unit): "character", PLACE.format(unit): "set"}.get(sheet, "prop")
+    lines = [f"Requests: production/assets/{unit}/rigging/requests/, one job per request, by its name.",
+             f"Kind: {kind}. {shot_line}"]
+    for name, label, (tool, usd, compute_min) in ((RIG_REQUEST, RIG_REQUEST, TOOLS["rigging"]),
+                                                  (RIG_SCENE, f"{RIG_SCENE}, once the rig job ran", TOOLS["render"])):
+        cost = _cost(tool, production.setting(p, f"{tool.upper()}_USD", usd),
+                     production.setting(p, f"{tool.upper()}_COMPUTE_MIN", compute_min))
+        inputs = [f'the request (refs ["asset:{unit}"])', *operator_inputs(p, root, "rigging", unit, name)[1:]]
+        lines.append(f"{label}: {cost} Inputs, in this order: {', '.join(inputs)}.")
+    return lines
+
+
 def _tool(p, root, room: str, stage: str, unit: str) -> str:
-    """The tool and expected cost line of a stage ``media-wrangler`` makes, or the block of the ``conform`` stage or
-    of a stage of ``TOOLS`` ``render-wrangler`` operates, with its empty line; else empty."""
+    """The tool and expected cost line of a stage ``media-wrangler`` makes, or the block of the ``conform`` or
+    ``rigging`` stage or of a stage of ``TOOLS`` ``render-wrangler`` operates, with its empty line; else empty."""
     makers = production.stage_roles(production.stage(p, room, stage) or {}, "maker")
     if MEDIA_MAKER in makers:
         return _cost(production.setting(p, "MEDIA_TOOL", "grok-imagine"), production.setting(p, "MEDIA_USD", "0.1"),
                      production.setting(p, "MEDIA_COMPUTE_MIN", "1")) + "\n\n"
     if OPERATOR in makers and stage == CONFORM:
         return "\n".join(_conform(p, root, unit)) + "\n\n"
+    if OPERATOR in makers and stage == RIGGING[1]:
+        return "\n".join(_rigging(p, root, unit)) + "\n\n"
     if OPERATOR not in makers or stage not in TOOLS:
         return ""
     tool, usd, compute_min = TOOLS[stage]

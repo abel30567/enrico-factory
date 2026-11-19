@@ -12,7 +12,9 @@ refused while a cheaper stage of its shot is not locked (`lockrules.cheaper_stag
 Each input must have its hash where it is read, except `media/manifest.tsv` after a first input whose `refs` are all
 `media:<id>` or which is a pad request, exactly `{"source": "media:<id>"}`: then one of the last 200 versions of the
 file there has that hash, with the same header and the same lines for each id; and the not-ours check reads of that
-file its header and those lines only. An input `asset:<id>` is not read as a
+file its header and those lines only. An input `production/assets/<asset>/rigging/manifest.json` that the
+job's own run rewrote passes when the newest of the last 200 versions of the file there with its hash has the
+same `skeleton` and the same one output `rig.glb` as the file there. An input `asset:<id>` is not read as a
 file: it must carry the `sha256` of the asset's locked state on the base.
 
 A number that is an issue labelled harness-fork is checked by kit/lib/harnessfork.py against
@@ -25,6 +27,7 @@ import json
 import math
 import os
 import posixpath
+import re
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -43,6 +46,8 @@ REF_PREFIX = "media:"
 SOURCE = "source"
 ASSET = "asset:"
 MANIFEST_VERSIONS = 200
+RIG_MANIFEST = re.compile(r"production/assets/[^/]+/rigging/manifest\.json")
+RIG = "rig.glb"
 ERRORS = (ledger.LedgerError, production.ProductionError, github.GitHubError, gitstate.GitError,
           tickets.TicketError)
 ALREADY = " (already recorded)"
@@ -157,6 +162,29 @@ def _check_asset(p, path, digest):
         raise Refused(f"input {path} does not match the sha256 of its locked state")
 
 
+def _rig(text):
+    """``(skeleton, the outputs named rig.glb)`` of a rigging manifest's text; None when it is not an object."""
+    try:
+        manifest = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(manifest, dict):
+        return None
+    outputs = manifest.get("outputs") if isinstance(manifest.get("outputs"), list) else []
+    return manifest.get("skeleton"), [o for o in outputs if isinstance(o, dict) and o.get("name") == RIG]
+
+
+def _check_rig_manifest(p, ref, where, path, digest, text):
+    """``Refused`` unless a version of the rigging manifest ``path`` with the hash ``digest`` has the skeleton and
+    the one `rig.glb` row of its ``text`` at ``ref``."""
+    gated = _gated(p, ref, path, digest)
+    if gated is None:
+        raise Refused(f"input {path} does not match its hash on {where}")
+    then, now = _rig(gated), _rig(text)
+    if then is None or then != now or len(now[1]) != 1:
+        raise Refused(f"input {path} changed its skeleton or its rig.glb row on {where}")
+
+
 def _check_inputs(p, job, ref=None, where="the base"):
     ref = ref or production.base(p)
     for item in job["inputs"]:
@@ -166,6 +194,9 @@ def _check_inputs(p, job, ref=None, where="the base"):
         text = gitstate.show(p.root, ref, item["path"]) if item["path"] else None
         found = None if text is None else sha256(text)
         if found == item["sha256"]:
+            continue
+        if text is not None and RIG_MANIFEST.fullmatch(item["path"]):
+            _check_rig_manifest(p, ref, where, item["path"], item["sha256"], text)
             continue
         ids = None if text is None else _named(p, job, ref, item["path"])
         gated = None if ids is None else _gated(p, ref, item["path"], item["sha256"])

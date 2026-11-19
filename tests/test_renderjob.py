@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from kit.lib import ec2, filing, golden, lint, renderjob, sigv4  # noqa: E402
+from kit.lib.lints import rigging  # noqa: E402
 from test_assets import KEY_ID, REGION, SECRET, AssetStore  # noqa: E402
 from test_ec2 import BILLED, KEY, NOON, SETTINGS, Ec2Replay, at, session  # noqa: E402
 
@@ -375,6 +376,21 @@ class Assets(Job):
         self.assertEqual(described["assets"], {"wren": BIN})
         manifest = json.loads((self.out / "manifest.json").read_text())
         self.assertIn({"path": "asset:wren", "sha256": BIN}, manifest["inputs"])
+
+    def test_links_name_the_binary_of_the_asset(self):
+        """ISSUE-635: after the four links, one `GET <sha256> <link>` per binary, a read of `<ASSET_STORE>/<sha256>`."""
+        _, _, error, _, _ = self.session_run()
+        self.assertIsNone(error)
+        rows = [line.split(" ") for line in self.store.objects["links.txt"].decode("utf-8").splitlines()]
+        self.assertEqual([(method, name) for method, name, _ in rows],
+                         [("GET", "in"), ("PUT", "out"), ("PUT", "log"), ("PUT", "status"), ("GET", BIN)])
+        url = urllib.parse.urlsplit(rows[-1][2])
+        self.assertEqual(url.path, f"/b/{BIN}")
+        self.assertEqual(dict(urllib.parse.parse_qsl(url.query))["X-Amz-Expires"], str(EXPIRES))
+        self.assertNotIn(SECRET, rows[-1][2])
+        self.store.objects[BIN] = b"glTF wren"
+        with OPENER.open(rows[-1][2], timeout=10) as response:
+            self.assertEqual(response.read(), b"glTF wren")
 
     def test_a_missing_or_other_state_is_refused_before_any_upload(self):
         cases = (("no text", asset_item(None)), ("not json", asset_item(WREN, text="not json\n")),
@@ -888,6 +904,155 @@ class Describe(unittest.TestCase):
                        item("production/ep01/Q1-1/layout/scene.py", "import random\nR = random.Random(3)\n"))
         self.assertEqual(renderjob.seeds(job, STAGE),
                          {"FixedSeed": 0, "scene.py:3": 7, "production/ep01/Q1-1/layout/scene.py:2": 3})
+
+
+# ISSUE-635: a rigging job renders the poses of the rig the rig job made.
+RIG_BYTES = b"wren rig"
+RIG = sha(RIG_BYTES)
+RIGGING = "production/assets/wren/rigging"
+RIG_SCRIPT = ROOT / "tests" / "fixtures" / "engine" / "scripts" / "rigging.py"
+SKELETON = {"bones": [{"name": "root", "parent": None}, {"name": "spine", "parent": "root"}],
+            "weights_normalised": True}
+RIG_ROW = {"bytes": len(RIG_BYTES), "name": "rig.glb", "sha256": RIG}
+RIG_MANIFEST = {"job": "5a" * 32, "engine": "rig", "flags": [], "seeds": {},
+                "inputs": [{"path": f"{RIGGING}/requests/rig.json", "sha256": "1" * 64}],
+                "outputs": [RIG_ROW], "skeleton": SKELETON}
+RIG_STATE_LINE = "FACTORY RIG_STATE "
+RIG_NAMES = sorted(["engine-build.log", "engine-render.log", "node.json", "scene.json",
+                    *(f"frame-{f:06d}.{e}" for f in range(6) for e in ("png", "exr"))])
+
+
+class Rigging(Job):
+    """The scene job of a rigging ticket: ruling 1's inputs, the answer of tests/fixtures/renderjob/out-rigging/."""
+
+    def setUp(self):
+        super().setUp()
+        self.members = sorted({**{p.name: p.read_bytes() for p in (FIX / "out-rigging").iterdir()},
+                               **frames(0, 5, [])}.items())
+        request = json.dumps({"for": "wren", "prompt": "rest and arms up", "refs": ["asset:wren"]}) + "\n"
+        self.inputs = [item(f"{RIGGING}/requests/scene.json", request),
+                       item(f"{RIGGING}/scene.py", RIG_SCRIPT.read_text(encoding="utf-8")),
+                       item(f"{RIGGING}/manifest.json", json.dumps(RIG_MANIFEST, indent=2) + "\n"),
+                       item("production/assets/wren/assets/state.json", json.dumps(WREN, indent=2) + "\n")]
+
+    def node_json(self):
+        return json.loads(dict(self.members)["node.json"])
+
+    def with_markers(self, markers):
+        """The members with the markers of the build step replaced by ``markers`` and the ok line."""
+        node = self.node_json()
+        node["steps"][0]["markers"] = [*markers, "FACTORY build ok"]
+        found = dict(self.members, **{"node.json": (json.dumps(node) + "\n").encode("utf-8")})
+        return sorted(found.items())
+
+    def logged(self):
+        marker = self.node_json()["steps"][0]["markers"][0]
+        return json.loads(marker[len(RIG_STATE_LINE):])
+
+    def described(self):
+        with tarfile.open(fileobj=io.BytesIO(self.got["in.tar"])) as archive:
+            return json.loads(archive.extractfile("job.json").read())
+
+    def test_the_job_writes_the_rig_state_and_carries_the_rig(self):
+        replay, driver, error, billed, _ = self.session_run()
+        self.assertIsNone(error)
+        self.assertEqual(billed, BILLED)
+        self.assertEqual(sorted(os.listdir(self.out)), sorted(RIG_NAMES + ["manifest.json", "state.json"]))
+        for name, data in self.members:
+            self.assertEqual((self.out / name).read_bytes(), data)
+        state = {"asset": "wren", "rig_sha256": RIG, **self.logged()}
+        self.assertEqual((self.out / "state.json").read_text(), json.dumps(state, sort_keys=True, indent=2) + "\n")
+        self.assertEqual(self.described(), {
+            "hash": JOB, "stage": "rigging", "asset": "wren", "poses": ["rest", "arms-up"], "fps": 1, "first": 0,
+            "last": 5, "width": WIDTH, "height": HEIGHT, "scripts": ["scripts/00.py"], "assets": {"wren": RIG},
+            "sampled": []})
+        last = self.store.objects["links.txt"].decode("utf-8").splitlines()[-1].split(" ")
+        self.assertEqual(last[:2], ["GET", RIG])
+        self.assertEqual(urllib.parse.urlsplit(last[2]).path, f"/b/{RIG}")
+        self.assertEqual(dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(last[2]).query))["X-Amz-Expires"],
+                         str(EXPIRES))
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertEqual(sorted(manifest), ["engine", "flags", "inputs", "job", "outputs", "seeds", "skeleton"])
+        self.assertEqual(manifest["skeleton"], SKELETON)
+        self.assertEqual([o for o in manifest["outputs"] if o["name"] == "rig.glb"], [RIG_ROW])
+        names = sorted(RIG_NAMES + ["rig.glb", "state.json"])
+        self.assertEqual([o["name"] for o in manifest["outputs"]], names)
+        self.assertEqual(manifest["inputs"], [{"path": "requests/scene.json", "sha256": self.inputs[0]["sha256"]},
+                                              {"path": "scene.py", "sha256": self.inputs[1]["sha256"]},
+                                              {"path": "manifest.json", "sha256": self.inputs[2]["sha256"]},
+                                              {"path": "production/assets/wren/assets/state.json",
+                                               "sha256": self.inputs[3]["sha256"]}])
+        unit = self.tmp / "lint" / "production" / "assets" / "wren"
+        (unit / "rigging").mkdir(parents=True)
+        (unit / "assets").mkdir()
+        for name in ("state.json", "manifest.json"):
+            shutil.copyfile(self.out / name, unit / "rigging" / name)
+        (unit / "assets" / "state.json").write_text(json.dumps(WREN) + "\n", encoding="utf-8")
+        self.assertEqual(rigging.check(self.tmp / "lint"), [])
+
+    def test_a_wrong_rig_state_fails_a_check(self):
+        good = self.node_json()["steps"][0]["markers"][0]
+        logged = self.logged()
+        cases = (
+            ("no marker", self.with_markers([]), "the build logged no line FACTORY RIG_STATE"),
+            ("two markers", self.with_markers([good, good]), "the build logged more than one line FACTORY RIG_STATE"),
+            ("not json", self.with_markers([RIG_STATE_LINE + "{joints"]), "FACTORY RIG_STATE is not {joints, rom}"),
+            ("a third key", self.with_markers([RIG_STATE_LINE + json.dumps({**logged, "asset": "wren"})]),
+             "FACTORY RIG_STATE is not {joints, rom}"),
+            ("rom.poses 1.5", self.with_markers([RIG_STATE_LINE + json.dumps(
+                {**logged, "rom": {**logged["rom"], "poses": 1.5}})]),
+             "FACTORY RIG_STATE: rom.poses is not a whole number"),
+            ("rom.poses 3", self.with_markers([RIG_STATE_LINE + json.dumps(
+                {**logged, "rom": {**logged["rom"], "poses": 3}})]),
+             "FACTORY RIG_STATE: rom.poses is 3, the script's LEVEL names 2 poses"),
+            ("frame-000005.png missing", [m for m in self.members if m[0] != "frame-000005.png"],
+             "frame-000005.png is missing"),
+        )
+        for name, members, message in cases:
+            with self.subTest(name):
+                self.setUp()
+                self.members = members
+                self.assert_failed(renderjob.CHECK_FAILED.format(message))
+                self.assertFalse((self.out / "state.json").exists())
+                self.assertFalse((self.out / "manifest.json").exists())
+
+    def test_a_job_without_a_rig_or_poses_is_refused_before_any_upload(self):
+        script = RIG_SCRIPT.read_text(encoding="utf-8")
+        poses = '"poses": ["rest", "arms-up"]'
+        no_rig = "no input production/assets/wren/rigging/manifest.json with one output rig.glb"
+        cases = (
+            ("no manifest", 2, None, no_rig),
+            ("no rig.glb", 2, item(f"{RIGGING}/manifest.json", json.dumps(dict(RIG_MANIFEST, outputs=[]))), no_rig),
+            ("no poses", 1, item(f"{RIGGING}/scene.py", script.replace(poses, '"fps": 1')), renderjob.NO_POSES),
+            ("a repeated pose", 1, item(f"{RIGGING}/scene.py", script.replace(poses, '"poses": ["rest", "rest"]')),
+             renderjob.NO_POSES),
+            ("a pose Arm Up", 1, item(f"{RIGGING}/scene.py", script.replace(poses, '"poses": ["rest", "Arm Up"]')),
+             renderjob.NO_POSES),
+        )
+        self.assertEqual(renderjob.NO_POSES,
+                         "the script's LEVEL has no poses: a list of unique names of a-z, 0-9 and -")
+        for name, index, replacement, message in cases:
+            with self.subTest(name):
+                self.setUp()
+                if replacement is None:
+                    del self.inputs[index]
+                else:
+                    self.inputs[index] = replacement
+                self.assert_failed(message)
+                self.assertEqual([r for r in self.store.requests if r["method"] == "PUT"], [])
+                self.assertEqual(os.listdir(self.out), [])
+
+    def test_a_job_reading_an_earlier_scene_manifest_carries_the_rig_once(self):
+        self.session_run()
+        earlier = (self.out / "manifest.json").read_text()
+        self.setUp()
+        self.inputs[2] = item(f"{RIGGING}/manifest.json", earlier)
+        _, _, error, _, _ = self.session_run()
+        self.assertIsNone(error)
+        manifest = json.loads((self.out / "manifest.json").read_text())
+        self.assertEqual([o for o in manifest["outputs"] if o["name"] == "rig.glb"], [RIG_ROW])
+        self.assertEqual([o["name"] for o in manifest["outputs"]], sorted(RIG_NAMES + ["rig.glb", "state.json"]))
+        self.assertEqual(manifest["skeleton"], SKELETON)
 
 
 if __name__ == "__main__":

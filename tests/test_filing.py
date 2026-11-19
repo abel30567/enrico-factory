@@ -703,6 +703,18 @@ ASSET_STATES = "production/assets/wren/assets/state.json, production/assets/salt
 RENDER_LINE = "Tool: render. Expected cost: usd 0.2, compute_min 20.\n"
 
 
+def rigging_block(unit, shot_file, rig=("0.55", "1"), render=("0.2", "20")):
+    """The block of a ``rigging`` ticket ``render-wrangler`` operates (ISSUE-635 ruling 1), without its empty line."""
+    request = f'the request (refs ["asset:{unit}"])'
+    return (f"Requests: production/assets/{unit}/rigging/requests/, one job per request, by its name.\n"
+            f"Kind: character. Shot file: {shot_file or 'none on the base'}.\n"
+            f"rig.json: Tool: rig. Expected cost: usd {rig[0]}, compute_min {rig[1]}. Inputs, in this order: "
+            f"{request}, production/assets/{unit}/assets/state.json.\n"
+            f"scene.json, once the rig job ran: Tool: render. Expected cost: usd {render[0]}, compute_min {render[1]}. "
+            f"Inputs, in this order: {request}, production/assets/{unit}/rigging/scene.py, "
+            f"production/assets/{unit}/rigging/manifest.json, production/assets/{unit}/assets/state.json.")
+
+
 def production_ticket(number, stage, unit, state="closed"):
     return ticket(number, stage, unit, state=state, room="production")
 
@@ -764,14 +776,32 @@ class OperatorBodies(Case):
                          ["r.json", "production/assets/wren/assets/state.json"])
         self.assertIsNone(filing.operator_inputs(p, self.root, "layout", "ep01/Q1-1", "r.json"))
 
+    def test_rigging_operator_inputs_by_request_name(self):
+        """ISSUE-635: at ``rigging`` a request named ``scene.json`` takes the scene's four inputs, any other two."""
+        p = self.p()
+        scene = "production/assets/wren/rigging/requests/scene.json"
+        self.assertEqual(filing.operator_inputs(p, self.root, "rigging", "wren", scene),
+                         [scene, "production/assets/wren/rigging/scene.py",
+                          "production/assets/wren/rigging/manifest.json", "production/assets/wren/assets/state.json"])
+        self.assertEqual(filing.operator_inputs(p, self.root, "rigging", "wren", "r.json"),
+                         ["r.json", "production/assets/wren/assets/state.json"])
+        self.assertEqual(filing.operator_inputs(p, self.root, "rigging", "wren", "requests/scene.json.bak"),
+                         ["requests/scene.json.bak", "production/assets/wren/assets/state.json"])
+
     def test_rigging_body(self):
+        """ISSUE-635: two requests, two jobs: the rig, then the scene that renders its poses."""
         self.assertEqual(self.body(self.after("assets", "wren"), "rigging", "wren"),
                          "Do the stage rigging for unit wren.\n\n"
-                         "Tool: rig. Expected cost: usd 0.55, compute_min 1.\n"
+                         "Requests: production/assets/wren/rigging/requests/, one job per request, by its name.\n"
                          "Kind: character. Shot file: episodes/ep01/sequences/Q1/shots/Q1-1.json.\n"
+                         "rig.json: Tool: rig. Expected cost: usd 0.55, compute_min 1. Inputs, in this order: "
+                         "the request (refs [\"asset:wren\"]), production/assets/wren/assets/state.json.\n"
+                         "scene.json, once the rig job ran: Tool: render. Expected cost: usd 0.2, compute_min 20. "
                          "Inputs, in this order: the request (refs [\"asset:wren\"]), "
+                         "production/assets/wren/rigging/scene.py, production/assets/wren/rigging/manifest.json, "
                          "production/assets/wren/assets/state.json.\n\n"
                          "Upstream: #3 assets wren, locked by PR #4.\nFiled by factory tick.\n")
+        self.assertIn(rigging_block("wren", Q1_1), self.body(self.after("assets", "wren"), "rigging", "wren"))
 
     def test_layout_body(self):
         self.assertEqual(self.body(make_state(*SHOW_REEL), "layout", "ep01/Q1-1"),
@@ -826,8 +856,10 @@ class OperatorBodies(Case):
         self.assertIn(f"\n\n{RENDER_LINE}Shot file: ", self.body(state, "layout", "ep01/Q1-1"))
         self.assertIn("\n\nTool: model3d. Expected cost: usd 0.3, compute_min 1.\nKind: ",
                       self.body(state, "assets", "wren"))
-        self.assertIn("\n\nTool: rig. Expected cost: usd 0.55, compute_min 1.\nKind: ",
+        self.assertIn(rigging_block("wren", Q1_1, render=("0.5", "45")),
                       self.body(self.after("assets", "wren"), "rigging", "wren", render))
+        self.assertIn(rigging_block("wren", Q1_1, rig=("0.6", "1")),
+                      self.body(self.after("assets", "wren"), "rigging", "wren", {"RIG_USD": "0.6"}))
 
     def test_no_shot_file(self):
         self.assertEqual(self.body(self.after("layout", "ep01/Q9-1"), "animation", "ep01/Q9-1"),
@@ -839,11 +871,7 @@ class OperatorBodies(Case):
                          "Upstream: #3 layout ep01/Q9-1, locked by PR #4.\nFiled by factory tick.\n")
         self.commit({"bible/canon/characters/ghost.md": "Ghost.\n"})
         self.assertEqual(self.body(self.after("assets", "ghost"), "rigging", "ghost"),
-                         "Do the stage rigging for unit ghost.\n\n"
-                         "Tool: rig. Expected cost: usd 0.55, compute_min 1.\n"
-                         "Kind: character. Shot file: none on the base.\n"
-                         "Inputs, in this order: the request (refs [\"asset:ghost\"]), "
-                         "production/assets/ghost/assets/state.json.\n\n"
+                         "Do the stage rigging for unit ghost.\n\n" + rigging_block("ghost", None) + "\n\n"
                          "Upstream: #3 assets ghost, locked by PR #4.\nFiled by factory tick.\n")
 
     def test_rigging_only_for_a_character(self):
