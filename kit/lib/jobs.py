@@ -98,19 +98,19 @@ def _recorded_outputs(p, digest):
 
 
 def _unstaged(p, root, ticket, pull, job):
-    """True when a name in both the job's tool's ``STAGE_FILES`` and the outputs of its recorded call is missing
-    at the pull's head where ``factory run`` stages it; False for a tool that is not installed or has no
-    ``STAGE_FILES``, a job without a record or such a name, or a unit with no directory."""
+    """The names in both the job's tool's ``STAGE_FILES`` and the outputs of its recorded call that are missing
+    at the pull's head where ``factory run`` stages them, sorted; empty for a tool that is not installed or has
+    no ``STAGE_FILES``, a job without a record or such a name, or a unit with no directory."""
     try:
         names = set(getattr(cmd_run._load_tool(job["job"]["tool"]), "STAGE_FILES", ()))
     except cmd_run.Refused:
-        return False
+        return []
     names &= _recorded_outputs(p, job["hash"])
     directory = cmd_run._unit_dir(p, ticket["room"], ticket["stage"], ticket["unit"]) if names else None
     if directory is None:
-        return False
+        return []
     head = pull["git"]["head"]
-    return any(gitstate.show(root, head, f"{directory}/{name}") is None for name in sorted(names))
+    return [name for name in sorted(names) if gitstate.show(root, head, f"{directory}/{name}") is None]
 
 
 def _states(job, comments, rows, pending=False, unstaged=False):

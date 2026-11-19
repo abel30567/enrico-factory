@@ -27,8 +27,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from kit.lib import cmd_gate, cmd_media, cmd_run, gitstate, github, ledger, lint, production, resources  # noqa: E402
+from kit.lib import (cmd_gate, cmd_media, cmd_run, gitstate, github, jobs, ledger, lint, production,  # noqa: E402
+                     resources)
 from test_assets import AssetStore  # noqa: E402
+from test_jobs import JOB as OPERATOR_JOB, World as JobsWorld, digest as job_digest, job_for  # noqa: E402
 from test_media import KEY_ID, REGION, SECRET, FakeStore, free_port  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "run"
@@ -1381,6 +1383,91 @@ class RightsRefusalTest(unittest.TestCase):
                                              "(research/not-ours.tsv:2)\n"))
         self.assertEqual(w.fake_calls(), [])
         self.assertEqual([(r["kind"], r["hash"]) for r in w.rows()], [("job", digest)])
+
+
+class RestageTest(unittest.TestCase):
+    """ISSUE-628: a DONE job of ``model3d`` (``STAGE_FILES`` ``manifest.json``, ``state.json``) whose recorded call
+    output a staged name that is missing at the pull's head is restaged from ``<STATE_DIR>/jobs/<hash>/out/``,
+    with no tool call, no row, nothing stored and nothing posted. The world is ``test_jobs.World``: ticket #3
+    (render, ep01) with its operator's job on the open pull #4."""
+
+    UNIT_DIR = "production/ep01/render"
+    OUT = {"manifest.json": '{"files": ["model.glb"]}\n', "model.glb": "glb\n", "state.json": '{"asset": "x"}\n'}
+
+    def setUp(self):
+        self.w = JobsWorld(self)
+        self.state = self.w.root.parent / "state"
+        with (self.w.root / ".git" / "info" / "exclude").open("a") as exclude:
+            exclude.write("production.local.env\n")
+        (self.w.root / "production.local.env").write_text(f"STATE_DIR={self.state}\n")
+        job = job_for(tool="model3d")
+        self.digest = job_digest(job)
+        self.w.on_branch({OPERATOR_JOB.removeprefix("jobs/"): '{"for": "shot-1", "prompt": "a lantern on the pier", '
+                          '"refs": []}\n', OPERATOR_JOB: json.dumps(job),
+                          **{f"{self.UNIT_DIR}/{name}": self.OUT[name] for name in ("manifest.json", "state.json")}})
+        self.w.ran(job, "DONE")
+        self.job_dir = self.state / "jobs" / self.digest
+        (self.job_dir / "out").mkdir(parents=True)
+        for name, text in self.OUT.items():
+            (self.job_dir / "out" / name).write_text(text)
+        (self.job_dir / "result.json").write_text(json.dumps({
+            "compute_min": "5", "reason": None, "usd": "1", "verdict": "DONE",
+            "outputs": [{"name": name, "sha256": hashlib.sha256(text.encode()).hexdigest(), "bytes": len(text)}
+                        for name, text in sorted(self.OUT.items())]}))
+
+    def run_job(self, apply):
+        p, state, _, _ = self.w.load()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cmd_run._run(p, self.w.gh, state, jobs._rows(p, self.w.root), OPERATOR_JOB, apply, PULL)
+        return code, out.getvalue()
+
+    def head(self):
+        return gitstate.head(self.w.root, self.w.ref(PULL))
+
+    def staged(self, name):
+        return gitstate.show(self.w.root, self.w.ref(PULL), f"{self.UNIT_DIR}/{name}")
+
+    def ledger(self):
+        return gitstate.show(self.w.root, "trunk", ledger.PATH)
+
+    def gh_log(self):
+        path = self.w.dir / "log.jsonl"
+        return [json.loads(l) for l in path.read_text().splitlines()] if path.is_file() else []
+
+    def test_clean_is_already_recorded(self):
+        head, rows = self.head(), self.ledger()
+        self.assertEqual(self.run_job(True), (0, f"run job {self.digest}: DONE usd 1 compute_min 5 (already recorded)\n"))
+        self.assertEqual((self.head(), self.ledger()), (head, rows))
+
+    def test_a_removed_stage_file_is_restaged(self):
+        self.w.on_branch({f"{self.UNIT_DIR}/state.json": None})
+        rows, log = self.ledger(), self.gh_log()
+        self.assertEqual(self.run_job(True), (0, f"run job {self.digest}: restaged 1 files from the recorded call\n"))
+        self.assertEqual(self.staged("state.json"), self.OUT["state.json"])
+        self.assertEqual(self.ledger(), rows)
+        self.assertFalse((self.job_dir / "pending").exists())
+        self.assertEqual(self.gh_log(), log + [{"number": None, "op": "push", "ref": self.w.ref(PULL)}])
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+        self.assertTrue(self.run_job(True)[1].endswith(" (already recorded)\n"))
+
+    def test_dry_run(self):
+        self.w.on_branch({f"{self.UNIT_DIR}/state.json": None, f"{self.UNIT_DIR}/manifest.json": None})
+        head = self.head()
+        self.assertEqual(self.run_job(False),
+                         (0, f"run job {self.digest}: would restage 2 files from the recorded call\n"))
+        self.assertEqual(self.head(), head)
+        self.assertIsNone(self.staged("state.json"))
+
+    def test_refused_when_the_recorded_output_is_gone(self):
+        self.w.on_branch({f"{self.UNIT_DIR}/state.json": None})
+        (self.job_dir / "out" / "state.json").unlink()
+        head, rows = self.head(), self.ledger()
+        for apply in (False, True):
+            with self.assertRaisesRegex(cmd_run.Refused, "state.json"):
+                self.run_job(apply)
+        self.assertEqual((self.head(), self.ledger()), (head, rows))
 
 
 if __name__ == "__main__":
