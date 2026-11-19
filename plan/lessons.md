@@ -109,3 +109,7 @@
   worktree usually holds. A fix pushed to the remote alone is not seen: commit in that worktree, or
   fast-forward it after the push (sample pull 54, 2026-11-19). A maker change the orchestrator makes
   posts no maker `READY`, so the operator is not relaunched: launch it by hand (`factory launch`).
+- A revision ticket whose request does not change gets no operator: with no changed request or job
+  file on the pull, the tick goes maker -> lint -> review and the reviewer blocks on a missing model
+  (sample #55 / pull 56, 2026-11-19). Write the job file's re-ask (`"ticket": <new>`, `"attempt": 2`)
+  on the pull in its worktree; the tick then gates and runs the job after the lint.
