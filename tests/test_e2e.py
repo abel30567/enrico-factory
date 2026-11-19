@@ -40,7 +40,7 @@ TOKEN = "token-e2e-wombat-0815-never-printed\n"
 IDENTITY = ("-c", "user.name=e2e tester", "-c", "user.email=e2e@example.invalid")
 LAST = re.compile(r"tick: (\d+) steps, (\d+) need, (\d+) wait, (\d+) failed\n\Z")
 LABEL = "needs:orchestrator"
-REF = "beats/EP01-story-writer-1"
+REF = "beats/EP01-story-writer-3-1"
 BEATS = "episodes/ep01/beats.md"
 SETTINGS = {"REPO": "fixture/show", "MODEL_MAKER": "fake-maker", "MODEL_CHECKER": "fake-checker",
             "MODEL_OTHER": "fake-other"}

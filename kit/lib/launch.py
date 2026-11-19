@@ -458,7 +458,7 @@ def _prepare(p, gh, root, role, number, task_file, now, pair_dir, staged):
     if pull is None and blocked is not None:
         judged = []
     if kind in BRANCHED:
-        branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{n}"
+        branch = pull["head_ref"] if pull is not None else f"{ticket['stage']}/{ticket['key']}-{role}-{run_id}"
         if pull is None and _branch_exists(root, branch):
             raise LaunchError(f"branch {branch} already exists")
     media_dir = state_dir / "runs" / f".media-{name}"

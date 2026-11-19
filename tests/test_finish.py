@@ -177,7 +177,7 @@ class MakerFirstLaunch(unittest.TestCase):
         self.w.steps(ready(files={"episodes/ep02/outline.md": "# Two\n\nThe heron leaves.\n",
                                   "notes/scratch.md": "outside writes\n"}))
         self.code, self.out, self.err = self.w.launch("writer", "3")
-        self.branch = "outline/OL-2-writer-1"
+        self.branch = "outline/OL-2-writer-3-1"
 
     def test_exit_and_output(self):
         self.assertEqual((self.code, self.err), (0, ""))
@@ -343,7 +343,7 @@ class SeededDefects(unittest.TestCase):
         self.assertEqual([markers.parse(c["body"]).verb for c in self.w.posted(role)], [verb])
 
     def assert_maker_blocked_body(self, body):
-        self.assertIn(f"Resume from: outline/OL-2-writer-1 @ {self.start}\n", body)
+        self.assertIn(f"Resume from: outline/OL-2-writer-3-1 @ {self.start}\n", body)
         self.assertIn("Dropped (outside writes): ", body)
         self.assertEqual(last_line(body), f"head {self.start} manifest none")
         self.assertEqual([e for e in self.w.log() if e["op"] in ("push", "open_pull")], [])
@@ -370,7 +370,7 @@ class SeededDefects(unittest.TestCase):
                             result_step(WRITER, {"marker": "APPROVED", "summary": "fine"},
                                         {"episodes/ep02/outline.md": "x\n"}))
         self.assert_maker_blocked_body(body)
-        self.assertEqual(self.w.head("outline/OL-2-writer-1"), self.start)
+        self.assertEqual(self.w.head("outline/OL-2-writer-3-1"), self.start)
 
     def test_notes_without_a_note(self):
         body = self.blocked("critic", 5, "a valid result (result.notes: NOTES needs at least one note)",
@@ -422,13 +422,13 @@ class SeededDefects(unittest.TestCase):
                             ready(files={"episodes/ep02/outline.md": "x\n", "notes/own.md": "mine\n"}))
         self.assert_maker_blocked_body(body)
         self.assertIn("Dropped (outside writes): notes/own.md\n", body)
-        self.assertEqual(self.w.head("outline/OL-2-writer-1"), self.start)
+        self.assertEqual(self.w.head("outline/OL-2-writer-3-1"), self.start)
         self.assertEqual(gitstate.status(self.w.state / "worktrees" / "writer-3-1"), [])
 
     def test_worker_commits_inside_writes_twin(self):
         self.w.local(HARNESS=str(self.w.harness / "committing-harness"))
         self.clean("writer", 3, "READY", ready())
-        self.assertEqual(self.w.git("log", "--format=%an", "trunk..outline/OL-2-writer-1").split(), ["worker"])
+        self.assertEqual(self.w.git("log", "--format=%an", "trunk..outline/OL-2-writer-3-1").split(), ["worker"])
         self.assertEqual([e["op"] for e in self.w.log() if e["op"] in ("push", "open_pull")],
                          ["push", "open_pull"])
 
@@ -468,7 +468,7 @@ class SeededDefects(unittest.TestCase):
             "[WRITER] BLOCKED", "", "Cannot place the heron.", "", "Missing: the heron's route",
             "What was tried: the map", "Resume from: nothing yet", "Dropped (outside writes): none", "Launch: 3-1",
             f"head {self.start} manifest none"]) + "\n")
-        self.assertEqual(self.w.head("outline/OL-2-writer-1"), self.start)
+        self.assertEqual(self.w.head("outline/OL-2-writer-3-1"), self.start)
         self.assertEqual([e for e in self.w.log() if e["op"] in ("push", "open_pull")], [])
 
 
