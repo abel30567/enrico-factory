@@ -8,6 +8,10 @@ Movie Render Queue queues (the re-render queue first, saved as `Rerender.utxt`, 
 last, as `QueueManifest.utxt`) and saves them. It ends clean, as measured on #115: every scene namespace and
 engine object is dropped and collected, and only then is the ok marker logged; the job trusts that line and
 the saved files, not the exit code. Imports only `unreal` and the standard library.
+
+At `rigging` the job names `poses` instead of a shot: the build needs, for each pose and each of `VIEWS` in
+order, an actor labelled `camera-<pose>-<view>`; frame `3 * i + k` shows pose `i` from view `k`, one camera cut
+section per frame. `scene.json` leaves those cameras out of its actors and records the first as its camera.
 """
 
 import gc
@@ -30,6 +34,7 @@ ASSETS = "/Game/Job/Assets"
 NOT_STORED = "asset:{}: the asset store gave no binary"
 OTHER_BINARY = "asset:{}: the binary's sha256 is not its state's"
 NOT_PLACED = "asset:{}: the engine placed no actor for its binary"
+VIEWS = ("front", "side", "rear-right")
 
 
 def _vector(v):
@@ -40,11 +45,13 @@ def _rotation(r):
     return [float(r.roll), float(r.pitch), float(r.yaw)]
 
 
-def _scene(actors, camera):
-    """The raw scene: every actor but the camera and the lights, the camera, the lights, the console variables."""
+def _scene(actors, cameras):
+    """The raw scene: every actor but the cameras and the lights, the first camera, the lights, the console
+    variables."""
     scene = {"actors": [], "lights": [], "cvars": {}, "render": dict(RENDER)}
+    camera = cameras[0]
     for actor in actors:
-        if actor is camera:
+        if any(actor is other for other in cameras):
             continue
         row = {"label": actor.get_actor_label(), "class": actor.get_class().get_name(),
                "location": _vector(actor.get_actor_location()), "rotation": _rotation(actor.get_actor_rotation())}
@@ -76,8 +83,9 @@ def _scene(actors, camera):
     return scene
 
 
-def _sequence(job, camera, held):
-    """The level sequence `SEQUENCE`: frames `first` to `last + 1` at `fps`, a camera cut to `camera`."""
+def _sequence(job, cameras, held):
+    """The level sequence `SEQUENCE`: frames `first` to `last + 1` at `fps`, a camera cut to the first of
+    ``cameras``; at `rigging` one cut of one frame to each camera in order."""
     tools = unreal.AssetToolsHelpers.get_asset_tools()
     name = SEQUENCE.rsplit("/", 1)
     seq = held["sequence"] = tools.create_asset(name[1], name[0], unreal.LevelSequence,
@@ -85,10 +93,18 @@ def _sequence(job, camera, held):
     seq.set_display_rate(unreal.FrameRate(job["fps"], 1))
     seq.set_playback_start(job["first"])
     seq.set_playback_end(job["last"] + 1)
-    binding = seq.add_possessable(camera)
-    cut = seq.add_track(unreal.MovieSceneCameraCutTrack).add_section()
-    cut.set_range(job["first"], job["last"] + 1)
-    cut.set_camera_binding_id(seq.get_binding_id(binding))
+    if job["stage"] != "rigging":
+        binding = seq.add_possessable(cameras[0])
+        cut = seq.add_track(unreal.MovieSceneCameraCutTrack).add_section()
+        cut.set_range(job["first"], job["last"] + 1)
+        cut.set_camera_binding_id(seq.get_binding_id(binding))
+    else:
+        bindings = [seq.add_possessable(camera) for camera in cameras]
+        track = seq.add_track(unreal.MovieSceneCameraCutTrack)
+        for frame, binding in enumerate(bindings, job["first"]):
+            cut = track.add_section()
+            cut.set_range(frame, frame + 1)
+            cut.set_camera_binding_id(seq.get_binding_id(binding))
     unreal.EditorAssetLibrary.save_loaded_asset(seq)
 
 
@@ -197,16 +213,26 @@ def _build(namespaces, held):
             return script
     held["actors"] = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     actors = held["actors"].get_all_level_actors()
-    cameras = [a for a in actors if a.get_actor_label() == "camera"]
-    if not cameras:
-        return "no actor labelled camera"
-    scene = _scene(actors, cameras[0])
+    if job["stage"] == "rigging":
+        labelled = {}
+        for actor in actors:
+            labelled.setdefault(actor.get_actor_label(), actor)
+        cameras = []
+        for label in (f"camera-{pose}-{view}" for pose in job["poses"] for view in VIEWS):
+            if label not in labelled:
+                return f"no actor labelled {label}"
+            cameras.append(labelled[label])
+    else:
+        cameras = [a for a in actors if a.get_actor_label() == "camera"][:1]
+        if not cameras:
+            return "no actor labelled camera"
+    scene = _scene(actors, cameras)
     sampled = " ".join(str(int(f)) for f in job["sampled"])
     _write(os.path.join(ROOT, "out", "scene.json"), json.dumps(scene, sort_keys=True, indent=2) + "\n")
     _write(os.path.join(ROOT, "Job", "job.env"),
            f"WIDTH={int(job['width'])}\nHEIGHT={int(job['height'])}\nFIRST={int(job['first'])}\n"
            f"LAST={int(job['last'])}\nSTAGE={job['stage']}\nSAMPLED=\"{sampled}\"\n")
-    _sequence(job, cameras[0], held)
+    _sequence(job, cameras, held)
     held["queues"] = unreal.get_editor_subsystem(unreal.MoviePipelineQueueSubsystem)
     _queues(job, scene, held)
     held["levels"].save_current_level()

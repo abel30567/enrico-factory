@@ -300,6 +300,27 @@ class OperatorInputsTest(unittest.TestCase):
         self.with_sheet()
         self.assertIsNone(self.covering([], stage="rigging"))
 
+    def rigging_covering(self, name, paths):
+        """``jobs.covering`` at ``rigging`` of a job for the request ``rigging/requests/<name>`` of the asset."""
+        request = f"production/assets/{self.UNIT}/rigging/requests/{name}"
+        job = job_for(request=request, inputs=[{"path": request, "sha256": sha(REQUEST_TEXT)},
+                                               *({"path": path, "sha256": "0" * 64} for path in paths)])
+        self.w.on_branch({request: REQUEST_TEXT, "jobs/" + request: json.dumps(job)})
+        p, _, ticket, pull = self.w.load()
+        return jobs.covering(p, self.w.root, pull, {**ticket, "stage": "rigging", "unit": self.UNIT}, "fetcher",
+                             request)
+
+    def test_rigging_scene_job_covers_with_the_four_paths(self):
+        """ISSUE-635: a `scene.json` job covers with the scene's inputs, a `rig.json` job only with the rig's."""
+        base = f"production/assets/{self.UNIT}"
+        four = [f"{base}/rigging/scene.py", f"{base}/rigging/manifest.json", f"{base}/assets/state.json"]
+        cases = (("scene.json", four, True), ("scene.json", four[2:], False), ("rig.json", four, False),
+                 ("rig.json", four[2:], True))
+        for name, paths, covers in cases:
+            with self.subTest(name=name, paths=len(paths) + 1):
+                self.w = World(self)
+                self.assertEqual(self.rigging_covering(name, paths) is not None, covers)
+
     def test_of_reports_a_stale_job_uncovered(self):
         self.with_sheet()
         self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(self.job([self.MANIFEST, self.SHEET]))})

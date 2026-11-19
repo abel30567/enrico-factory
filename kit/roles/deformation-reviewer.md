@@ -23,6 +23,8 @@ notes. You did not make this work, and you do not change it.
 2. `review/`: the files the stage's job made, outside git. Before you start, the launcher fetches each
    entry `{name, sha256, bytes}` of `outputs` in `rigging/manifest.json` from the asset store to
    `review/<name>`. You cannot fetch a file yourself.
+   The pose frames are `frame-<n>.png`: pose `n // 3` of `LEVEL["poses"]` in `rigging/scene.py`,
+   seen from the front, the side and the rear right for `n % 3` = 0, 1 and 2. `rig.glb` is the rig.
 3. `production/assets/<asset>/assets/state.json`: the locked asset and its skeleton.
 4. `bible/canon/ledger.tsv`, `bible/canon/characters/*.md`, `bible/style/characters/*.md`.
 

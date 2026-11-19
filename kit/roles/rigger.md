@@ -46,9 +46,12 @@ your result.
   headless. It imports only `unreal` and the standard library, names an asset of the production only
   as `asset:<id>` and any other object only by its sha256 in the asset store, and holds no
   Blueprint, no path outside the job's directory, no network call, no clock read and no random
-  number without a seed. It never writes the state.
-- **request** `production/assets/<asset>/rigging/requests/*.json`: one file per job the task
-  names, named after its tool (`rig.json`): a JSON object with exactly the keys `for` (the asset
+  number without a seed. It never writes the state. It sets `LEVEL = {"poses": [<name>, ...]}`
+  (names of `a-z`, `0-9` and `-`), poses the rig (the actor labelled with the asset id) in each, leaves
+  the cameras `camera-<pose>-front`, `camera-<pose>-side` and `camera-<pose>-rear-right`, and logs
+  one line `FACTORY RIG_STATE <json>`: the object `{joints, rom}` of `rigging/state.json`.
+- **request** `production/assets/<asset>/rigging/requests/*.json`: `rig.json` first, `scene.json`
+  only on the relaunch after the rig job ran: each a JSON object with exactly the keys `for` (the asset
   id), `prompt` (what the rig must do, in one paragraph) and `refs` (a list of exactly one entry,
   `asset:<id>`, the asset's own id: the rig takes its model from the asset's locked state).
 - The job writes `rigging/state.json` (`rig_sha256`, `joints`, `rom`) and `rigging/manifest.json`.

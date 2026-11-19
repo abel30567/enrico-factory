@@ -8,9 +8,10 @@ reads the machine image's root device, launches one instance that ends itself (t
 start script's first command a shutdown at ``RENDER_MAX_MIN``, the root disk deleted with it) and waits
 until it is running. ``user_data()`` is `kit/engine/start.sh` with that link, the engine image and its pull
 token filled in. ``run(job)`` puts `in.tar`, then `links.txt` (``LINKS``, each link signed for
-``RENDER_MAX_MIN`` + 15 minutes), waits for `status.json`, gets `status.json`, `out.tar` and `log.txt` and
-writes the outputs (``renderjob``). When `status.json` names a step of ``renderjob.STEPS``, it gets `log.txt`
-only and fails. When ``run`` fails after the job is described, ``failure`` is
+``RENDER_MAX_MIN`` + 15 minutes, then a line `GET <sha256> <link>` per distinct binary of the job's `assets`,
+sorted, its link a `GET` of `<ASSET_STORE>/<sha256>` signed as long), waits for `status.json`, gets
+`status.json`, `out.tar` and `log.txt` and writes the outputs (``renderjob``). When `status.json` names a step
+of ``renderjob.STEPS``, it gets `log.txt` only and fails. When ``run`` fails after the job is described, ``failure`` is
 ``{"log", "step", "tail", "check"}``: the store key `jobs/<nonce>/log.txt`, that step or None, ``renderjob.tail``
 of the log (``[]`` when not read), and the text of ``renderjob.CheckFailed`` when a check of the node's answer
 failed on this machine (``renderjob.WITHHELD`` when ``renderjob.may_hold_secret`` of its uncut message),
@@ -205,11 +206,12 @@ class Node:
     def _object(self, name):
         return f"{self.store}/jobs/{self.nonce}/{name}"
 
-    def _link(self, method, name):
-        """The object ``name`` of the job signed in its query for ``RENDER_MAX_MIN`` + 15 minutes from now."""
+    def _link(self, method, name, url=None):
+        """The object ``name`` of the job (or ``url``) signed in its query for ``RENDER_MAX_MIN`` + 15 minutes from
+        now."""
         expires = (int(self._setting("RENDER_MAX_MIN")) + LINK_MINUTES) * 60
-        return sigv4.presign(method, self._object(name), self.store_key, self.now().strftime(sigv4.TIME_FORMAT),
-                             expires)
+        return sigv4.presign(method, url or self._object(name), self.store_key,
+                             self.now().strftime(sigv4.TIME_FORMAT), expires)
 
     def _put(self, name, data):
         url = self._object(name)
@@ -275,8 +277,10 @@ class Node:
         status = None
         try:
             self._put("in.tar", renderjob.in_tar(job, described))
-            self._put("links.txt", "".join(f"{method} {name} {self._link(method, path)}\n"
-                                           for method, name, path in LINKS).encode("utf-8"))
+            lines = [f"{method} {name} {self._link(method, path)}\n" for method, name, path in LINKS]
+            lines += [f"GET {sha256} {self._link('GET', None, self.store + '/' + sha256)}\n"
+                      for sha256 in sorted(set(described["assets"].values()))]
+            self._put("links.txt", "".join(lines).encode("utf-8"))
             self._wait()
             directory = tempfile.mkdtemp(prefix="renderjob-")
             try:
