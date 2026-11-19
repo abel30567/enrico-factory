@@ -86,11 +86,13 @@ def _rows(p, root):
 
 def _recorded_outputs(p, digest):
     """The output names of the job's recorded call, from ``<STATE_DIR>/jobs/<hash>/result.json``; empty without
-    a record."""
+    a record or with outputs that are not a list."""
     try:
         path = production.state_dir(p) / "jobs" / digest / cmd_run.RESULT
         outputs = json.loads(path.read_text(encoding="utf-8")).get("outputs") or []
     except (production.ProductionError, OSError, ValueError, AttributeError):
+        return set()
+    if not isinstance(outputs, list):
         return set()
     return {o["name"] for o in outputs if isinstance(o, dict) and isinstance(o.get("name"), str)}
 

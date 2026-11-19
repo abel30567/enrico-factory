@@ -617,6 +617,12 @@ class RestageTest(unittest.TestCase):
         [found] = self.w.of()["jobs"]
         self.assertEqual(found["run"], "DONE")
 
+    def test_a_record_whose_outputs_are_not_a_list(self):
+        job = self.done("model3d", (), ())
+        (self.state / "jobs" / digest(job) / "result.json").write_text(json.dumps({"outputs": 1, "verdict": "DONE"}))
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+
     def test_tool_without_staged_files(self):
         self.done("voice", (), ("voice.wav",))
         [found] = self.w.of()["jobs"]
