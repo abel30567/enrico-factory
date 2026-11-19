@@ -2,22 +2,25 @@
 
 - The operator of a stage is the first name of its ``maker`` place whose kind is ``operator``. The operator
   of a pull request is the first such name that has a request on it.
-- A request of a pull request for an operator is a path the pull changes that exists at its head, fully
-  matches ``(?:.+/)?requests/[^/]+\\.json`` and is not inside the operator's ``writes``, while its job path,
-  ``jobs/`` followed by the request path, is.
+- A request of a pull request for an operator is a path that exists at the pull's head, fully matches
+  ``(?:.+/)?requests/[^/]+\\.json`` and is not inside the operator's ``writes``, while its job path, ``jobs/``
+  followed by the request path, is; the pull changes the request or its job file.
 - A request is covered when its job file, read at the head, has the shape ``factory gate`` asks, names
   the pull's ticket and the operator as ``caller``, and its first input is the request with its hash at
   the head. At a stage ``filing.operator_inputs`` lists for the ticket's unit, the paths of its inputs are
   also that list, in that order; the hashes of the inputs after the request are not compared.
 - A job's gate state is None, ``PASS`` (counting, as ``factory run`` counts it) or ``STOP`` (the newest
   gate comment that covers it); its run state is None, ``DONE`` or ``FAILED`` (its last ``run`` row on the
-  base).
+  base). A ``DONE`` job has the run state None while a name in both its tool's ``STAGE_FILES`` and the
+  ``outputs`` of its recorded call (``<STATE_DIR>/jobs/<hash>/result.json``) is missing at the pull's head in
+  the directory ``factory run`` stages into, so a run restages it; without a record it stays ``DONE``.
 
 Reads git and the ledger; writes nothing.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 from kit.lib import cmd_gate, cmd_run, filing, frontmatter, gitstate, ledger, production, tickets
@@ -39,7 +42,9 @@ def requests(p, root, pull, role) -> list:
     """The pull's request paths for the operator ``role``, sorted."""
     head = pull["git"]["head"]
     writes = frontmatter.as_list(p.roles[role]["meta"].get("writes"))
-    return [path for path in sorted(pull["git"]["changed"])
+    changed = set(pull["git"]["changed"])
+    changed |= {path[len(JOBS_DIR):] for path in changed if path.startswith(JOBS_DIR)}
+    return [path for path in sorted(changed)
             if REQUEST.fullmatch(path) and not production.matches(path, writes)
             and production.matches(job_path(path), writes) and gitstate.show(root, head, path) is not None]
 
@@ -79,8 +84,38 @@ def _rows(p, root):
         raise tickets.TicketError(str(error)) from None
 
 
-def _states(job, comments, rows, pending=False):
-    """``job`` with its gate state and comment, and its run state and row; a ``pending`` job has not run."""
+def _recorded_outputs(p, digest):
+    """The output names of the job's recorded call, from ``<STATE_DIR>/jobs/<hash>/result.json``; empty without
+    a record or with outputs that are not a list."""
+    try:
+        path = production.state_dir(p) / "jobs" / digest / cmd_run.RESULT
+        outputs = json.loads(path.read_text(encoding="utf-8")).get("outputs") or []
+    except (production.ProductionError, OSError, ValueError, AttributeError):
+        return set()
+    if not isinstance(outputs, list):
+        return set()
+    return {o["name"] for o in outputs if isinstance(o, dict) and isinstance(o.get("name"), str)}
+
+
+def _unstaged(p, root, ticket, pull, job):
+    """The names in both the job's tool's ``STAGE_FILES`` and the outputs of its recorded call that are missing
+    at the pull's head where ``factory run`` stages them, sorted; empty for a tool that is not installed or has
+    no ``STAGE_FILES``, a job without a record or such a name, or a unit with no directory."""
+    try:
+        names = set(getattr(cmd_run._load_tool(job["job"]["tool"]), "STAGE_FILES", ()))
+    except cmd_run.Refused:
+        return []
+    names &= _recorded_outputs(p, job["hash"])
+    directory = cmd_run._unit_dir(p, ticket["room"], ticket["stage"], ticket["unit"]) if names else None
+    if directory is None:
+        return []
+    head = pull["git"]["head"]
+    return [name for name in sorted(names) if gitstate.show(root, head, f"{directory}/{name}") is None]
+
+
+def _states(job, comments, rows, pending=False, unstaged=False):
+    """``job`` with its gate state and comment, and its run state and row; a ``pending`` job has not run, and
+    an ``unstaged`` ``DONE`` job keeps its row with the run state None."""
     recorded = cmd_gate._recorded(comments, "job", job["hash"])
     if cmd_run._counting_pass({"comments": comments, "hash": job["hash"]}, rows):
         gate = "PASS"
@@ -89,8 +124,10 @@ def _states(job, comments, rows, pending=False):
     else:
         gate = None
     ran = [] if pending else [r for r in rows if r["kind"] == "run" and r["hash"] == job["hash"]]
-    return {**job, "gate": gate, "gate_comment": recorded, "run": ran[-1]["verdict"] if ran else None,
-            "run_row": ran[-1] if ran else None}
+    run = ran[-1]["verdict"] if ran else None
+    if run == cmd_run.DONE and unstaged:
+        run = None
+    return {**job, "gate": gate, "gate_comment": recorded, "run": run, "run_row": ran[-1] if ran else None}
 
 
 def of(p, root, state, ticket, pull, role=None) -> dict | None:
@@ -113,5 +150,6 @@ def of(p, root, state, ticket, pull, role=None) -> dict | None:
     if jobs:
         rows = _rows(p, root)
         comments = state.ticket_comments.get(ticket["number"], [])
-        jobs = [_states(job, comments, rows, cmd_run.pending(p, job["hash"])) for job in jobs]
+        jobs = [_states(job, comments, rows, cmd_run.pending(p, job["hash"]), _unstaged(p, root, ticket, pull, job))
+                for job in jobs]
     return {"operator": role, "requests": found, "uncovered": uncovered, "jobs": jobs}
