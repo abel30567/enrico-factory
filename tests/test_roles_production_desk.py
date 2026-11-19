@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from kit.lib import frontmatter, markers, roles  # noqa: E402
+from kit.lib import cmd_gate, frontmatter, markers, roles  # noqa: E402
 from kit.lib.frontmatter import as_list  # noqa: E402
 
 KIT = ROOT / "kit"
@@ -58,7 +58,10 @@ SPECIFIC = {
                         "At `assets` and `rigging` the state stays a file input.",
                         "never the sha256 of the state's own bytes", "an asset input's is the one exception",
                         "or holds no `sha256` for an asset input", "`voice` for `voice-L<n>.json`",
-                        "`conform` for `mix.json`", "A request with another name has no tool: return `BLOCKED`."),
+                        "`conform` for `mix.json`", "A request with another name has no tool: return `BLOCKED`.",
+                        "Add `attempt` only when the task or a `[LINE-PRODUCER] RULING` asks for the same job "
+                        "again", "a whole number of at least 2", "one more than the job file's current one "
+                        "(none counts as 1)", "Never add it otherwise."),
 }
 
 
@@ -261,6 +264,19 @@ class ProductionRoomTest(unittest.TestCase):
         kit.edit("render-wrangler", "never copied from another file; an\n  asset input's is the one exception.",
                  "never copied from another file.")
         self.assertIn("body lacks \"an asset input's is the one exception\"", kit.own("render-wrangler"))
+
+    def test_render_wrangler_names_the_gates_attempt_key(self):
+        text = (KIT / "roles" / "render-wrangler.md").read_text(encoding="utf-8")
+        self.assertIn(f"`{cmd_gate.ATTEMPT}`", text)
+
+    def test_render_wrangler_without_attempt(self):
+        kit = KitCopy(self)
+        kit.edit("render-wrangler", " Add `attempt` only when", " When")
+        self.assertIn("body lacks 'Add `attempt` only when the task or a `[LINE-PRODUCER] RULING` asks for "
+                      "the same job again'", kit.own("render-wrangler"))
+        kit = KitCopy(self)
+        kit.edit("render-wrangler", "Never add it otherwise.", "")
+        self.assertIn("body lacks 'Never add it otherwise.'", kit.own("render-wrangler"))
 
     def test_init_installs_them_with_the_production_room(self):
         tmp = tempfile.mkdtemp()

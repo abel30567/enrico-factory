@@ -42,11 +42,12 @@ run `gh`.
 ## What you produce
 
 - **job**: one job file per job the task names, at the path the task names: a JSON object with
-  exactly the keys `ticket`, `tool`, `inputs`, `expected` and `caller`. `ticket`: the ticket
-  number. `tool`: the tool the task names. `inputs`: each file the task names as
-  `{path, sha256}`, its path in the production and the `sha256` of its bytes, in the order the
-  task gives. `expected`: `{usd, compute_min}`, as the task gives them. `caller`:
-  `render-wrangler`.
+  exactly the keys `ticket`, `tool`, `inputs`, `expected` and `caller`. `ticket`: the ticket number.
+  `tool`: the tool the task names. `inputs`: each file the task names as `{path, sha256}`, its path
+  in the production and the `sha256` of its bytes, in the order the task gives. `expected`:
+  `{usd, compute_min}`, as the task gives them. `caller`: `render-wrangler`. Add `attempt` only when
+  the task or a `[LINE-PRODUCER] RULING` asks for the same job again: a whole number of at least 2,
+  one more than the job file's current one (none counts as 1). Never add it otherwise.
 - **asset input**: at `layout`, `animation`, `simulation`, `lighting` and `render`, write each
   input the task names as `production/assets/<id>/assets/state.json` in its place as
   `{"path": "asset:<id>", "sha256": ...}`: the value of that file's key `sha256`, the sha256 of
