@@ -105,3 +105,7 @@
   the same job file again, its canonical hash equals the earlier `DONE` run in the ledger, and the tick
   counts it as run: the outputs never come back and the pull can lock without them (krakaan assets,
   2026-11-18). Re-ask with `"attempt": 2` in the job file instead (#240; kit fix #628).
+- A production's tick reads a pull's head from the LOCAL branch named `headRefName`, which a run
+  worktree usually holds. A fix pushed to the remote alone is not seen: commit in that worktree, or
+  fast-forward it after the push (sample pull 54, 2026-11-19). A maker change the orchestrator makes
+  posts no maker `READY`, so the operator is not relaunched: launch it by hand (`factory launch`).
