@@ -1,0 +1,87 @@
+{
+  "actors": [
+    {
+      "bounds": {
+        "extent": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "origin": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "class": "StaticMeshActor",
+      "label": "wren",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "camera": {
+    "focal_mm": 50.0,
+    "label": "camera-rest-front",
+    "location": [
+      300.0,
+      0.0,
+      100.0
+    ],
+    "rotation": [
+      0.0,
+      0.0,
+      180.0
+    ],
+    "sensor_mm": [
+      36.0,
+      24.0
+    ]
+  },
+  "cvars": {
+    "r.AntiAliasingMethod": 4,
+    "r.DynamicGlobalIlluminationMethod": 1,
+    "r.ReflectionMethod": 0
+  },
+  "lights": [
+    {
+      "class": "DirectionalLight",
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "intensity": 3.0,
+      "label": "sun",
+      "location": [
+        0.0,
+        0.0,
+        500.0
+      ],
+      "rotation": [
+        0.0,
+        -50.0,
+        30.0
+      ],
+      "temperature_k": null,
+      "units": null
+    }
+  ],
+  "render": {
+    "spatial_samples": 1,
+    "temporal_samples": 1,
+    "warmup_frames": 0
+  }
+}

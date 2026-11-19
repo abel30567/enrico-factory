@@ -61,6 +61,10 @@ EDITOR = "/home/ue4/UnrealEngine/Engine/Binaries/Linux/UnrealEditor-Cmd"
 GLB = b"glTF wren"
 BIN = hashlib.sha256(GLB).hexdigest()
 WREN = {"asset": "wren", "kind": "character", "sha256": BIN}
+# The rig of wren at rigging (ISSUE-635): the fake engine imports only a binary that starts with glTF.
+RIG = b"glTF wren rig"
+RIG_SHA = hashlib.sha256(RIG).hexdigest()
+CAMERAS = [f"camera-{pose}-{view}" for pose in ("rest", "arms-up") for view in ("front", "side", "rear-right")]
 MEASURED = {"floor": [0, 0.4557, 1, 1], "ball": [0.3924, 0.3547, 0.6076, 0.7563],
             "block": [0.6016, 0.4815, 0.6983, 0.655]}
 
@@ -204,7 +208,7 @@ class JobTest(EngineCase):
         for path in bin_.iterdir():
             path.chmod(0o755)
         work = self.tmp / "work"
-        (work / "job").mkdir(parents=True)
+        (work / "job").mkdir(parents=True, exist_ok=True)
         shutil.copy(ENGINE / "job.sh", work / "job/job.sh")
         shutil.copy(ENGINE / "build.py", work / "job/build.py")
         (self.tmp / "links.txt").write_text(links, encoding="utf-8")
@@ -311,6 +315,35 @@ class JobTest(EngineCase):
         self.assertLess(got.start(), build.start())
         self.assertLess(lost.start(), build.start())
         self.assertEqual(found["status"], '{"result": "ok"}\n')
+
+    def test_14_rigging_job_keeps_the_rig_state_marker(self):
+        """ISSUE-635: under the fake editor, a rigging job gets its rig, builds once and renders frames 0 to 5."""
+        (self.tmp / "fake/store").mkdir(parents=True)
+        (self.tmp / "fake/store" / RIG_SHA).write_bytes(RIG)
+        scripts = self.tmp / "work/job/scripts"
+        scripts.mkdir(parents=True)
+        shutil.copy(FIX / "scripts/rigging.py", scripts / "00.py")
+        (self.tmp / "work/job/job.json").write_text(json.dumps(_rigging_job()), encoding="utf-8")
+        found = self.run_job(LINKS + f"GET {RIG_SHA} https://store.invalid/{RIG_SHA}\n",
+                             FAKE_EDITOR=str(FIX / "editor.py"), FAKE_PYTHON=sys.executable)
+        self.assertEqual(found["status"], '{"result": "ok"}\n')
+        self.assertEqual([s["step"] for s in found["node"]["steps"]], ["build", "render"])
+        markers = found["node"]["steps"][0]["markers"]
+        self.assertEqual(len(markers), 2)
+        self.assertTrue(markers[0].startswith("FACTORY RIG_STATE "))
+        self.assertEqual(sorted(json.loads(markers[0][len("FACTORY RIG_STATE "):])), ["joints", "rom"])
+        self.assertEqual(markers[1], "FACTORY build ok")
+        frames = [f"frame-{n:06d}.{e}" for n in range(6) for e in ("exr", "png")]
+        self.assertEqual(found["names"], ["engine-build.log", "engine-render.log"] + frames
+                         + ["node.json", "scene.json"])
+        self.assertEqual((found["work"] / "job/assets" / f"{RIG_SHA}.glb").read_bytes(), RIG)
+
+
+def _rigging_job(poses=("rest", "arms-up")) -> dict:
+    """The `job.json` of a rigging job of wren (ISSUE-635 ruling 5)."""
+    return {"hash": "0" * 64, "stage": "rigging", "asset": "wren", "poses": list(poses), "fps": 1, "first": 0,
+            "last": 3 * len(poses) - 1, "width": 640, "height": 360, "scripts": ["scripts/00.py"],
+            "assets": {"wren": RIG_SHA}, "sampled": []}
 
 
 def _job(unit: str, scripts: int = 1) -> dict:
@@ -459,6 +492,39 @@ class BuildTest(EngineCase):
                 self.assertFalse((work / "out/scene.json").exists())
                 self.assertFalse([c for c in fake.CALLS if c.startswith("Actor.set_actor_label")])
                 self.assertEqual(alive, [])
+
+    def test_13_rigging_build(self):
+        """ISSUE-635: one camera cut of one frame per pose and view, the rig placed, the cameras out of the scene."""
+        binaries = {f"{RIG_SHA}.glb": RIG}
+        fake, work, alive = self.build([FIX / "scripts/rigging.py"], _rigging_job(), binaries=binaries)
+        self.assertEqual(fake.CALLS[-2:], ["gc.collect", "log FACTORY build ok"])
+        self.assertEqual(alive, [])
+        self.assertTrue([c for c in fake.CALLS if c.startswith("log FACTORY RIG_STATE ")])
+        self.assertEqual([c for c in fake.CALLS if c.startswith("Actor.set_actor_label")],
+                         ["Actor.set_actor_label wren"] + [f"Actor.set_actor_label {c}" for c in CAMERAS])
+        env = (work / "Job/job.env").read_text(encoding="utf-8")
+        self.assertEqual(env, 'WIDTH=640\nHEIGHT=360\nFIRST=0\nLAST=5\nSTAGE=rigging\nSAMPLED=""\n')
+        self.assertEqual([c for c in fake.CALLS if c.startswith("MovieSceneCameraCutSection.set_range")],
+                         [f"MovieSceneCameraCutSection.set_range {f} {f + 1}" for f in range(6)])
+        bound = [c for c in fake.CALLS if c.startswith("MovieSceneCameraCutSection.set_camera_binding_id")]
+        self.assertEqual(bound, [f"MovieSceneCameraCutSection.set_camera_binding_id binding:{c}" for c in CAMERAS])
+        self.assertEqual((bound[0], bound[-1]),
+                         ("MovieSceneCameraCutSection.set_camera_binding_id binding:camera-rest-front",
+                          "MovieSceneCameraCutSection.set_camera_binding_id binding:camera-arms-up-rear-right"))
+        self.assertIn("LevelSequence.set_display_rate FrameRate(1, 1)", fake.CALLS)
+        self.assertIn("LevelSequence.set_playback_start 0", fake.CALLS)
+        self.assertIn("LevelSequence.set_playback_end 6", fake.CALLS)
+        self.assertFalse((work / "Job/Saved/MovieRenderPipeline/Rerender.utxt").exists())
+        scene = json.loads((work / "out/scene.json").read_text(encoding="utf-8"))
+        self.assertEqual([a["label"] for a in scene["actors"]], ["wren"])
+        self.assertEqual(scene["camera"]["label"], "camera-rest-front")
+        with self.subTest(defect="a pose with no cameras"):
+            fake, work, alive = self.build([FIX / "scripts/rigging.py"], _rigging_job(("rest", "arms-up", "crouch")),
+                                           binaries=binaries)
+            self.assertEqual(fake.CALLS[-1], "log FACTORY build failed no actor labelled camera-crouch-front")
+            self.assertNotIn("log FACTORY build ok", fake.CALLS)
+            self.assertFalse((work / "out/scene.json").exists())
+            self.assertEqual(alive, [])
 
     def test_11_a_scene_of_primitives_imports_nothing(self):
         fake, work, alive = self.build([GOLDEN / "lit-render/scene.py"], _job("lit-render"),

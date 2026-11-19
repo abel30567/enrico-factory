@@ -759,6 +759,74 @@ class RightsRefusalTest(unittest.TestCase):
 
 
 
+class RigManifestTest(unittest.TestCase):
+    """ISSUE-635 ruling 4: the scene job of a rigging ticket reads `rigging/manifest.json`, and its own run rewrites
+    it; the input still passes while the skeleton and the one row `rig.glb` stay."""
+
+    PULL_JOB = "jobs/production/assets/wren/rigging/requests/scene.json"
+    REQUEST = "production/assets/wren/rigging/requests/scene.json"
+    MANIFEST = "production/assets/wren/rigging/manifest.json"
+    OTHER = "production/assets/wren/rigging/notes.json"
+    ROW = {"bytes": 8, "name": "rig.glb", "sha256": "a" * 64}
+    SKELETON = {"bones": [{"name": "root", "parent": None}], "weights_normalised": True}
+
+    def setUp(self):
+        self.w = World(self)
+        self.ref = self.w.pull_record(JOB_PULL)["head_ref"]
+        self.manifest = self.text([self.ROW])
+        self.request = '{"for": "wren", "prompt": "two poses", "refs": ["asset:wren"]}\n'
+        job = json.loads((self.w.root / CLEAN_JOB).read_text())
+        job["inputs"] = [{"path": self.REQUEST, "sha256": hashlib.sha256(self.request.encode()).hexdigest()},
+                         {"path": self.MANIFEST, "sha256": hashlib.sha256(self.manifest.encode()).hexdigest()},
+                         {"path": self.OTHER, "sha256": hashlib.sha256(b"{}\n").hexdigest()}]
+        self.on_branch({self.REQUEST: self.request, self.MANIFEST: self.manifest, self.OTHER: "{}\n",
+                        self.PULL_JOB: json.dumps(job, indent=1)})
+
+    def text(self, outputs, skeleton=SKELETON):
+        return json.dumps({"job": "b" * 64, "outputs": outputs, "skeleton": skeleton}, indent=2) + "\n"
+
+    def on_branch(self, files):
+        JobOnPullTest.on_branch(self, self.ref, files)
+
+    def gate(self):
+        return JobOnPullTest.gate(self, self.PULL_JOB, "--pull", str(JOB_PULL))
+
+    def assert_refused(self, message):
+        JobOnPullTest.assert_refused(self, self.gate(), message)
+
+    def rewritten(self):
+        """The manifest as the job's run rewrites it: the rig row and the skeleton carried, the frames added."""
+        frames = [{"bytes": 3, "name": f"frame-{n:06d}.png", "sha256": f"{n}" * 64} for n in range(4)]
+        return self.text(sorted([self.ROW, *frames], key=lambda o: o["name"]))
+
+    def test_a_manifest_the_run_rewrote_passes(self):
+        self.on_branch({self.MANIFEST: self.rewritten()})
+        code, out, err = self.gate()
+        self.assertEqual((code, err), (0, ""))
+        self.assertRegex(out, r"^gate job [0-9a-f]{64}: PASS cap - reason within caps\n$")
+
+    def test_a_changed_skeleton_or_rig_row_is_refused(self):
+        changes = {"skeleton": self.text([self.ROW], skeleton=None),
+                   "rig row": self.text([dict(self.ROW, sha256="c" * 64)]),
+                   "two rig rows": self.text([self.ROW, self.ROW]),
+                   "no rig row": self.text([])}
+        for name, text in changes.items():
+            with self.subTest(name):
+                self.setUp()
+                self.on_branch({self.MANIFEST: text})
+                self.assert_refused(f"input {self.MANIFEST} changed its skeleton or its rig.glb row on pull #{JOB_PULL}")
+
+    def test_a_hash_no_version_has_is_refused(self):
+        job = json.loads(gitstate.show(self.w.root, self.ref, self.PULL_JOB))
+        job["inputs"][1]["sha256"] = "d" * 64
+        self.on_branch({self.PULL_JOB: json.dumps(job, indent=1), self.MANIFEST: self.rewritten()})
+        self.assert_refused(f"input {self.MANIFEST} does not match its hash on pull #{JOB_PULL}")
+
+    def test_twin_another_rewritten_input_does_not_match(self):
+        self.on_branch({self.OTHER: '{"changed": true}\n'})
+        self.assert_refused(f"input {self.OTHER} does not match its hash on pull #{JOB_PULL}")
+
+
 class PadRequestTest(unittest.TestCase):
     """ISSUE-576: after a pad request ``{"source": "media:<id>"}`` the manifest is read as after ``refs``."""
 
