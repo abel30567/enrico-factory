@@ -113,3 +113,7 @@
   file on the pull, the tick goes maker -> lint -> review and the reviewer blocks on a missing model
   (sample #55 / pull 56, 2026-11-19). Write the job file's re-ask (`"ticket": <new>`, `"attempt": 2`)
   on the pull in its worktree; the tick then gates and runs the job after the lint.
+- A push to main while a train's GATES run dooms the train: it ends `WAIT ... moved while GATES ran`
+  after the full GATES time (train #636, 2026-11-19, main moved by a docs commit). Push orchestrator
+  commits between trains; if one already landed, stop the train's `scripts/gates.sh` (a signal is a
+  WAIT, nothing turns red) so the next tick starts a fresh train at once.
