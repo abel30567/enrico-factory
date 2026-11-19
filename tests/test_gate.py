@@ -814,7 +814,8 @@ class RigManifestTest(unittest.TestCase):
             with self.subTest(name):
                 self.setUp()
                 self.on_branch({self.MANIFEST: text})
-                self.assert_refused(f"input {self.MANIFEST} changed its skeleton or its rig.glb row on pull #{JOB_PULL}")
+                self.assert_refused(
+                    f"input {self.MANIFEST} changed its skeleton or its rig.glb row on pull #{JOB_PULL}")
 
     def test_a_hash_no_version_has_is_refused(self):
         job = json.loads(gitstate.show(self.w.root, self.ref, self.PULL_JOB))

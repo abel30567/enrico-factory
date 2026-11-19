@@ -64,7 +64,7 @@ ASSET = "asset:"
 RIGGING = re.compile(r"production/assets/([a-z0-9][a-z0-9-]*)/rigging")
 RIG = "rig.glb"
 MANIFEST = "manifest.json"
-VIEWS = 3
+VIEWS_PER_POSE = 3
 POSE = re.compile(r"[a-z0-9][a-z0-9-]*")
 NO_RIG = "no input {}/manifest.json with one output rig.glb"
 NO_POSES = "the script's LEVEL has no poses: a list of unique names of a-z, 0-9 and -"
@@ -223,8 +223,8 @@ def rigging_asset(directory: str):
     return m.group(1) if m else None
 
 
-def _rig_row(job, directory) -> dict:
-    """The one output `rig.glb` of the input `<directory>/manifest.json` and that manifest."""
+def _rig_row(job, directory) -> tuple:
+    """``(row, manifest)``: the one output `rig.glb` of the input `<directory>/manifest.json`, and that manifest."""
     path = f"{directory}/{MANIFEST}"
     found = [item for item in job["inputs"] if item["path"] == path]
     try:
@@ -259,7 +259,7 @@ def _describe_rigging(job, settings, directory, asset) -> dict:
     poses = _poses(job)
     width, height = _size(settings)
     return {"hash": job["hash"], "stage": "rigging", "asset": asset, "poses": poses, "fps": 1, "first": 0,
-            "last": VIEWS * len(poses) - 1, "width": width, "height": height,
+            "last": VIEWS_PER_POSE * len(poses) - 1, "width": width, "height": height,
             "scripts": [f"scripts/{n:02d}.py" for n in range(len(_scripts(job)))],
             "assets": {asset: row["sha256"]}, "sampled": []}
 
@@ -488,8 +488,6 @@ def _rig_state(described, node, unpacked) -> dict:
 
 def _finish_rigging(job, described, node, unpacked, settings, directory):
     """``finish`` at `rigging`: `state.json` and the manifest that carries the rig forward, no scene state."""
-    if os.path.exists(os.path.join(unpacked, RERUN_SCENE)):
-        raise JobError(JOB_FAILED)
     row, previous = _rig_row(job, directory)
     command = flags(node)
     try:

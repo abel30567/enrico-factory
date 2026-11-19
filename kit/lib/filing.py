@@ -18,13 +18,14 @@ tool and the expected cost, the settings ``MEDIA_TOOL``, ``MEDIA_USD`` and ``MED
 the tool upper-cased, defaults in ``TOOLS``), the kind of an asset, the shot file on the base and the job's inputs
 in order. The body of the ``conform`` stage, when its makers name ``render-wrangler``, names a tool, its expected cost
 and its inputs for each request name of ``CONFORM_TOOLS`` under ``production/<ep>/conform/requests/``, with the same
-settings. The body of the ``rigging`` stage, when its makers name ``render-wrangler``, names the kind and the shot file,
-then one job per request name under ``production/assets/<unit>/rigging/requests/``: ``rig.json`` with tool ``rig``,
-and ``scene.json``, once the rig job ran, with tool ``render``, each with its cost (the settings ``RIG_*`` and
-``RENDER_*``) and its inputs. A ``rigging`` ticket is filed only for a unit with ``bible/canon/characters/<unit>.md`` on the base. A
-``sequence`` stage after a ``shot`` stage is filed once for the sequence ``<ep>/<Q>`` of the shot, only when every
-shot of the sequence in ``production/<ep>/shots.json`` on the base has a locked ticket of the shot stage, and only
-from the lowest numbered of those tickets; its body has one ``Upstream:`` line per shot. An ``episode`` stage after
+settings. The body of the ``rigging`` stage, when its makers name ``render-wrangler``, names the kind and the shot
+file, then one job per request name under ``production/assets/<unit>/rigging/requests/``: ``rig.json`` with tool
+``rig``, and ``scene.json``, once the rig job ran, with tool ``render``, each with its cost (the settings ``RIG_*``
+and ``RENDER_*``) and its inputs. A ``rigging`` ticket is filed only for a unit with
+``bible/canon/characters/<unit>.md`` on the base. A ``sequence`` stage after a ``shot`` stage is filed once for the
+sequence ``<ep>/<Q>`` of the shot, only when every shot of the sequence in ``production/<ep>/shots.json`` on the
+base has a locked ticket of the shot stage, and only from the lowest numbered of those tickets; its body has one
+``Upstream:`` line per shot. An ``episode`` stage after
 a ``shot`` stage is filed the same way once for the episode of the shot, from every shot of the episode in
 ``production/<ep>/shots.json`` on the base, one ``Upstream:`` line per shot in the order of that file. Any other
 pair files nothing. A room, stage and unit that some ticket already has, open or closed, is never filed again.
@@ -191,8 +192,8 @@ def operator_inputs(p, root, stage: str, unit: str, request: str) -> list | None
     """The input paths, in order, of the job of an ``assets`` or ``rigging`` ticket for ``unit``, with ``request`` as
     the first (at ``rigging``, a request named ``scene.json`` renders the rig); None at any other stage."""
     if stage == "rigging" and posixpath.basename(request) == RIG_SCENE:
-        return [request, f"production/assets/{unit}/rigging/scene.py", f"production/assets/{unit}/rigging/manifest.json",
-                f"production/assets/{unit}/assets/state.json"]
+        return [request, f"production/assets/{unit}/rigging/scene.py",
+                f"production/assets/{unit}/rigging/manifest.json", f"production/assets/{unit}/assets/state.json"]
     if stage == "rigging":
         return [request, f"production/assets/{unit}/assets/state.json"]
     if stage == "assets":
