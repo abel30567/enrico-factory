@@ -563,5 +563,62 @@ class PlatformTest(unittest.TestCase):
         self.assertEqual(steps._maker_of(p, entry, pull, w.root), "channel-tiktok")
 
 
+class RestageTest(unittest.TestCase):
+    """ISSUE-628: a ``DONE`` job whose tool's ``STAGE_FILES`` are not all at the pull's head, in the directory
+    ``factory run`` stages into (``production/ep01/render`` for ticket #3), has not run; a job file the pull
+    changes asks for its request even when the request is unchanged."""
+
+    UNIT_DIR = "production/ep01/render"
+
+    def setUp(self):
+        self.w = World(self)
+
+    def done(self, tool, staged):
+        job = job_for(tool=tool)
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job),
+                          **{f"{self.UNIT_DIR}/{name}": "{}\n" for name in staged}})
+        self.w.ran(job, "DONE")
+        return job
+
+    def test_missing_staged_outputs(self):
+        job = self.done("model3d", ("state.json", "manifest.json"))
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["hash"], found["run"]), (digest(job), "DONE"))
+        self.w.on_branch({f"{self.UNIT_DIR}/state.json": None})
+        [found] = self.w.of()["jobs"]
+        self.assertIsNone(found["run"])
+        self.assertEqual(found["run_row"]["verdict"], "DONE")
+
+    def test_nothing_staged(self):
+        self.done("model3d", ())
+        [found] = self.w.of()["jobs"]
+        self.assertEqual((found["run"], found["run_row"]["verdict"]), (None, "DONE"))
+
+    def test_tool_without_staged_files(self):
+        self.done("voice", ())
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+
+    def test_reasked_job_on_an_unchanged_request(self):
+        job = job_for()
+        self.w.on_trunk(REQUEST, REQUEST_TEXT)
+        self.w.on_trunk(JOB, json.dumps(job))
+        self.w.git("branch", "-f", self.w.ref(PULL), "trunk")
+        self.w.on_branch({"frames/ep01/notes.md": "x\n"})
+        p, _, _, pull = self.w.load()
+        self.assertEqual(jobs.requests(p, self.w.root, pull, "fetcher"), [])
+        retry = job_for(attempt=2)
+        self.w.on_branch({JOB: json.dumps(retry)})
+        p, _, _, pull = self.w.load()
+        self.assertNotIn(REQUEST, pull["git"]["changed"])
+        self.assertEqual(jobs.requests(p, self.w.root, pull, "fetcher"), [REQUEST])
+        self.assertEqual([j["hash"] for j in self.w.of()["jobs"]], [digest(retry)])
+
+    def test_a_request_and_its_job_file_once(self):
+        self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job_for())})
+        p, _, _, pull = self.w.load()
+        self.assertEqual(jobs.requests(p, self.w.root, pull, "fetcher"), [REQUEST])
+
+
 if __name__ == "__main__":
     unittest.main()
