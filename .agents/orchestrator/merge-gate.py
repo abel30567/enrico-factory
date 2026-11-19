@@ -163,8 +163,8 @@ def train(ready, ci):
                                 timeout=3600).returncode
         except subprocess.TimeoutExpired:
             rc = 124
-    if rc == 124:  # a slow host, not a failing PR: nothing is marked red, the next run tries again
-        print(f"WAIT     train {names} on {base_sha[:7]}: GATES timed out ({log}); next run")
+    if rc == 124 or rc < 0:  # a slow host or a signal (shutdown, kill), not a failing PR: nothing is marked red
+        print(f"WAIT     train {names} on {base_sha[:7]}: GATES {'timed out' if rc == 124 else f'killed by signal {-rc}'} ({log}); next run")
         return False
     if rc:
         if len(members) == 1:
