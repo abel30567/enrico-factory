@@ -101,3 +101,7 @@
   The lint then reviewed the stale local head and posted FAIL again. After pushing, fast-forward the
   run worktree that holds the branch (`git merge --ff-only origin/<branch>`), or commit from that
   worktree.
+- To rerun a production job, never just `git rm` its job file and staged outputs. The operator writes
+  the same job file again, its canonical hash equals the earlier `DONE` run in the ledger, and the tick
+  counts it as run: the outputs never come back and the pull can lock without them (krakaan assets,
+  2026-11-18). Re-ask with `"attempt": 2` in the job file instead (#240; kit fix #628).
