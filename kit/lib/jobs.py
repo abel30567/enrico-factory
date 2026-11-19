@@ -11,14 +11,16 @@
   also that list, in that order; the hashes of the inputs after the request are not compared.
 - A job's gate state is None, ``PASS`` (counting, as ``factory run`` counts it) or ``STOP`` (the newest
   gate comment that covers it); its run state is None, ``DONE`` or ``FAILED`` (its last ``run`` row on the
-  base). A ``DONE`` job of a tool with ``STAGE_FILES`` has the run state None while any of those files is
-  missing at the pull's head in the directory ``factory run`` stages into, so a run restages them.
+  base). A ``DONE`` job has the run state None while a name in both its tool's ``STAGE_FILES`` and the
+  ``outputs`` of its recorded call (``<STATE_DIR>/jobs/<hash>/result.json``) is missing at the pull's head in
+  the directory ``factory run`` stages into, so a run restages it; without a record it stays ``DONE``.
 
 Reads git and the ledger; writes nothing.
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 from kit.lib import cmd_gate, cmd_run, filing, frontmatter, gitstate, ledger, production, tickets
@@ -82,18 +84,31 @@ def _rows(p, root):
         raise tickets.TicketError(str(error)) from None
 
 
-def _unstaged(p, root, ticket, pull, job):
-    """True when a file of the job's tool's ``STAGE_FILES`` is missing at the pull's head where ``factory run``
-    stages it; False for a tool that is not installed or has no ``STAGE_FILES``, or a unit with no directory."""
+def _recorded_outputs(p, digest):
+    """The output names of the job's recorded call, from ``<STATE_DIR>/jobs/<hash>/result.json``; empty without
+    a record."""
     try:
-        names = getattr(cmd_run._load_tool(job["job"]["tool"]), "STAGE_FILES", ())
+        path = production.state_dir(p) / "jobs" / digest / cmd_run.RESULT
+        outputs = json.loads(path.read_text(encoding="utf-8")).get("outputs") or []
+    except (production.ProductionError, OSError, ValueError, AttributeError):
+        return set()
+    return {o["name"] for o in outputs if isinstance(o, dict) and isinstance(o.get("name"), str)}
+
+
+def _unstaged(p, root, ticket, pull, job):
+    """True when a name in both the job's tool's ``STAGE_FILES`` and the outputs of its recorded call is missing
+    at the pull's head where ``factory run`` stages it; False for a tool that is not installed or has no
+    ``STAGE_FILES``, a job without a record or such a name, or a unit with no directory."""
+    try:
+        names = set(getattr(cmd_run._load_tool(job["job"]["tool"]), "STAGE_FILES", ()))
     except cmd_run.Refused:
         return False
+    names &= _recorded_outputs(p, job["hash"])
     directory = cmd_run._unit_dir(p, ticket["room"], ticket["stage"], ticket["unit"]) if names else None
     if directory is None:
         return False
     head = pull["git"]["head"]
-    return any(gitstate.show(root, head, f"{directory}/{name}") is None for name in names)
+    return any(gitstate.show(root, head, f"{directory}/{name}") is None for name in sorted(names))
 
 
 def _states(job, comments, rows, pending=False, unstaged=False):

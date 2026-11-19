@@ -564,24 +564,37 @@ class PlatformTest(unittest.TestCase):
 
 
 class RestageTest(unittest.TestCase):
-    """ISSUE-628: a ``DONE`` job whose tool's ``STAGE_FILES`` are not all at the pull's head, in the directory
-    ``factory run`` stages into (``production/ep01/render`` for ticket #3), has not run; a job file the pull
-    changes asks for its request even when the request is unchanged."""
+    """ISSUE-628: a ``DONE`` job one of whose staged outputs, a name in both its tool's ``STAGE_FILES`` and the
+    ``outputs`` of its recorded call (``<STATE_DIR>/jobs/<hash>/result.json``), is not at the pull's head in the
+    directory ``factory run`` stages into (``production/ep01/render`` for ticket #3), has not run; a job file the
+    pull changes asks for its request even when the request is unchanged."""
 
     UNIT_DIR = "production/ep01/render"
 
     def setUp(self):
         self.w = World(self)
+        self.state = self.w.root.parent / "state"
+        with (self.w.root / ".git" / "info" / "exclude").open("a") as exclude:
+            exclude.write("production.local.env\n")
+        (self.w.root / "production.local.env").write_text(f"STATE_DIR={self.state}\n")
 
-    def done(self, tool, staged):
+    def done(self, tool, staged, outputs=None):
+        """A ``DONE`` job of ``tool`` with ``staged`` at the head and, unless ``outputs`` is None, the record of a
+        call that output those names."""
         job = job_for(tool=tool)
         self.w.on_branch({REQUEST: REQUEST_TEXT, JOB: json.dumps(job),
                           **{f"{self.UNIT_DIR}/{name}": "{}\n" for name in staged}})
         self.w.ran(job, "DONE")
+        if outputs is not None:
+            path = self.state / "jobs" / digest(job) / "result.json"
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({
+                "compute_min": "5", "reason": None, "usd": "1", "verdict": "DONE",
+                "outputs": [{"name": name, "sha256": "0" * 64, "bytes": 3} for name in outputs]}))
         return job
 
     def test_missing_staged_outputs(self):
-        job = self.done("model3d", ("state.json", "manifest.json"))
+        job = self.done("model3d", ("state.json", "manifest.json"), ("manifest.json", "model.glb", "state.json"))
         [found] = self.w.of()["jobs"]
         self.assertEqual((found["hash"], found["run"]), (digest(job), "DONE"))
         self.w.on_branch({f"{self.UNIT_DIR}/state.json": None})
@@ -590,12 +603,22 @@ class RestageTest(unittest.TestCase):
         self.assertEqual(found["run_row"]["verdict"], "DONE")
 
     def test_nothing_staged(self):
-        self.done("model3d", ())
+        self.done("model3d", (), ("manifest.json", "model.glb", "state.json"))
         [found] = self.w.of()["jobs"]
         self.assertEqual((found["run"], found["run_row"]["verdict"]), (None, "DONE"))
 
+    def test_a_stage_file_the_call_did_not_output(self):
+        self.done("model3d", ("manifest.json",), ("manifest.json", "model.glb"))
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+
+    def test_no_record(self):
+        self.done("model3d", ())
+        [found] = self.w.of()["jobs"]
+        self.assertEqual(found["run"], "DONE")
+
     def test_tool_without_staged_files(self):
-        self.done("voice", ())
+        self.done("voice", (), ("voice.wav",))
         [found] = self.w.of()["jobs"]
         self.assertEqual(found["run"], "DONE")
 
