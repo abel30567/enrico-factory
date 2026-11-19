@@ -1,4 +1,5 @@
-"""rigging: rules shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5), skeleton (6)."""
+"""rigging: rules shape (1), range-of-motion (2), limits (3), interpenetration (4), rig-hash (5), skeleton (6),
+depends (7), request (8)."""
 
 import json
 import sys
@@ -14,6 +15,8 @@ STATE = "production/assets/ama/rigging/state.json"
 MANIFEST = "production/assets/ama/rigging/manifest.json"
 SCENE = "production/assets/ama/rigging/scene.py"
 REQUEST = "production/assets/ama/rigging/requests/job.json"
+RIG_REQUEST = "production/assets/ama/rigging/requests/rig.json"
+NOT_A_REQUEST = "request is not {for, prompt, refs}"
 NO_STATE = f"{STATE} is missing and no request is under production/assets/ama/rigging/requests/"
 CLEAN_SHA = "4c38cd80ea7201eafbd6956768ae36543fe77b3f32e09069e73adc45f70bf5e0"
 SHAPE_OF = "not {asset, rig_sha256, joints, rom}"
@@ -40,6 +43,12 @@ def asset_state(kind="character", asset="ama"):
 def manifest(rel=MANIFEST, **changes):
     """The clean manifest with ``changes`` set over it, a key set to `...` removed."""
     data = dict(clean(MANIFEST), **changes)
+    return dump({k: v for k, v in data.items() if v is not ...})
+
+
+def request(asset="ama", **changes):
+    """A valid rigging request for ``asset`` with ``changes`` set over it, a key set to `...` removed."""
+    data = dict({"for": asset, "prompt": f"Rig the model of {asset}.", "refs": [f"asset:{asset}"]}, **changes)
     return dump({k: v for k, v in data.items() if v is not ...})
 
 
@@ -261,27 +270,29 @@ class Rigging(LintCase):
 
 
     def put(self, root, *rels):
-        """`root` with each of `rels` written as a new file."""
+        """`root` with each of `rels` written as a new file: a request `.json` is a valid request for its asset."""
         for rel in rels:
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
-            (root / rel).write_text("import unreal\n" if rel.endswith(".py") else "{}\n", encoding="utf-8")
+            asset = rel.split("/")[2]
+            body = ("import unreal\n" if rel.endswith(".py") else request(asset) if rel.endswith(".json") else "{}\n")
+            (root / rel).write_text(body, encoding="utf-8")
         return root
 
     def test_job_files_1_scene_alone(self):
-        self.assertEqual(self.found(self.without(STATE, MANIFEST)), [(SCENE, 1, "depends", NO_STATE)])
+        self.assertEqual(self.found(self.without(STATE, MANIFEST, RIG_REQUEST)), [(SCENE, 1, "depends", NO_STATE)])
 
     def test_job_files_2_request(self):
-        self.assertPasses(self.put(self.without(STATE, MANIFEST), REQUEST))
+        self.assertPasses(self.put(self.without(STATE, MANIFEST, RIG_REQUEST), REQUEST))
         for request in ("production/assets/ama/rigging/requests/job.txt",
                         "production/assets/ama/rigging/requests/old/job.json",
                         "production/assets/lamp/rigging/requests/job.json"):
             with self.subTest(request):
-                self.assertEqual(self.found(self.put(self.without(STATE, MANIFEST), request)),
+                self.assertEqual(self.found(self.put(self.without(STATE, MANIFEST, RIG_REQUEST), request)),
                                  [(SCENE, 1, "depends", NO_STATE)])
 
     def test_job_files_3_after_a_run(self):
-        self.assertEqual(self.found(self.without(STATE)), [(SCENE, 1, "depends", NO_STATE)])
-        self.assertPasses(self.put(self.without(STATE), REQUEST))
+        self.assertEqual(self.found(self.without(STATE, RIG_REQUEST)), [(SCENE, 1, "depends", NO_STATE)])
+        self.assertPasses(self.put(self.without(STATE, RIG_REQUEST), REQUEST))
         self.assertEqual(self.found(self.without(MANIFEST)), [(STATE, 1, "rig-hash", f"{MANIFEST} is missing")])
 
     def test_job_files_4_complete(self):
@@ -297,11 +308,76 @@ class Rigging(LintCase):
 
     def test_job_files_6_deterministic(self):
         bo = "production/assets/bo/rigging/scene.py"
-        root = self.put(self.without(STATE, MANIFEST), bo)
+        root = self.put(self.without(STATE, MANIFEST, RIG_REQUEST), bo)
         found = self.found(root)
         self.assertEqual(found, [(SCENE, 1, "depends", NO_STATE),
                                  (bo, 1, "depends", NO_STATE.replace("/ama/", "/bo/"))])
         self.assertEqual(self.found(root), found)
+
+    def requested(self, body, rel=RIG_REQUEST):
+        """The findings of the clean fixture with ``body`` as the request at ``rel``."""
+        return self.found(self.variant({rel: body}, base=FIX / "clean"))
+
+    def test_request_1_not_a_request(self):
+        cases = [("no refs (pull 54)", request(refs=...)),
+                 ("extra key", request(model="x")),
+                 ("refs a string", request(refs="asset:ama")),
+                 ("no for", request(**{"for": ...})),
+                 ("a list", dump([json.loads(request())])),
+                 ("bad everything else too", dump({"for": "tobi", "prompt": "", "refs": "media:x"}))]
+        for name, body in cases:
+            with self.subTest(name):
+                self.assertEqual(self.requested(body), [(RIG_REQUEST, 1, "request", NOT_A_REQUEST)])
+
+    def test_request_2_matches_vendor(self):
+        from kit.lib import vendor
+        self.assertEqual(NOT_A_REQUEST, vendor.NOT_A_REQUEST)
+
+    def test_request_3_for_another_asset(self):
+        self.assertEqual(self.requested(request(**{"for": "tobi"})),
+                         [(RIG_REQUEST, 1, "request", "request for tobi is not for asset ama")])
+        self.assertEqual(self.requested(request("tobi")),
+                         [(RIG_REQUEST, 1, "request", 'refs is not ["asset:ama"]'),
+                          (RIG_REQUEST, 1, "request", "request for tobi is not for asset ama")])
+        self.assertEqual(self.requested(request(**{"for": 7})),
+                         [(RIG_REQUEST, 1, "request", "request for 7 is not for asset ama")])
+
+    def test_request_4_no_prompt(self):
+        for prompt in ("", None, 3):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(self.requested(request(prompt=prompt)),
+                                 [(RIG_REQUEST, 1, "request", "request has no prompt")])
+
+    def test_request_5_refs(self):
+        for refs in (["media:x"], ["asset:ama", "asset:ama"], ["asset:ama", "media:x"], [], ["asset:tobi"]):
+            with self.subTest(refs=refs):
+                self.assertEqual(self.requested(request(refs=refs)),
+                                 [(RIG_REQUEST, 1, "request", 'refs is not ["asset:ama"]')])
+
+    def test_request_6_every_finding_and_order(self):
+        tobi = "production/assets/tobi/rigging/requests/rig.json"
+        root = self.variant({RIG_REQUEST: request(**{"for": "bo", "prompt": "", "refs": ["media:x"]}),
+                             tobi: request("tobi", prompt="")}, base=FIX / "clean")
+        expected = [(RIG_REQUEST, 1, "request", 'refs is not ["asset:ama"]'),
+                    (RIG_REQUEST, 1, "request", "request for bo is not for asset ama"),
+                    (RIG_REQUEST, 1, "request", "request has no prompt"),
+                    (tobi, 1, "request", "request has no prompt")]
+        self.assertEqual(self.found(root), expected)
+        self.assertEqual(self.found(root), expected)
+
+    def test_request_7_other_files(self):
+        for rel in ("production/assets/ama/rigging/requests/job.txt",
+                    "production/assets/ama/rigging/requests/old/job.json",
+                    "production/assets/ama/rigging/request.json",
+                    "production/assets/ama/assets/requests/job.json"):
+            with self.subTest(rel):
+                self.assertPasses(self.variant({rel: "{}\n"}, base=FIX / "clean"))
+        self.assertPasses(self.variant({"production/assets/tobi/rigging/requests/a.json": request("tobi")},
+                                       base=FIX / "clean"))
+        result = self.rigging(self.variant({RIG_REQUEST: "{"}, base=FIX / "clean"))
+        self.assertEqual(result.status, lint.ERROR)
+        self.assertTrue(result.reason.startswith(f"cannot parse {RIG_REQUEST}:1:"), result.reason)
+
 
 if __name__ == "__main__":
     unittest.main()
