@@ -2,7 +2,10 @@
 
 The job file is checked as `factory gate` checks it, with `--pull N` at the head of pull request N. A job
 runs once: when the ledger on the base already holds its `run` row and the job's directory holds no `pending`
-file, that row is printed with ` (already recorded)` and nothing else happens. Otherwise the job needs a counting
+file, that row is printed with ` (already recorded)` and nothing else happens, except for a DONE job one of
+whose `STAGE_FILES` its recorded call output is missing at its pull's head (`kit/lib/jobs.py`): with `--apply`
+those files are committed again from `<STATE_DIR>/jobs/<hash>/out/` on the pull's branch, with no tool call, no
+row and nothing stored or posted, and the run is refused when one of them is not there. Otherwise the job needs a counting
 `GATE PASS`, an installed tool (`kit/lib/tools/`) whose resource is usable, and a ticket with exactly one open
 pull (with `--pull`, that pull). With `--apply` it brings the local base up to GitHub's, calls the tool once with the
 outputs going to `<STATE_DIR>/jobs/<hash>/out/` and the inputs read where the job file was, puts each output
@@ -439,6 +442,35 @@ def _input_text(p, ref, path):
     return gitstate.show(p.root, ref, path)
 
 
+def _unstaged(p, state, request):
+    """The job's pull and the ``STAGE_FILES`` names its recorded call output that are missing at the pull's head
+    (``jobs._unstaged``); no names without exactly one open pull."""
+    from kit.lib import jobs  # jobs imports this module
+    pulls = ([request["on"]] if request["on"] is not None
+             else [pull for pull in tickets.pulls_of(state, request["ticket"]["number"]) if pull["state"] == "open"])
+    if len(pulls) != 1:
+        return None, []
+    return pulls[0], jobs._unstaged(p, p.root, request["ticket"], pulls[0], request)
+
+
+def _restage(p, gh, request, pull, names, apply):
+    """Commit the staged outputs ``names`` of a DONE job's recorded call on the pull's branch again: no tool
+    call, no ledger row, no store, no release, no preview; ``Refused`` when its ``out`` lacks one of them."""
+    digest = request["hash"]
+    job_dir = production.state_dir(p) / "jobs" / digest
+    for name in names:
+        if not (job_dir / "out" / name).is_file():
+            raise Refused(f"job {digest} has no recorded output {name} to restage")
+    directory = _ticket_dir(p, request["ticket"])
+    if not apply:
+        print(f"run job {digest}: would restage {len(names)} files from the recorded call")
+        return 0
+    _read_result(job_dir, digest, {"usd": request["usd"], "compute_min": request["compute_min"]})
+    _stage_files(p, gh, pull["head_ref"], digest, job_dir / "out", directory, names)
+    print(f"run job {digest}: restaged {len(names)} files from the recorded call")
+    return 0
+
+
 def _run(p, gh, state, rows, target, apply, number=None):
     request = cmd_gate._job_request(p, state, target, number)
     digest, name = request["hash"], request["tool"]
@@ -446,6 +478,9 @@ def _run(p, gh, state, rows, target, apply, number=None):
     ran = [r for r in rows if r["kind"] == "run" and r["hash"] == digest]
     if ran and not pending(p, digest):
         row = ran[-1]
+        pull, missing = _unstaged(p, state, request) if row["verdict"] == DONE else (None, [])
+        if missing:
+            return _restage(p, gh, request, pull, missing, apply)
         print(_printed(digest, row["verdict"], row["usd"], row["compute_min"]) + cmd_gate.ALREADY)
         return 0 if row["verdict"] == DONE else 1
     job_dir = production.state_dir(p) / "jobs" / digest
