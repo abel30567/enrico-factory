@@ -910,7 +910,7 @@ class MakerHook(unittest.TestCase):
         comments = w.comments(6)
         self.assertEqual([c["role"] for c in comments], ["writer", ROLE])
         self.assertTrue(comments[0]["body"].startswith("[WRITER] READY\n"))
-        self.assertTrue(comments[0]["body"].endswith(f"Launch: 3-1\nhead {w.head('outline/OL-2-writer-1')} "
+        self.assertTrue(comments[0]["body"].endswith(f"Launch: 3-1\nhead {w.head('outline/OL-2-writer-3-1')} "
                                                      "manifest none\n"))
         body = comments[1]["body"]
         self.assertEqual(body.split("\n", 1)[0], HEADING)

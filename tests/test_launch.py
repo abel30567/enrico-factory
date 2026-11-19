@@ -157,8 +157,8 @@ class CleanMakerLaunch(unittest.TestCase):
         w, run = self.w, self.run_
         self.assertEqual(run.worktree, w.state / "worktrees" / "drafter-5-1")
         self.assertEqual(run.dir, w.state / "runs" / "drafter-5-1")
-        self.assertEqual(w.head("beats/BT-1-drafter-1"), w.head("trunk"))
-        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/beats/BT-1-drafter-1")
+        self.assertEqual(w.head("beats/BT-1-drafter-5-1"), w.head("trunk"))
+        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/beats/BT-1-drafter-5-1")
 
     def test_run_json(self):
         w, meta = self.w, self.run_.meta
@@ -169,7 +169,7 @@ class CleanMakerLaunch(unittest.TestCase):
         comment = w.gh.comments(5)[-1]
         self.assertEqual(meta, {
             "id": "5-1", "role": "drafter", "kind": "maker", "actor": "DRAFTER", "number": 5, "ticket": 5,
-            "pull": None, "room": "story", "stage": "beats", "unit": "ep01", "branch": "beats/BT-1-drafter-1",
+            "pull": None, "room": "story", "stage": "beats", "unit": "ep01", "branch": "beats/BT-1-drafter-5-1",
             "worktree": str(w.state / "worktrees" / "drafter-5-1"), "blind": False, "base_ref": "trunk",
             "base_sha": w.head("trunk"), "head_sha": None, "model": "maker-model-1", "family": "any",
             "harness_version": "0.0.0 (fake)", "prompt_sha256": meta["prompt_sha256"], "started_at": NOW,
@@ -210,7 +210,7 @@ class CleanMakerLaunch(unittest.TestCase):
         self.assertIn("You are the drafter for example/tide-show.\n", text)
         self.assertIn("Ticket: #5 [BT-1] Beats for ep01\n\nLay out the beats of episode one", text)
         self.assertIn(f"Worktree: {self.w.state / 'worktrees' / 'drafter-5-1'}\n", text)
-        self.assertIn("Branch: beats/BT-1-drafter-1\n", text)
+        self.assertIn("Branch: beats/BT-1-drafter-5-1\n", text)
         self.assertIn("Task: Do the stage beats for unit ep01.\n", text)
         self.assertIn("The orchestrator rules", text)
         self.assertIn("Every scene ends on the tide.", text)
@@ -358,8 +358,18 @@ class Refusals(unittest.TestCase):
         self.assertFalse((self.w.state / "worktrees").exists())
 
     def test_branch_already_exists(self):
-        self.w.git("branch", "beats/BT-1-drafter-1", "trunk")
-        self.refused("branch beats/BT-1-drafter-1 already exists", "drafter", 5)
+        self.w.git("branch", "beats/BT-1-drafter-5-1", "trunk")
+        self.refused("branch beats/BT-1-drafter-5-1 already exists", "drafter", 5)
+
+    def test_an_earlier_ticket_with_the_same_key(self):
+        # The branch an earlier ticket with key BT-1 left under the old rule ({stage}/{key}-{role}-{n}).
+        w = self.w
+        earlier = w.git("commit-tree", "trunk^{tree}", "-p", "trunk", "-m", "earlier ticket").strip()
+        w.git("branch", "beats/BT-1-drafter-1", earlier)
+        run = w.prepare("drafter", 5)
+        self.assertEqual(run.meta["branch"], "beats/BT-1-drafter-5-1")
+        self.assertEqual(gitstate.git(run.worktree, "symbolic-ref", "HEAD").strip(), "refs/heads/beats/BT-1-drafter-5-1")
+        self.assertEqual(w.head("beats/BT-1-drafter-1"), earlier)
 
     def test_pair_dir_only_for_a_judge(self):
         self.refused("a pair directory is only for a judge", "reviewer", 7, pair_dir=self.w.tmp)
