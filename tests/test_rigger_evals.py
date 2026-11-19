@@ -3,7 +3,7 @@
 The `rigging` stage has no judge, so the suite measures the lint pass rate only. Recorded outputs in
 tests/fixtures/story_evals/ stand in for the role: nothing here runs a model. The role is found as a maker
 of the pipeline's `production/rigging` entry, not in a loop list.
-The rigging lint does not read rig requests, so a request's shape is not graded here.
+The rigging lint's rule 8 checks a rig request's shape, so a malformed request fails the lint here.
 """
 
 import hashlib
@@ -116,8 +116,9 @@ def edit(key, value):
 
 
 NEXT = {"tamsin": "orrin", "orrin": "juno", "juno": "tamsin"}
-NEAR_MISSES = (("refs the next case's asset", edit("refs", lambda c: [f"asset:{NEXT[asset(c)]}"])),
-               ("a fourth key", edit("extra", "x")))
+DEFECTS = (("refs the next case's asset", edit("refs", lambda c: [f"asset:{NEXT[asset(c)]}"]),
+            lambda c: f'refs is not ["asset:{asset(c)}"]'),
+           ("a fourth key", edit("extra", "x"), lambda c: "request is not {for, prompt, refs}"))
 
 
 class RiggerEvalsTest(unittest.TestCase):
@@ -179,15 +180,18 @@ class RiggerEvalsTest(unittest.TestCase):
                 self.assertFalse(grade["pass"])
                 self.assertEqual(grade["detail"], f"lint PASS; missing {missing}")
 
-    def test_near_misses_pass(self):
+    def test_each_defect_fails_the_lint(self):
         cases = evals.load(KIT, ROLE)
         self.assertEqual(len(cases), 3)
         for case in cases:
-            for name, change in NEAR_MISSES:
-                with self.subTest(case=case.id, near_miss=name):
-                    grade, _ = graded(case, change)
-                    self.assertTrue(grade["pass"], grade["detail"])
-                    self.assertEqual(grade["detail"], "lint PASS")
+            for name, change, line in DEFECTS:
+                with self.subTest(case=case.id, defect=name):
+                    grade, text = graded(case, change)
+                    self.assertFalse(grade["pass"])
+                    self.assertTrue(grade["detail"].startswith("lint FAIL"), grade["detail"])
+                    found = [row for row in text.splitlines() if row.startswith("B")]
+                    self.assertEqual(len(found), 1, text)
+                    self.assertTrue(found[0].endswith(" " + line(case)), found[0])
 
     def test_it_runs_on_the_fake_harness(self):
         before = tree_hash(KIT / "evals")
